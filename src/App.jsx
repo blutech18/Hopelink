@@ -9,9 +9,11 @@ import { useAuth } from './contexts/AuthContext'
 import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
 
-// Lazy load pages for better performance
-const HomePage = React.lazy(() => import('@/pages/public/HomePage'))
-const AboutPage = React.lazy(() => import('@/pages/public/AboutPage'))
+// Import public pages directly (avoiding lazy loading for these specific pages due to Vercel build issues)
+import HomePage from './pages/public/HomePage.jsx'
+import AboutPage from './pages/public/AboutPage.jsx'
+
+// Lazy load other pages for better performance
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'))
 const SignupPage = React.lazy(() => import('./pages/auth/SignupPage'))
 
