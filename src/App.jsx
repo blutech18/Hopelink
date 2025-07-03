@@ -10,8 +10,8 @@ import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
 
 // Import public pages directly (avoiding lazy loading for these specific pages due to Vercel build issues)
-import HomePage from './pages/public/HomePage.jsx'
-import AboutPage from './pages/public/AboutPage.jsx'
+import HomePage from './pages/HomePage.jsx'
+import AboutPage from './pages/AboutPage.jsx'
 
 // Lazy load other pages for better performance
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'))
