@@ -88,7 +88,6 @@ const ProfileCompletionPrompt = () => {
       'assistance_needs': 'Assistance Needs',
       'emergency_contact_name': 'Emergency Contact Name',
       'emergency_contact_phone': 'Emergency Contact Phone',
-      'availability_days': 'Availability Days',
       'availability_times': 'Availability Times',
       'background_check_consent': 'Background Check Consent',
       'has_vehicle': 'Vehicle Ownership',
