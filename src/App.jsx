@@ -10,8 +10,8 @@ import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
 
 // Lazy load pages for better performance
-const HomePage = React.lazy(() => import('./pages/public/HomePage'))
-const AboutPage = React.lazy(() => import('./pages/public/AboutPage'))
+const HomePage = React.lazy(() => import('@/pages/public/HomePage'))
+const AboutPage = React.lazy(() => import('@/pages/public/AboutPage'))
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'))
 const SignupPage = React.lazy(() => import('./pages/auth/SignupPage'))
 
