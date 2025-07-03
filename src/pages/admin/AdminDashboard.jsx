@@ -14,7 +14,7 @@ import {
   BarChart3
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 
 const AdminDashboard = () => {
@@ -26,6 +26,98 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     loadAdminStats()
+
+    // Set up real-time subscriptions for admin dashboard
+    let donationsSubscription
+    let requestsSubscription
+    let usersSubscription
+    let deliveriesSubscription
+
+    if (supabase) {
+      // Subscribe to donations table changes
+      donationsSubscription = supabase
+        .channel('admin_donations')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'donations'
+          },
+          () => {
+            console.log('📊 Admin: Donation change detected')
+            loadAdminStats()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to requests table changes
+      requestsSubscription = supabase
+        .channel('admin_requests')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'donation_requests'
+          },
+          () => {
+            console.log('📊 Admin: Request change detected')
+            loadAdminStats()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to users table changes
+      usersSubscription = supabase
+        .channel('admin_users')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'users'
+          },
+          () => {
+            console.log('📊 Admin: User change detected')
+            loadAdminStats()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to deliveries table changes
+      deliveriesSubscription = supabase
+        .channel('admin_deliveries')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'deliveries'
+          },
+          () => {
+            console.log('📊 Admin: Delivery change detected')
+            loadAdminStats()
+          }
+        )
+        .subscribe()
+    }
+
+    // Cleanup subscriptions
+    return () => {
+      if (donationsSubscription) {
+        supabase.removeChannel(donationsSubscription)
+      }
+      if (requestsSubscription) {
+        supabase.removeChannel(requestsSubscription)
+      }
+      if (usersSubscription) {
+        supabase.removeChannel(usersSubscription)
+      }
+      if (deliveriesSubscription) {
+        supabase.removeChannel(deliveriesSubscription)
+      }
+    }
   }, [])
 
   const loadAdminStats = async () => {

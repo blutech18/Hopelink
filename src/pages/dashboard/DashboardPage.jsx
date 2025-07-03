@@ -16,7 +16,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import ProfileCompletionPrompt from '../../components/ui/ProfileCompletionPrompt'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
@@ -90,7 +90,61 @@ const DashboardPage = () => {
     console.log('Dashboard - Role checks:', { isDonor, isRecipient, isVolunteer, isAdmin })
     
     loadDashboardData()
-  }, [profile, isVolunteer, navigate, loadDashboardData])
+
+    // Set up real-time subscriptions for live updates
+    let donationsSubscription
+    let requestsSubscription
+
+    if (supabase && profile?.id) {
+      if (isDonor) {
+        // Subscribe to donation changes for donors
+        donationsSubscription = supabase
+          .channel('dashboard_donations')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'donations',
+              filter: `donor_id=eq.${profile.id}`
+            },
+            () => {
+              console.log('📊 Dashboard donation change detected')
+              loadDashboardData()
+            }
+          )
+          .subscribe()
+      } else if (isRecipient) {
+        // Subscribe to request changes for recipients
+        requestsSubscription = supabase
+          .channel('dashboard_requests')
+          .on(
+            'postgres_changes',
+            {
+              event: '*',
+              schema: 'public',
+              table: 'donation_requests',
+              filter: `requester_id=eq.${profile.id}`
+            },
+            () => {
+              console.log('📊 Dashboard request change detected')
+              loadDashboardData()
+            }
+          )
+          .subscribe()
+      }
+    }
+
+    // Cleanup subscriptions
+    return () => {
+      if (donationsSubscription) {
+        supabase.removeChannel(donationsSubscription)
+      }
+      if (requestsSubscription) {
+        supabase.removeChannel(requestsSubscription)
+      }
+    }
+  }, [profile, isVolunteer, navigate, loadDashboardData, isDonor, isRecipient])
 
   const getDashboardCards = () => {
     if (isDonor) {

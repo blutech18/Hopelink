@@ -93,9 +93,6 @@ const AdminSettingsPage = () => {
     }
     
     checkSystemStatus()
-    const interval = setInterval(checkSystemStatus, 30000) // Check every 30 seconds
-    
-    return () => clearInterval(interval)
   }, [])
 
   const handleSettingChange = (section, key, value) => {
@@ -139,8 +136,57 @@ const AdminSettingsPage = () => {
 
   const handleResetToDefaults = () => {
     if (window.confirm('Are you sure you want to reset all settings to their default values?')) {
-      // Reset to default values
-      window.location.reload()
+      // Reset to default values without page reload
+      setSettings({
+        // Platform Settings
+        platformName: 'HopeLink',
+        platformDescription: 'Community-driven donation management platform',
+        maintenanceMode: false,
+        registrationEnabled: true,
+        emailVerificationRequired: true,
+        supportEmail: 'support@hopelink.org',
+        maxFileUploadSize: 10,
+        
+        // User Management
+        autoApproveUsers: false,
+        requireIdVerification: true,
+        maxDonationsPerUser: 50,
+        maxRequestsPerUser: 10,
+        userSessionTimeout: 24,
+        
+        // Content Moderation
+        autoModerationEnabled: true,
+        moderationKeywords: 'inappropriate, spam, scam',
+        requireDonationApproval: false,
+        flaggedContentThreshold: 3,
+        
+        // Email Configuration
+        emailProvider: 'sendgrid',
+        sendNotificationEmails: true,
+        emailRateLimit: 100,
+        
+        // Security Settings
+        passwordMinLength: 8,
+        requireTwoFactor: false,
+        maxLoginAttempts: 5,
+        adminSessionTimeout: 60,
+        
+        // Platform Limits
+        maxEventDuration: 30,
+        maxDonationValue: 100000,
+        donationCategories: 'Food, Clothing, Electronics, Books, Medical, Household',
+        
+        // System Monitoring
+        enableSystemLogs: true,
+        logRetentionDays: 30,
+        enablePerformanceMonitoring: true,
+        
+        // Notification Settings
+        emailNotifications: true,
+        systemAlerts: true,
+        securityAlerts: true
+      })
+      showToast('Settings reset to defaults', 'success')
     }
   }
 

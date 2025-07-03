@@ -30,6 +30,7 @@ const BrowseRequestsPage = React.lazy(() => import('./pages/donor/BrowseRequests
 const BrowseDonationsPage = React.lazy(() => import('./pages/recipient/BrowseDonationsPage'))
 const CreateRequestPage = React.lazy(() => import('./pages/recipient/CreateRequestPage'))
 const MyRequestsPage = React.lazy(() => import('./pages/recipient/MyRequestsPage'))
+const MyApprovedDonationsPage = React.lazy(() => import('./pages/recipient/MyApprovedDonationsPage'))
 
 // Volunteer pages
 const VolunteerDashboardPage = React.lazy(() => import('./pages/volunteer/VolunteerDashboardPage'))
@@ -197,6 +198,11 @@ function App() {
               <Route path="/my-requests" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
                   <MyRequestsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/my-approved-donations" element={
+                <ProtectedRoute allowedRoles={['recipient']}>
+                  <MyApprovedDonationsPage />
                 </ProtectedRoute>
               } />
               

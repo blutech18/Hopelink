@@ -32,9 +32,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
-import DeliveryConfirmationModal from '../../components/ui/DeliveryConfirmationModal'
 
 const MyDonationsPage = () => {
   const { user } = useAuth()
@@ -57,10 +56,19 @@ const MyDonationsPage = () => {
   const [selectedVolunteerRequests, setSelectedVolunteerRequests] = useState([])
   const [processingRequestId, setProcessingRequestId] = useState(null)
   
-  // Delivery confirmation states
+  // Delivery confirmation states for final donor confirmation
   const [deliveryConfirmationNotifications, setDeliveryConfirmationNotifications] = useState([])
-  const [selectedConfirmationNotification, setSelectedConfirmationNotification] = useState(null)
-  const [showConfirmationModal, setShowConfirmationModal] = useState(false)
+  const [confirmingDeliveryId, setConfirmingDeliveryId] = useState(null)
+  
+  // Pickup confirmation states for self-pickup donations
+  const [pickupNotifications, setPickupNotifications] = useState([])
+  const [pickupConfirmationNotifications, setPickupConfirmationNotifications] = useState([])
+  const [confirmingPickupId, setConfirmingPickupId] = useState(null)
+
+  // Direct delivery confirmation states
+  const [directDeliveryNotifications, setDirectDeliveryNotifications] = useState([])
+  const [directDeliveryConfirmationNotifications, setDirectDeliveryConfirmationNotifications] = useState([])
+  const [confirmingDirectDeliveryId, setConfirmingDirectDeliveryId] = useState(null)
 
   const statusOptions = [
     { value: 'all', label: 'All Status' },
@@ -158,8 +166,40 @@ const MyDonationsPage = () => {
       // Filter volunteer requests (from volunteers)
       const volunteerRequestNotifications = notifications.filter(n => n.type === 'volunteer_request' && !n.read_at)
       
-      // Filter delivery confirmation requests
-      const deliveryConfirmationNotifications = notifications.filter(n => n.type === 'delivery_completed' && n.data?.action_required === 'confirm_delivery' && !n.read_at)
+      // Filter final confirmation requests (after recipients have confirmed)
+      const deliveryConfirmationNotifications = notifications.filter(n => 
+        n.type === 'delivery_completed' && 
+        n.data?.action_required === 'donor_final_confirmation' && 
+        !n.read_at
+      )
+      
+      // Filter pickup notifications (for self-pickup donations)
+      const pickupNotifications = notifications.filter(n => 
+        (n.type === 'pickup_scheduled' || n.type === 'pickup_update') && 
+        !n.read_at
+      )
+      
+      // Filter pickup confirmation requests (for self-pickup completions)
+      const pickupConfirmationNotifications = notifications.filter(n => 
+        n.type === 'pickup_completed' && 
+        n.data?.action_required === 'confirm_pickup' &&
+        n.data?.role === 'donor' &&
+        !n.read_at
+      )
+
+      // Filter direct delivery notifications
+      const directDeliveryNotifications = notifications.filter(n => 
+        (n.type === 'direct_delivery_request' || n.type === 'direct_delivery_update') && 
+        !n.read_at
+      )
+
+      // Filter direct delivery confirmation requests
+      const directDeliveryConfirmationNotifications = notifications.filter(n => 
+        n.type === 'direct_delivery_completed' && 
+        n.data?.action_required === 'confirm_direct_delivery' &&
+        n.data?.role === 'donor' &&
+        !n.read_at
+      )
       
       // Group donation requests by donation_id
       const requestsByDonation = {}
@@ -190,6 +230,10 @@ const MyDonationsPage = () => {
       setDonationRequests(requestsByDonation)
       setVolunteerRequests(volunteerRequestsByDonation)
       setDeliveryConfirmationNotifications(deliveryConfirmationNotifications)
+      setPickupNotifications(pickupNotifications)
+      setPickupConfirmationNotifications(pickupConfirmationNotifications)
+      setDirectDeliveryNotifications(directDeliveryNotifications)
+      setDirectDeliveryConfirmationNotifications(directDeliveryConfirmationNotifications)
     } catch (err) {
       console.error('Error fetching donation requests:', err)
     }
@@ -440,27 +484,135 @@ const MyDonationsPage = () => {
     }
   }
 
-  const handleConfirmDelivery = (notification) => {
-    setSelectedConfirmationNotification(notification)
-    setShowConfirmationModal(true)
+  const handleFinalConfirmation = async (notification) => {
+    try {
+      setConfirmingDeliveryId(notification.data.delivery_id)
+      
+      // Complete the transaction
+      await db.confirmDonorDelivery(
+        notification.data.delivery_id,
+        user.id,
+        true
+      )
+      
+      success('Transaction completed successfully!')
+      
+      // Refresh data
+      await fetchDonationRequests()
+      await fetchDonations()
+    } catch (err) {
+      console.error('Error completing transaction:', err)
+      error('Failed to complete transaction. Please try again.')
+    } finally {
+      setConfirmingDeliveryId(null)
+    }
   }
 
-  const handleConfirmationComplete = async (result) => {
-    // Refresh notifications and donations after confirmation
-    await fetchDonationRequests()
-    await fetchDonations()
+  const handlePickupConfirmation = async (notification) => {
+    try {
+      setConfirmingPickupId(notification.data.claim_id)
+      
+      // Complete the pickup transaction
+      await db.confirmPickupCompletion(
+        notification.data.claim_id,
+        user.id,
+        true
+      )
+      
+      success('Pickup transaction completed successfully!')
+      
+      // Refresh data
+      await fetchDonationRequests()
+      await fetchDonations()
+    } catch (err) {
+      console.error('Error completing pickup transaction:', err)
+      error('Failed to complete pickup transaction. Please try again.')
+    } finally {
+      setConfirmingPickupId(null)
+    }
+  }
+
+  const handleDirectDeliveryConfirmation = async (notification) => {
+    try {
+      setConfirmingDirectDeliveryId(notification.data.claim_id)
+      
+      // Complete the direct delivery transaction
+      await db.confirmDirectDeliveryCompletion(
+        notification.data.claim_id,
+        user.id,
+        true
+      )
+      
+      success('Direct delivery transaction completed successfully!')
+      
+      // Refresh data
+      await fetchDonationRequests()
+      await fetchDonations()
+    } catch (err) {
+      console.error('Error completing direct delivery transaction:', err)
+      error('Failed to complete direct delivery transaction. Please try again.')
+    } finally {
+      setConfirmingDirectDeliveryId(null)
+    }
   }
 
   useEffect(() => {
     fetchDonations()
 
-    // Set up periodic refresh to catch status updates
-    const interval = setInterval(() => {
-      fetchDonations()
-    }, 30000) // Refresh every 30 seconds
+    // Set up real-time subscriptions for automatic updates
+    let donationsSubscription
+    let notificationsSubscription
 
-    return () => clearInterval(interval)
-  }, [fetchDonations])
+    if (supabase && user?.id) {
+      // Subscribe to changes in donations table for current user
+      donationsSubscription = supabase
+        .channel('donations_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'donations',
+            filter: `donor_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('📦 Donation change detected:', payload)
+            // Refresh donations when any change occurs
+            fetchDonations()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to notifications for delivery confirmations and requests
+      notificationsSubscription = supabase
+        .channel('notifications_changes')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload) => {
+            console.log('🔔 Notification change detected:', payload)
+            // Refresh requests when notifications change
+            fetchDonationRequests()
+          }
+        )
+        .subscribe()
+    }
+
+    // Cleanup subscriptions
+    return () => {
+      if (donationsSubscription) {
+        supabase.removeChannel(donationsSubscription)
+      }
+      if (notificationsSubscription) {
+        supabase.removeChannel(notificationsSubscription)
+      }
+    }
+  }, [fetchDonations, fetchDonationRequests, user?.id])
 
   const filteredDonations = donations.filter(donation => {
     const matchesSearch = donation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -505,8 +657,8 @@ const MyDonationsPage = () => {
   const stats = {
     total: donations.length,
     available: donations.filter(d => d.status === 'available').length,
-    claimed: donations.filter(d => ['claimed', 'in_transit', 'delivered'].includes(d.status)).length,
-    completed: donations.filter(d => d.status === 'completed').length
+    claimed: donations.filter(d => ['claimed', 'in_transit'].includes(d.status)).length,
+    completed: donations.filter(d => ['delivered', 'completed'].includes(d.status)).length
   }
 
   if (loading) {
@@ -607,25 +759,25 @@ const MyDonationsPage = () => {
           </div>
         </motion.div>
 
-        {/* Delivery Confirmation Requests */}
+        {/* Final Confirmation Requests */}
         {deliveryConfirmationNotifications.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="card p-6 mb-8 border-l-4 border-amber-500"
+            className="card p-6 mb-8 border-l-4 border-emerald-500"
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-500/10 rounded-lg">
-                  <Truck className="h-6 w-6 text-amber-500" />
+                <div className="p-2 bg-emerald-500/10 rounded-lg">
+                  <CheckCircle className="h-6 w-6 text-emerald-500" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-white">Delivery Confirmations Needed</h3>
-                  <p className="text-skyblue-300 text-sm">Please confirm these completed deliveries</p>
+                  <h3 className="text-lg font-semibold text-white">Complete Transactions</h3>
+                  <p className="text-skyblue-300 text-sm">Recipients have confirmed receipt - mark as complete</p>
                 </div>
               </div>
-              <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-sm font-medium">
+              <span className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-sm font-medium">
                 {deliveryConfirmationNotifications.length} pending
               </span>
             </div>
@@ -637,20 +789,254 @@ const MyDonationsPage = () => {
                   className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
                 >
                   <div className="flex items-center gap-3">
-                    <Bell className="h-5 w-5 text-amber-500" />
+                    <CheckCircle className="h-5 w-5 text-emerald-500" />
                     <div>
                       <p className="text-white font-medium">{notification.title}</p>
                       <p className="text-skyblue-300 text-sm">{notification.message}</p>
                       <p className="text-skyblue-400 text-xs mt-1">
-                        Volunteer: {notification.data?.volunteer_name}
+                        Recipient has confirmed receipt
                       </p>
                     </div>
                   </div>
                   <button
-                    onClick={() => handleConfirmDelivery(notification)}
-                    className="btn btn-primary text-sm px-4 py-2"
+                    onClick={() => handleFinalConfirmation(notification)}
+                    disabled={confirmingDeliveryId === notification.data.delivery_id}
+                    className="btn btn-success text-sm px-4 py-2 flex items-center"
                   >
-                    Confirm Delivery
+                    {confirmingDeliveryId === notification.data.delivery_id ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <>
+                        <Award className="h-4 w-4 mr-2" />
+                        Mark Complete
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Pickup Notifications */}
+        {pickupNotifications.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.17 }}
+            className="card p-6 mb-8 border-l-4 border-blue-500"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-blue-500/10 rounded-lg">
+                  <MapPin className="h-6 w-6 text-blue-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Pickup Notifications</h3>
+                  <p className="text-skyblue-300 text-sm">Self-pickup donation updates</p>
+                </div>
+              </div>
+              <span className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-sm font-medium">
+                {pickupNotifications.length} updates
+              </span>
+            </div>
+            
+            <div className="space-y-3">
+              {pickupNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <MapPin className="h-5 w-5 text-blue-500" />
+                    <div>
+                      <p className="text-white font-medium">{notification.title}</p>
+                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
+                      <p className="text-skyblue-400 text-xs mt-1">
+                        {notification.data?.pickup_location && `Location: ${notification.data.pickup_location}`}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await db.markNotificationAsRead(notification.id)
+                      await fetchDonationRequests()
+                    }}
+                    className="btn btn-secondary text-sm px-4 py-2"
+                  >
+                    Mark Read
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Pickup Confirmation Requests */}
+        {pickupConfirmationNotifications.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.19 }}
+            className="card p-6 mb-8 border-l-4 border-purple-500"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-purple-500/10 rounded-lg">
+                  <CheckCircle className="h-6 w-6 text-purple-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Confirm Pickup Completions</h3>
+                  <p className="text-skyblue-300 text-sm">Self-pickup donations ready for final confirmation</p>
+                </div>
+              </div>
+              <span className="bg-purple-500/20 text-purple-400 px-3 py-1 rounded-full text-sm font-medium">
+                {pickupConfirmationNotifications.length} pending
+              </span>
+            </div>
+            
+            <div className="space-y-3">
+              {pickupConfirmationNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="h-5 w-5 text-purple-500" />
+                    <div>
+                      <p className="text-white font-medium">{notification.title}</p>
+                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
+                      <p className="text-skyblue-400 text-xs mt-1">
+                        Completed by: {notification.data?.completed_by_name}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handlePickupConfirmation(notification)}
+                    disabled={confirmingPickupId === notification.data.claim_id}
+                    className="btn btn-success text-sm px-4 py-2 flex items-center"
+                  >
+                    {confirmingPickupId === notification.data.claim_id ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <>
+                        <Award className="h-4 w-4 mr-2" />
+                        Confirm Pickup
+                      </>
+                    )}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Direct Delivery Notifications */}
+        {directDeliveryNotifications.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.21 }}
+            className="card p-6 mb-8 border-l-4 border-orange-500"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500/10 rounded-lg">
+                  <Truck className="h-6 w-6 text-orange-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Direct Delivery Updates</h3>
+                  <p className="text-skyblue-300 text-sm">Direct delivery coordination and updates</p>
+                </div>
+              </div>
+              <span className="bg-orange-500/20 text-orange-400 px-3 py-1 rounded-full text-sm font-medium">
+                {directDeliveryNotifications.length} updates
+              </span>
+            </div>
+            
+            <div className="space-y-3">
+              {directDeliveryNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <Truck className="h-5 w-5 text-orange-500" />
+                    <div>
+                      <p className="text-white font-medium">{notification.title}</p>
+                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
+                      <p className="text-skyblue-400 text-xs mt-1">
+                        {notification.data?.delivery_address && `Address: ${notification.data.delivery_address}`}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      await db.markNotificationAsRead(notification.id)
+                      await fetchDonationRequests()
+                    }}
+                    className="btn btn-secondary text-sm px-4 py-2"
+                  >
+                    Mark Read
+                  </button>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Direct Delivery Confirmation Requests */}
+        {directDeliveryConfirmationNotifications.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.23 }}
+            className="card p-6 mb-8 border-l-4 border-indigo-500"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-indigo-500/10 rounded-lg">
+                  <CheckCircle className="h-6 w-6 text-indigo-500" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Confirm Direct Delivery Completions</h3>
+                  <p className="text-skyblue-300 text-sm">Direct deliveries ready for final confirmation</p>
+                </div>
+              </div>
+              <span className="bg-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full text-sm font-medium">
+                {directDeliveryConfirmationNotifications.length} pending
+              </span>
+            </div>
+            
+            <div className="space-y-3">
+              {directDeliveryConfirmationNotifications.map((notification) => (
+                <div
+                  key={notification.id}
+                  className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                >
+                  <div className="flex items-center gap-3">
+                    <CheckCircle className="h-5 w-5 text-indigo-500" />
+                    <div>
+                      <p className="text-white font-medium">{notification.title}</p>
+                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
+                      <p className="text-skyblue-400 text-xs mt-1">
+                        Delivered to recipient
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleDirectDeliveryConfirmation(notification)}
+                    disabled={confirmingDirectDeliveryId === notification.data.claim_id}
+                    className="btn btn-success text-sm px-4 py-2 flex items-center"
+                  >
+                    {confirmingDirectDeliveryId === notification.data.claim_id ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <>
+                        <Award className="h-4 w-4 mr-2" />
+                        Confirm Delivery
+                      </>
+                    )}
                   </button>
                 </div>
               ))}
@@ -1468,14 +1854,6 @@ const MyDonationsPage = () => {
             </motion.div>
           </div>
         )}
-
-        {/* Delivery Confirmation Modal */}
-        <DeliveryConfirmationModal
-          isOpen={showConfirmationModal}
-          onClose={() => setShowConfirmationModal(false)}
-          notification={selectedConfirmationNotification}
-          onConfirmationComplete={handleConfirmationComplete}
-        />
       </div>
     </div>
   )

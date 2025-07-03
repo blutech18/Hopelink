@@ -41,20 +41,34 @@ const DeliveryConfirmationModal = ({
     try {
       setLoading(true)
       
-      const result = await db.confirmDeliveryByUser(
-        data.delivery_id,
-        user.id,
-        userRole,
-        confirmed,
-        confirmed ? rating : null,
-        confirmed ? feedback : feedback || 'Delivery disputed'
-      )
+      let result
+      if (isRecipient) {
+        // Use the new recipient confirmation function
+        result = await db.confirmReceipt(
+          data.delivery_id,
+          user.id,
+          confirmed,
+          confirmed ? rating : null,
+          confirmed ? feedback : feedback || 'Delivery disputed'
+        )
+      } else {
+        // Fallback to old function for other roles (volunteers, donors, etc.)
+        result = await db.confirmDeliveryByUser(
+          data.delivery_id,
+          user.id,
+          userRole,
+          confirmed,
+          confirmed ? rating : null,
+          confirmed ? feedback : feedback || 'Delivery disputed'
+        )
+      }
 
       if (confirmed) {
-        success(result.transactionCompleted 
-          ? 'Delivery confirmed! Transaction completed successfully.' 
-          : 'Delivery confirmed! Waiting for the other party to confirm.'
-        )
+        if (isRecipient) {
+          success('Receipt confirmed! Waiting for donor confirmation to complete transaction.')
+        } else {
+          success('Delivery confirmed!')
+        }
       } else {
         success('Delivery dispute reported. Our team will investigate.')
       }

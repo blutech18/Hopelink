@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import { 
   Search, 
   Filter, 
@@ -13,7 +14,9 @@ import {
   Clock,
   User,
   Image as ImageIcon,
-  CheckCircle
+  CheckCircle,
+  Package,
+  ArrowRight
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -23,6 +26,7 @@ import { db } from '../../lib/supabase'
 const BrowseDonationsPage = () => {
   const { user, profile } = useAuth()
   const { success, error } = useToast()
+  const navigate = useNavigate()
   const [donations, setDonations] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -213,9 +217,19 @@ const BrowseDonationsPage = () => {
               <h1 className="text-3xl font-bold text-white mb-2">Browse Donations</h1>
               <p className="text-skyblue-300">Find donations that match your needs</p>
             </div>
-            <div className="flex items-center space-x-2 text-skyblue-400">
-              <Gift className="h-5 w-5" />
-              <span className="text-sm">{filteredDonations.length} donations available</span>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate('/my-approved-donations')}
+                className="btn btn-primary flex items-center"
+              >
+                <Package className="h-4 w-4 mr-2" />
+                My Approved Donations
+                <ArrowRight className="h-4 w-4 ml-2" />
+              </button>
+              <div className="flex items-center space-x-2 text-skyblue-400">
+                <Gift className="h-5 w-5" />
+                <span className="text-sm">{filteredDonations.length} donations available</span>
+              </div>
             </div>
           </div>
         </motion.div>

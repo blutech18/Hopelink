@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import ProfileCompletionPrompt from '../../components/ui/ProfileCompletionPrompt'
 
@@ -33,7 +33,59 @@ const VolunteerDashboardPage = () => {
 
   useEffect(() => {
     loadVolunteerData()
-  }, [profile])
+
+    // Set up real-time subscriptions for live updates
+    let deliveriesSubscription
+    let notificationsSubscription
+
+    if (supabase && profile?.id) {
+      // Subscribe to delivery changes for this volunteer
+      deliveriesSubscription = supabase
+        .channel('volunteer_deliveries')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'deliveries',
+            filter: `volunteer_id=eq.${profile.id}`
+          },
+          () => {
+            console.log('🚚 Volunteer delivery change detected')
+            loadVolunteerData()
+          }
+        )
+        .subscribe()
+
+      // Subscribe to notifications for this volunteer
+      notificationsSubscription = supabase
+        .channel('volunteer_notifications')
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'notifications',
+            filter: `user_id=eq.${profile.id}`
+          },
+          () => {
+            console.log('🔔 Volunteer notification change detected')
+            fetchVolunteerNotifications()
+          }
+        )
+        .subscribe()
+    }
+
+    // Cleanup subscriptions
+    return () => {
+      if (deliveriesSubscription) {
+        supabase.removeChannel(deliveriesSubscription)
+      }
+      if (notificationsSubscription) {
+        supabase.removeChannel(notificationsSubscription)
+      }
+    }
+  }, [profile, fetchVolunteerNotifications])
 
   const loadVolunteerData = async () => {
     if (!profile) return
