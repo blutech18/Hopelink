@@ -16,7 +16,7 @@ import AboutPage from './pages/AboutPage.jsx'
 // Lazy load other pages for better performance
 const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'))
 const SignupPage = React.lazy(() => import('./pages/auth/SignupPage'))
-
+const CallbackPage = React.lazy(() => import('./pages/auth/CallbackPage'))
 const ResetPasswordPage = React.lazy(() => import('./pages/auth/ResetPasswordPage'))
 const DashboardPage = React.lazy(() => import('./pages/dashboard/DashboardPage'))
 const ProfilePage = React.lazy(() => import('./pages/profile/ProfilePage'))
@@ -154,6 +154,9 @@ function App() {
                   <ResetPasswordPage />
                 </PublicRoute>
               } />
+              
+              {/* OAuth callback route */}
+              <Route path="/auth/callback" element={<CallbackPage />} />
               
               {/* Protected routes */}
               <Route path="/dashboard" element={

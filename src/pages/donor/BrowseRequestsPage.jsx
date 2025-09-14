@@ -18,18 +18,25 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
-import { supabase } from '../../lib/supabase'
+import { db } from '../../lib/supabase'
+import { intelligentMatcher } from '../../lib/matchingAlgorithm'
 
 const BrowseRequestsPage = () => {
   const { user, profile } = useAuth()
   const { success, error } = useToast()
   const [requests, setRequests] = useState([])
+  const [loadingProfile, setLoadingProfile] = useState(false)
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
   const [selectedUrgency, setSelectedUrgency] = useState('')
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
+  const [showProfileModal, setShowProfileModal] = useState(false)
+  const [requestsWithScores, setRequestsWithScores] = useState([])
+  const [userDonations, setUserDonations] = useState([])
+  const [smartRecommendations, setSmartRecommendations] = useState([])
+  const [showRecommendations, setShowRecommendations] = useState(true)
 
   const categories = [
     'Food & Beverages',
@@ -54,34 +61,107 @@ const BrowseRequestsPage = () => {
   const loadRequests = useCallback(async () => {
     try {
       setLoading(true)
-      const { data, error: fetchError } = await supabase
-        .from('donation_requests')
-        .select(`
-          *,
-          requester:users!requester_id(
-            id,
-            name,
-            phone_number
-          )
-        `)
-        .eq('status', 'open')
-        .order('created_at', { ascending: false })
-
-      if (fetchError) throw fetchError
-      setRequests(data || [])
+      
+      // Load requests
+      const requests = await db.getRequests({ status: 'open' })
+      setRequests(requests || [])
+      
+      // Load user's donations for matching
+      if (user?.id) {
+        const donations = await db.getDonations({ donor_id: user.id, status: 'available' })
+        setUserDonations(donations || [])
+        
+        // Calculate matching scores for each request
+        const requestsWithMatchingScores = await Promise.all(
+          (requests || []).map(async (request) => {
+            let bestScore = 0
+            let bestDonation = null
+            let matchReason = 'No compatible donations'
+            
+            // Find best matching donation from user's donations
+            for (const donation of donations || []) {
+              const itemCompatibility = intelligentMatcher.calculateItemCompatibility(
+                request.category, donation.category,
+                request.title, donation.title,
+                request.quantity_needed, donation.quantity
+              )
+              
+              const urgencyAlignment = intelligentMatcher.normalize.normalizeUrgencyAlignment(
+                request.urgency, donation.is_urgent ? 'high' : 'medium'
+              )
+              
+              const deliveryCompatibility = intelligentMatcher.calculateDeliveryCompatibility(
+                request.delivery_mode, donation.delivery_mode
+              )
+              
+              // Calculate geographic score if locations available
+              let geographicScore = 0.5 // Default neutral score
+              if (request.requester?.latitude && donation.donor?.latitude) {
+                geographicScore = intelligentMatcher.calculateGeographicScore(
+                  request.requester.latitude, request.requester.longitude,
+                  donation.donor.latitude, donation.donor.longitude
+                )
+              }
+              
+              // Calculate weighted score
+              const totalScore = (
+                itemCompatibility * 0.35 +
+                urgencyAlignment * 0.25 +
+                deliveryCompatibility * 0.20 +
+                geographicScore * 0.20
+              )
+              
+              if (totalScore > bestScore) {
+                bestScore = totalScore
+                bestDonation = donation
+                matchReason = intelligentMatcher.generateMatchReason({
+                  item_compatibility: itemCompatibility,
+                  urgency_alignment: urgencyAlignment,
+                  delivery_compatibility: deliveryCompatibility,
+                  geographic_proximity: geographicScore
+                }, {
+                  item_compatibility: 0.35,
+                  urgency_alignment: 0.25,
+                  delivery_compatibility: 0.20,
+                  geographic_proximity: 0.20
+                })
+              }
+            }
+            
+            return {
+              ...request,
+              matchingScore: bestScore,
+              bestMatchingDonation: bestDonation,
+              matchReason: matchReason
+            }
+          })
+        )
+        
+        setRequestsWithScores(requestsWithMatchingScores)
+        
+        // Generate smart recommendations (high-scoring matches)
+        const highScoreMatches = requestsWithMatchingScores
+          .filter(request => request.matchingScore > 0.7)
+          .sort((a, b) => b.matchingScore - a.matchingScore)
+          .slice(0, 3)
+        
+        setSmartRecommendations(highScoreMatches)
+      } else {
+        setRequestsWithScores(requests || [])
+      }
     } catch (err) {
       console.error('Error loading requests:', err)
       error('Failed to load requests. Please try again.')
     } finally {
       setLoading(false)
     }
-  }, [error])
+  }, [error, user?.id])
 
   useEffect(() => {
     loadRequests()
   }, [loadRequests])
 
-  const filteredRequests = requests.filter(request => {
+  const filteredRequests = (requestsWithScores.length > 0 ? requestsWithScores : requests).filter(request => {
     const matchesSearch = request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          request.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          request.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -104,9 +184,91 @@ const BrowseRequestsPage = () => {
     })
   }
 
-  const handleViewDetails = (request) => {
-    setSelectedRequest(request)
-    setShowDetailsModal(true)
+  const handleViewDetails = async (request) => {
+    try {
+      // Set basic request info immediately for better UX
+      setSelectedRequest(request)
+      setShowDetailsModal(true)
+      
+      // If requester info exists, fetch detailed profile
+      if (request.requester?.id) {
+        setLoadingProfile(true)
+        const detailedProfile = await db.getProfile(request.requester.id)
+        
+        // Update the selected request with detailed profile info
+        setSelectedRequest(prev => ({
+          ...prev,
+          requester: {
+            ...prev.requester,
+            ...detailedProfile
+          }
+        }))
+      }
+    } catch (err) {
+      console.error('Error fetching requester profile:', err)
+      // Don't show error to user as this is an enhancement, not critical functionality
+    } finally {
+      setLoadingProfile(false)
+    }
+  }
+
+  const handleViewProfile = async (request) => {
+    try {
+      setSelectedRequest(request)
+      setShowProfileModal(true)
+      
+      // If requester info exists, fetch detailed profile
+      if (request.requester?.id) {
+        setLoadingProfile(true)
+        const detailedProfile = await db.getProfile(request.requester.id)
+        
+        // Update the selected request with detailed profile info
+        setSelectedRequest(prev => ({
+          ...prev,
+          requester: {
+            ...prev.requester,
+            ...detailedProfile
+          }
+        }))
+      }
+    } catch (err) {
+      console.error('Error fetching requester profile:', err)
+      error('Failed to load profile information')
+    } finally {
+      setLoadingProfile(false)
+    }
+  }
+
+  const handleCreateSmartMatch = async (request) => {
+    if (!request.bestMatchingDonation) return
+    
+    try {
+      setLoading(true)
+      await db.createSmartMatch(request.id, request.bestMatchingDonation.id)
+      success(`Smart match created! Your donation "${request.bestMatchingDonation.title}" has been matched with "${request.title}"`)
+      await loadRequests() // Refresh the list
+    } catch (err) {
+      console.error('Error creating smart match:', err)
+      error('Failed to create smart match. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const getScoreColor = (score) => {
+    if (score >= 0.9) return 'text-green-400 bg-green-900/20 border-green-500/20'
+    if (score >= 0.75) return 'text-blue-400 bg-blue-900/20 border-blue-500/20'
+    if (score >= 0.6) return 'text-yellow-400 bg-yellow-900/20 border-yellow-500/20'
+    if (score >= 0.4) return 'text-orange-400 bg-orange-900/20 border-orange-500/20'
+    return 'text-red-400 bg-red-900/20 border-red-500/20'
+  }
+
+  const getScoreLabel = (score) => {
+    if (score >= 0.9) return 'Excellent Match'
+    if (score >= 0.75) return 'Great Match'
+    if (score >= 0.6) return 'Good Match'
+    if (score >= 0.4) return 'Fair Match'
+    return 'Poor Match'
   }
 
   if (loading) {
@@ -129,14 +291,78 @@ const BrowseRequestsPage = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">Browse Requests</h1>
-              <p className="text-skyblue-300">Find recipients who need your help</p>
+              <p className="text-skyblue-300">Find recipients who need your help with AI-powered matching</p>
             </div>
-            <div className="flex items-center space-x-2 text-skyblue-400">
-              <Heart className="h-5 w-5" />
-              <span className="text-sm">{filteredRequests.length} requests available</span>
+            <div className="flex items-center space-x-4">
+              <div className="flex items-center space-x-2 text-skyblue-400">
+                <Heart className="h-5 w-5" />
+                <span className="text-sm">{filteredRequests.length} requests available</span>
+              </div>
+              {smartRecommendations.length > 0 && (
+                <div className="flex items-center space-x-2 text-green-400">
+                  <span className="h-2 w-2 bg-green-400 rounded-full animate-pulse"></span>
+                  <span className="text-sm">{smartRecommendations.length} smart matches</span>
+                </div>
+              )}
             </div>
           </div>
         </motion.div>
+
+        {/* Smart Recommendations */}
+        {smartRecommendations.length > 0 && showRecommendations && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="bg-gradient-to-r from-green-900/20 to-blue-900/20 border border-green-500/20 rounded-lg p-6 mb-8"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center space-x-3">
+                <div className="h-8 w-8 bg-green-500/20 rounded-full flex items-center justify-center">
+                  <span className="text-green-400 text-sm font-bold">🤖</span>
+                </div>
+                <div>
+                  <h3 className="text-lg font-semibold text-white">Smart Match Recommendations</h3>
+                  <p className="text-sm text-green-300">High-compatibility matches based on your available donations</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowRecommendations(false)}
+                className="text-skyblue-400 hover:text-white transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {smartRecommendations.map((request) => (
+                <div key={request.id} className="bg-navy-800/50 border border-green-500/10 rounded-lg p-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <h4 className="font-medium text-white text-sm">{request.title}</h4>
+                    <div className={`badge text-xs ${getScoreColor(request.matchingScore)}`}>
+                      {Math.round(request.matchingScore * 100)}%
+                    </div>
+                  </div>
+                  
+                  <p className="text-xs text-skyblue-300 mb-3 line-clamp-2">
+                    Matches your: {request.bestMatchingDonation?.title}
+                  </p>
+                  
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs text-green-400">{request.matchReason}</span>
+                    <button
+                      onClick={() => handleCreateSmartMatch(request)}
+                      disabled={loading}
+                      className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-md transition-colors disabled:opacity-50"
+                    >
+                      Auto Match
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        )}
 
         {/* Filters */}
         <motion.div
@@ -291,11 +517,49 @@ const BrowseRequestsPage = () => {
                       </div>
                     )}
 
-                    {/* View Details Button */}
+                    {/* Matching Score */}
+                    {request.matchingScore !== undefined && (
+                      <div className="mb-4">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-xs text-skyblue-400">Compatibility Score</span>
+                          <div className={`badge text-xs border ${getScoreColor(request.matchingScore)}`}>
+                            {Math.round(request.matchingScore * 100)}% • {getScoreLabel(request.matchingScore)}
+                          </div>
+                        </div>
+                        
+                        {request.matchingScore > 0 && (
+                          <div className="text-xs text-skyblue-300">
+                            💡 {request.matchReason}
+                          </div>
+                        )}
+                        
+                        {request.bestMatchingDonation && (
+                          <div className="mt-2 p-2 bg-navy-800/50 rounded text-xs">
+                            <div className="text-skyblue-400 mb-1">Best match from your donations:</div>
+                            <div className="text-white font-medium">{request.bestMatchingDonation.title}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Action Buttons */}
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-skyblue-400">
-                        Click to view details
-                      </span>
+                      {request.matchingScore > 0.6 && request.bestMatchingDonation ? (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            handleCreateSmartMatch(request)
+                          }}
+                          disabled={loading}
+                          className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded-md transition-colors disabled:opacity-50"
+                        >
+                          Smart Match
+                        </button>
+                      ) : (
+                        <span className="text-sm text-skyblue-400">
+                          Click to view details
+                        </span>
+                      )}
                       <ArrowRight className="h-4 w-4 text-skyblue-400" />
                     </div>
                   </motion.div>
@@ -317,20 +581,22 @@ const BrowseRequestsPage = () => {
                 className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                  <div>
-                    <h3 className="text-xl font-semibold text-white mb-1">
-                      {selectedRequest.title}
-                    </h3>
-                    <div className={`badge ${getUrgencyInfo(selectedRequest.urgency).color} inline-block`}>
-                      {getUrgencyInfo(selectedRequest.urgency).label}
-                    </div>
+                <div className="flex justify-between items-start mb-6">
+                  <div className="flex items-center space-x-3">
+                    <h3 className="text-xl font-bold text-white">{selectedRequest.title}</h3>
+                    <button
+                      onClick={() => handleViewProfile(selectedRequest)}
+                      className="text-skyblue-400 hover:text-skyblue-300 transition-colors p-1 rounded-full hover:bg-navy-700/50"
+                      title="View requester profile"
+                    >
+                      <Eye className="h-5 w-5" />
+                    </button>
                   </div>
                   <button
                     onClick={() => setShowDetailsModal(false)}
-                    className="text-skyblue-400 hover:text-white transition-colors"
+                    className="text-gray-400 hover:text-white transition-colors"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-6 w-6" />
                   </button>
                 </div>
 
@@ -415,6 +681,174 @@ const BrowseRequestsPage = () => {
                       <strong>Want to help?</strong> Contact the requester directly or consider creating a donation that matches their needs.
                     </p>
                   </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Profile Modal */}
+        <AnimatePresence>
+          {showProfileModal && selectedRequest && (
+            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.2 }}
+                className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto custom-scrollbar"
+              >
+                {/* Header */}
+                <div className="flex justify-between items-start mb-6">
+                  <h3 className="text-xl font-bold text-white">Requester Profile</h3>
+                  <button
+                    onClick={() => setShowProfileModal(false)}
+                    className="text-gray-400 hover:text-white transition-colors"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+
+                {/* Profile Content */}
+                <div className="space-y-6">
+                  {loadingProfile ? (
+                    <div className="flex justify-center py-8">
+                      <LoadingSpinner />
+                    </div>
+                  ) : (
+                    <>
+                      {/* Profile Header */}
+                      <div className="flex items-start space-x-4">
+                        <div className="flex-shrink-0">
+                          {selectedRequest.requester?.profile_image_url ? (
+                            <img 
+                              src={selectedRequest.requester.profile_image_url} 
+                              alt={selectedRequest.requester?.name || 'User'}
+                              className="h-20 w-20 rounded-full object-cover border-2 border-skyblue-500"
+                            />
+                          ) : (
+                            <div className="h-20 w-20 rounded-full bg-navy-700 flex items-center justify-center">
+                              <User className="h-10 w-10 text-skyblue-400" />
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="flex-grow">
+                          <h4 className="text-white font-medium text-xl">
+                            {selectedRequest.requester?.name || 'Anonymous'}
+                          </h4>
+                          <div className="text-skyblue-400 text-sm mt-1">
+                            {selectedRequest.requester?.role && (
+                              <span className="inline-flex items-center bg-skyblue-900/30 px-2 py-1 rounded text-xs mr-2">
+                                {selectedRequest.requester.role.charAt(0).toUpperCase() + selectedRequest.requester.role.slice(1)}
+                              </span>
+                            )}
+                            <span>Member since {selectedRequest.requester?.created_at ? 
+                              new Date(selectedRequest.requester.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short' }) : 
+                              'Unknown'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Contact Information */}
+                      <div>
+                        <h5 className="text-white font-medium mb-3">Contact Information</h5>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-skyblue-400">Phone:</span>
+                            {selectedRequest.requester?.phone_number ? (
+                              <a
+                                href={`tel:${selectedRequest.requester.phone_number}`}
+                                className="text-white hover:text-skyblue-300"
+                              >
+                                {selectedRequest.requester.phone_number}
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">Not provided</span>
+                            )}
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-skyblue-400">Email:</span>
+                            {selectedRequest.requester?.email ? (
+                              <a
+                                href={`mailto:${selectedRequest.requester.email}`}
+                                className="text-white hover:text-skyblue-300 truncate"
+                              >
+                                {selectedRequest.requester.email}
+                              </a>
+                            ) : (
+                              <span className="text-gray-400">Not provided</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Location Information */}
+                      <div>
+                        <h5 className="text-white font-medium mb-3">Location</h5>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-skyblue-400">City:</span>
+                            <span className="text-white">
+                              {selectedRequest.requester?.city || 'Not specified'}
+                            </span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-skyblue-400">Province:</span>
+                            <span className="text-white">
+                              {selectedRequest.requester?.province || 'Not specified'}
+                            </span>
+                          </div>
+                          {selectedRequest.requester?.address && (
+                            <div className="flex justify-between">
+                              <span className="text-skyblue-400">Address:</span>
+                              <span className="text-white text-right">
+                                {selectedRequest.requester.address}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Recipient-specific information */}
+                      {selectedRequest.requester?.role === 'recipient' && (
+                        <div>
+                          <h5 className="text-white font-medium mb-3">Recipient Details</h5>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex justify-between">
+                              <span className="text-skyblue-400">Household Size:</span>
+                              <span className="text-white">
+                                {selectedRequest.requester?.household_size || 'Not specified'}
+                              </span>
+                            </div>
+                            {selectedRequest.requester?.assistance_needs?.length > 0 && (
+                              <div>
+                                <span className="text-skyblue-400 block mb-2">Assistance Needs:</span>
+                                <div className="flex flex-wrap gap-1">
+                                  {selectedRequest.requester.assistance_needs.map((need, i) => (
+                                    <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded text-skyblue-300">
+                                      {need}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Bio/About */}
+                      {selectedRequest.requester?.bio && (
+                        <div>
+                          <h5 className="text-white font-medium mb-3">About</h5>
+                          <p className="text-skyblue-300 text-sm leading-relaxed">
+                            {selectedRequest.requester.bio}
+                          </p>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               </motion.div>
             </div>

@@ -31,6 +31,43 @@ const VolunteerDashboardPage = () => {
   const [loading, setLoading] = useState(true)
   const [showNotificationsModal, setShowNotificationsModal] = useState(false)
 
+  const fetchVolunteerNotifications = useCallback(async () => {
+    if (!user?.id) return
+
+    try {
+      // Get notifications for volunteer request responses
+      const notifications = await db.getUserNotifications(user.id, 100)
+      
+      // Filter volunteer-related notifications (responses to volunteer requests)
+      const volunteerResponseNotifications = notifications.filter(n => 
+        (n.type === 'volunteer_approved' || n.type === 'volunteer_declined' || n.type === 'delivery_assigned') && !n.read_at
+      )
+      
+      setVolunteerNotifications(volunteerResponseNotifications)
+    } catch (err) {
+      console.error('Error fetching volunteer notifications:', err)
+    }
+  }, [user?.id])
+
+  const loadVolunteerData = async () => {
+    if (!profile) return
+
+    try {
+      const deliveries = await db.getDeliveries({ volunteer_id: profile.id })
+      setStats({
+        totalDeliveries: deliveries.length,
+        pendingDeliveries: deliveries.filter(d => d.status === 'assigned').length,
+        completedDeliveries: deliveries.filter(d => d.status === 'delivered').length,
+        rating: 4.8 // This could come from a rating calculation function
+      })
+      setRecentDeliveries(deliveries.slice(0, 5))
+    } catch (error) {
+      console.error('Error loading volunteer data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
     loadVolunteerData()
 
@@ -86,43 +123,6 @@ const VolunteerDashboardPage = () => {
       }
     }
   }, [profile, fetchVolunteerNotifications])
-
-  const loadVolunteerData = async () => {
-    if (!profile) return
-
-    try {
-      const deliveries = await db.getDeliveries({ volunteer_id: profile.id })
-      setStats({
-        totalDeliveries: deliveries.length,
-        pendingDeliveries: deliveries.filter(d => d.status === 'assigned').length,
-        completedDeliveries: deliveries.filter(d => d.status === 'delivered').length,
-        rating: 4.8 // This could come from a rating calculation function
-      })
-      setRecentDeliveries(deliveries.slice(0, 5))
-    } catch (error) {
-      console.error('Error loading volunteer data:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchVolunteerNotifications = useCallback(async () => {
-    if (!user?.id) return
-
-    try {
-      // Get notifications for volunteer request responses
-      const notifications = await db.getUserNotifications(user.id, 100)
-      
-      // Filter volunteer-related notifications (responses to volunteer requests)
-      const volunteerResponseNotifications = notifications.filter(n => 
-        (n.type === 'volunteer_approved' || n.type === 'volunteer_declined' || n.type === 'delivery_assigned') && !n.read_at
-      )
-      
-      setVolunteerNotifications(volunteerResponseNotifications)
-    } catch (err) {
-      console.error('Error fetching volunteer notifications:', err)
-    }
-  }, [user?.id])
 
   useEffect(() => {
     fetchVolunteerNotifications()

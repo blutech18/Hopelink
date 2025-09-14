@@ -94,7 +94,26 @@ export const ToastProvider = ({ children }) => {
       ...toast,
     }
 
-    setToasts((prevToasts) => [...prevToasts, newToast])
+    setToasts((prevToasts) => {
+      // Check for duplicate error messages to prevent spam
+      const isDuplicate = prevToasts.some(existingToast => 
+        existingToast.type === newToast.type && 
+        existingToast.message === newToast.message &&
+        existingToast.title === newToast.title
+      )
+      
+      if (isDuplicate) {
+        return prevToasts // Don't add duplicate
+      }
+      
+      // For error toasts, remove any existing error toasts to show only the latest
+      if (newToast.type === 'error') {
+        const filteredToasts = prevToasts.filter(t => t.type !== 'error')
+        return [...filteredToasts, newToast]
+      }
+      
+      return [...prevToasts, newToast]
+    })
 
     // Auto remove after duration
     if (newToast.duration > 0) {
@@ -114,13 +133,19 @@ export const ToastProvider = ({ children }) => {
     setToasts([])
   }, [])
 
+  const removeErrorToasts = useCallback(() => {
+    setToasts(prev => prev.filter(t => t.type !== 'error'))
+  }, [])
+
   // Convenience methods with professional messaging
   const success = useCallback((message, title) => {
     return addToast({ type: 'success', title, message, duration: 4000 })
   }, [addToast])
 
   const error = useCallback((message, title) => {
-    return addToast({ type: 'error', title, message, duration: 6000 })
+    // Clear any existing error toasts first
+    setToasts(prev => prev.filter(t => t.type !== 'error'))
+    return addToast({ type: 'error', title, message, duration: 8000 })
   }, [addToast])
 
   const warning = useCallback((message, title) => {
@@ -136,6 +161,7 @@ export const ToastProvider = ({ children }) => {
     addToast,
     removeToast,
     removeAllToasts,
+    removeErrorToasts,
     success,
     error,
     warning,

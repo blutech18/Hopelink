@@ -2466,7 +2466,368 @@ export const db = {
       throw error
     }
   },
+
+  // Intelligent Matching Functions
+  async findMatchesForRequest(requestId, maxResults = 10) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Import matching algorithm
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+      
+      // Get the specific request
+      const { data: request, error: requestError } = await supabase
+        .from('donation_requests')
+        .select(`
+          *,
+          requester:users!donation_requests_requester_id_fkey(*)
+        `)
+        .eq('id', requestId)
+        .single()
+
+      if (requestError) throw requestError
+
+      // Get available donations
+      const availableDonations = await this.getAvailableDonations()
+
+      // Find matches using the intelligent algorithm
+      const matches = await intelligentMatcher.matchDonorsToRequest(request, availableDonations, maxResults)
+
+      return {
+        request,
+        matches,
+        totalMatches: matches.length,
+        algorithm: 'Weighted Sum Model (WSM)',
+        criteria: ['geographic_proximity', 'item_compatibility', 'urgency_alignment', 'user_reliability', 'delivery_compatibility']
+      }
+    } catch (error) {
+      console.error('Error finding matches for request:', error)
+      throw error
+    }
+  },
+
+  async findVolunteersForTask(taskId, taskType = 'claim', maxResults = 5) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+      
+      let task = null
+
+      if (taskType === 'claim') {
+        // Get claim details
+        const { data: claim, error: claimError } = await supabase
+          .from('donation_claims')
+          .select(`
+            *,
+            donation:donations(
+              *,
+              donor:users!donations_donor_id_fkey(*)
+            ),
+            recipient:users!donation_claims_recipient_id_fkey(*)
+          `)
+          .eq('id', taskId)
+          .single()
+
+        if (claimError) throw claimError
+
+        task = {
+          type: 'delivery',
+          claim,
+          donation: claim.donation,
+          urgency: claim.donation.is_urgent ? 'high' : 'medium',
+          pickup_location: claim.donation.pickup_location,
+          pickup_latitude: claim.donation.donor?.latitude,
+          pickup_longitude: claim.donation.donor?.longitude,
+          delivery_location: claim.recipient?.address || claim.recipient?.city,
+          delivery_latitude: claim.recipient?.latitude,
+          delivery_longitude: claim.recipient?.longitude
+        }
+      } else {
+        // Get request details
+        const { data: request, error: requestError } = await supabase
+          .from('donation_requests')
+          .select(`
+            *,
+            requester:users!donation_requests_requester_id_fkey(*)
+          `)
+          .eq('id', taskId)
+          .single()
+
+        if (requestError) throw requestError
+
+        task = {
+          type: 'request_fulfillment',
+          request,
+          urgency: request.urgency,
+          delivery_location: request.location,
+          delivery_latitude: request.requester?.latitude,
+          delivery_longitude: request.requester?.longitude
+        }
+      }
+
+      // Find volunteer matches
+      const matches = await intelligentMatcher.matchVolunteersToTask(task, null, maxResults)
+
+      return {
+        task,
+        matches,
+        totalMatches: matches.length,
+        algorithm: 'Weighted Sum Model (WSM)',
+        criteria: ['geographic_proximity', 'availability_match', 'skill_compatibility', 'user_reliability', 'urgency_response']
+      }
+    } catch (error) {
+      console.error('Error finding volunteers for task:', error)
+      throw error
+    }
+  },
+
+  async findOptimalMatches(filters = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+
+      // Get open requests
+      const requests = await this.getRequests({ status: 'open', ...filters })
+      
+      // Get available donations
+      const donations = await this.getAvailableDonations()
+
+      // Find optimal matches
+      const optimalMatches = await intelligentMatcher.findOptimalMatches(requests, donations)
+
+      return {
+        matches: optimalMatches,
+        totalMatches: optimalMatches.length,
+        algorithm: 'Weighted Sum Model (WSM)',
+        processingTime: new Date().toISOString(),
+        filters: filters
+      }
+    } catch (error) {
+      console.error('Error finding optimal matches:', error)
+      throw error
+    }
+  },
+
+  async getMatchingRecommendations(userId, userRole, limit = 5) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+      let recommendations = []
+
+      if (userRole === 'recipient') {
+        // Get user's open requests
+        const userRequests = await this.getRequests({ 
+          requester_id: userId, 
+          status: 'open' 
+        })
+
+        for (const request of userRequests.slice(0, 3)) {
+          const matches = await this.findMatchesForRequest(request.id, 3)
+          if (matches.matches.length > 0) {
+            recommendations.push({
+              type: 'donation_matches',
+              request,
+              topMatches: matches.matches.slice(0, 2),
+              reason: 'Found potential donors for your request'
+            })
+          }
+        }
+      } else if (userRole === 'donor') {
+        // Get user's available donations
+        const userDonations = await this.getDonations({ 
+          donor_id: userId, 
+          status: 'available' 
+        })
+
+        // Find requests that match user's donations
+        const openRequests = await this.getRequests({ status: 'open' })
+        
+        for (const donation of userDonations.slice(0, 3)) {
+          const compatibleRequests = []
+          
+          for (const request of openRequests) {
+            const categoryMatch = donation.category === request.category
+            const quantityMatch = donation.quantity >= request.quantity_needed
+            
+            if (categoryMatch && quantityMatch) {
+              compatibleRequests.push({
+                request,
+                compatibility: intelligentMatcher.calculateItemCompatibility(
+                  donation.category, request.category,
+                  donation.title, request.title,
+                  request.quantity_needed, donation.quantity
+                )
+              })
+            }
+          }
+
+          if (compatibleRequests.length > 0) {
+            recommendations.push({
+              type: 'request_matches',
+              donation,
+              topMatches: compatibleRequests
+                .sort((a, b) => b.compatibility - a.compatibility)
+                .slice(0, 2),
+              reason: 'Found recipients who need your donation'
+            })
+          }
+        }
+      } else if (userRole === 'volunteer') {
+        // Get available volunteer tasks
+        const availableTasks = await this.getAvailableVolunteerTasks()
+        
+        // Score tasks based on volunteer's location and preferences
+        const userProfile = await this.getProfile(userId)
+        const scoredTasks = []
+
+        for (const task of availableTasks.slice(0, 10)) {
+          let score = 0.5 // Base score
+
+          // Geographic proximity bonus
+          if (userProfile?.latitude && userProfile?.longitude) {
+            const distance = intelligentMatcher.calculateGeographicScore(
+              userProfile.latitude, userProfile.longitude,
+              task.donor?.latitude, task.donor?.longitude
+            )
+            score += distance * 0.3
+          }
+
+          // Urgency bonus
+          if (task.urgency === 'high' || task.urgency === 'critical') {
+            score += 0.2
+          }
+
+          scoredTasks.push({ ...task, score })
+        }
+
+        const topTasks = scoredTasks
+          .sort((a, b) => b.score - a.score)
+          .slice(0, 3)
+
+        recommendations.push({
+          type: 'volunteer_opportunities',
+          tasks: topTasks,
+          reason: 'High-priority volunteer opportunities near you'
+        })
+      }
+
+      return {
+        recommendations,
+        userId,
+        userRole,
+        generatedAt: new Date().toISOString(),
+        algorithm: 'Weighted Sum Model (WSM)'
+      }
+    } catch (error) {
+      console.error('Error getting matching recommendations:', error)
+      throw error
+    }
+  },
+
+  async createSmartMatch(requestId, donationId, volunteerId = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Get request and donation details
+      const [requestResult, donationResult] = await Promise.all([
+        supabase.from('donation_requests').select('*').eq('id', requestId).single(),
+        supabase.from('donations').select('*').eq('id', donationId).single()
+      ])
+
+      if (requestResult.error) throw requestResult.error
+      if (donationResult.error) throw donationResult.error
+
+      const request = requestResult.data
+      const donation = donationResult.data
+
+      // Verify compatibility
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+      const compatibility = intelligentMatcher.calculateItemCompatibility(
+        request.category, donation.category,
+        request.title, donation.title,
+        request.quantity_needed, donation.quantity
+      )
+
+      if (compatibility < 0.5) {
+        throw new Error('Items are not sufficiently compatible for matching')
+      }
+
+      // Create the match by having the requester claim the donation
+      const claim = await this.claimDonation(donationId, request.requester_id)
+
+      // If volunteer is specified, assign them
+      if (volunteerId && (request.delivery_mode === 'volunteer' || donation.delivery_mode === 'volunteer')) {
+        await this.assignVolunteerToDelivery(claim.id, volunteerId)
+      }
+
+      // Update request status
+      await this.updateRequest(requestId, { 
+        status: 'matched',
+        matched_donation_id: donationId,
+        matched_at: new Date().toISOString()
+      })
+
+      // Create success notifications
+      await this.createNotification({
+        user_id: request.requester_id,
+        type: 'smart_match',
+        title: 'Smart Match Found!',
+        message: `We found a perfect match for your request: "${request.title}". The donation has been automatically claimed for you.`,
+        data: {
+          request_id: requestId,
+          donation_id: donationId,
+          claim_id: claim.id,
+          compatibility_score: compatibility,
+          match_type: 'smart_match'
+        }
+      })
+
+      await this.createNotification({
+        user_id: donation.donor_id,
+        type: 'smart_match',
+        title: 'Your Donation Was Matched!',
+        message: `Great news! Your donation "${donation.title}" was intelligently matched with someone in need.`,
+        data: {
+          request_id: requestId,
+          donation_id: donationId,
+          claim_id: claim.id,
+          compatibility_score: compatibility,
+          match_type: 'smart_match'
+        }
+      })
+
+      return {
+        success: true,
+        match: {
+          request,
+          donation,
+          claim,
+          volunteer_id: volunteerId,
+          compatibility_score: compatibility,
+          match_algorithm: 'Weighted Sum Model (WSM)',
+          created_at: new Date().toISOString()
+        }
+      }
+    } catch (error) {
+      console.error('Error creating smart match:', error)
+      throw error
+    }
+  }
 }
 
-// Export the client
-export { supabase } 
+// Export the supabase client and helper functions
+export { supabase }
+export default db

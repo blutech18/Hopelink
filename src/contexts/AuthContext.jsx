@@ -2,6 +2,9 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { supabase, db } from '../lib/supabase'
 import { authDebug } from '../lib/devUtils'
 
+// Global flag to track profile creation status across auth flows
+let profileCreationInProgress = false
+
 const AuthContext = createContext({})
 
 export const useAuth = () => {
@@ -15,8 +18,9 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
-  const [loading, setLoading] = useState(true)
   const [session, setSession] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [isHandlingGoogleCallback, setIsHandlingGoogleCallback] = useState(false)
   
   // Simple cache to prevent repeated profile loading
   const profileCacheRef = useRef(new Map())
@@ -82,6 +86,13 @@ export const AuthProvider = ({ children }) => {
           setUser(session?.user ?? null)
           
           if (session?.user) {
+            // Skip profile loading if we're handling Google callback
+            if (isHandlingGoogleCallback) {
+              console.log('Skipping profile loading during Google callback')
+              setLoading(false)
+              return
+            }
+            
             try {
               await loadUserProfile(session.user.id)
             } catch (profileError) {
@@ -119,6 +130,14 @@ export const AuthProvider = ({ children }) => {
   const loadUserProfile = async (userId) => {
     if (!userId) {
       console.log('🔒 No user ID provided, stopping loading')
+      setLoading(false)
+      return
+    }
+    
+    // Check if profile creation is already in progress elsewhere (like in Google callback)
+    if (profileCreationInProgress) {
+      console.log('⚠️ Profile creation already in progress elsewhere, skipping duplicate attempt')
+      authDebug.logProfileLoading(userId, 'SKIPPED_DUPLICATE_ATTEMPT')
       setLoading(false)
       return
     }
@@ -189,7 +208,88 @@ export const AuthProvider = ({ children }) => {
           
           console.log('Current user metadata:', currentUser?.user_metadata)
           
+          // Check for pending Google signup role data first
+          const pendingRoleData = localStorage.getItem('pendingGoogleSignupRole')
+          if (pendingRoleData) {
+            try {
+              // Set flag to prevent duplicate profile creation
+              profileCreationInProgress = true
+              console.log('🔄 Profile creation started in loadUserProfile, flag set')
+              
+              const roleData = JSON.parse(pendingRoleData)
+              console.log('Found pending Google signup role data during profile loading:', roleData)
+              
+              if (roleData.role && ['donor', 'recipient', 'volunteer', 'admin'].includes(roleData.role)) {
+                const profileData = {
+                  email: currentUser.email,
+                  name: currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0],
+                  role: roleData.role,
+                  account_type: 'individual',
+                  phone_number: roleData.phone || '09000000000',
+                  address: 'Philippines',
+                  city: 'Cagayan de Oro City',
+                  province: 'Misamis Oriental',
+                  zip_code: '9000'
+                }
+                
+                // Add role-specific fields
+                if (roleData.role === 'donor') {
+                  profileData.donation_types = []
+                  profileData.bio = null
+                  profileData.primary_id_type = null
+                  profileData.primary_id_number = null
+                } else if (roleData.role === 'volunteer') {
+                  profileData.has_vehicle = false
+                  profileData.vehicle_type = null
+                  profileData.max_delivery_distance = 20
+                  profileData.volunteer_experience = null
+                  profileData.background_check_consent = false
+                  profileData.availability_days = []
+                  profileData.availability_times = []
+                  profileData.primary_id_type = null
+                  profileData.primary_id_number = null
+                } else if (roleData.role === 'recipient') {
+                  profileData.household_size = null
+                  profileData.assistance_needs = []
+                  profileData.emergency_contact_name = null
+                  profileData.emergency_contact_phone = null
+                  profileData.primary_id_type = null
+                  profileData.primary_id_number = null
+                } else if (roleData.role === 'admin') {
+                  profileData.is_verified = true
+                }
+                
+                console.log('Creating profile from pending Google signup data in loadUserProfile:', profileData)
+                const newProfile = await db.createProfile(userId, profileData)
+                console.log('Successfully created profile from pending data:', newProfile)
+                
+                // Clear the pending data
+                localStorage.removeItem('pendingGoogleSignupRole')
+                
+                // Cache and set the profile
+                profileCacheRef.current.set(userId, newProfile)
+                setProfile(newProfile)
+                setLoading(false)
+                
+                // Reset flag after successful profile creation
+                profileCreationInProgress = false
+                console.log('🔄 Profile creation completed in loadUserProfile, flag cleared')
+                return
+              }
+            } catch (pendingError) {
+              console.error('Error processing pending Google signup data in loadUserProfile:', pendingError)
+              localStorage.removeItem('pendingGoogleSignupRole')
+              // Reset flag in case of error
+              profileCreationInProgress = false
+              console.log('🔄 Profile creation failed in loadUserProfile, flag cleared')
+            }
+          }
+          
           if (currentUser?.user_metadata && currentUser.user_metadata.name) {
+            // Set flag to prevent duplicate profile creation
+            profileCreationInProgress = true
+            console.log('🔄 Profile creation from metadata started in loadUserProfile, flag set')
+            
             // Try to create profile from user metadata
             const profileData = {
               email: currentUser.email,
@@ -258,6 +358,10 @@ export const AuthProvider = ({ children }) => {
             profileCacheRef.current.set(userId, newProfile)
             setProfile(newProfile)
             setLoading(false)
+            
+            // Reset flag after successful profile creation
+            profileCreationInProgress = false
+            console.log('🔄 Profile creation from metadata completed, flag cleared')
             return
           } else {
             console.log('No user metadata found or name missing, user might need to complete signup')
@@ -266,8 +370,13 @@ export const AuthProvider = ({ children }) => {
         } catch (createError) {
           console.error('Error creating profile from metadata:', createError)
           authDebug.logProfileLoading(userId, 'METADATA_ERROR', { error: createError.message })
+          // Reset flag in case of error
+          profileCreationInProgress = false
+          console.log('🔄 Profile creation from metadata failed, flag cleared')
         }
       }
+      
+      // This fallback is now handled earlier in the function
       
       // If all else fails, set profile to null and stop loading
       authDebug.logProfileLoading(userId, 'FINAL_FAILURE')
@@ -333,6 +442,210 @@ export const AuthProvider = ({ children }) => {
 
   const signUpFallback = async (email, password, userData) => {
     throw new Error('Authentication service not configured. Please check your environment variables.')
+  }
+
+  const signInWithGoogle = async () => {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+    
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback`
+      }
+    })
+    
+    if (error) throw error
+    return data
+  }
+
+  const signUpWithGoogle = async (roleData) => {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+    
+    // Store role data in localStorage temporarily for the callback
+    if (roleData) {
+      console.log('Storing role data for Google signup:', roleData)
+      localStorage.setItem('pendingGoogleSignupRole', JSON.stringify(roleData))
+      
+      // Verify storage was successful
+      const storedData = localStorage.getItem('pendingGoogleSignupRole')
+      console.log('Verified stored role data:', storedData)
+    } else {
+      console.error('No role data provided for Google signup')
+    }
+    
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${window.location.origin}/auth/callback?signup=true`
+      }
+    })
+    
+    if (error) throw error
+    return data
+  }
+
+  const handleGoogleCallback = async (isSignup = false) => {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    // Set flag to prevent auth state listener conflicts
+    setIsHandlingGoogleCallback(true)
+    
+    // Set global flag to indicate we're handling profile creation here
+    profileCreationInProgress = true
+    console.log('🔄 Google callback started, profile creation flag set')
+
+    try {
+      // Wait a bit for session to be fully established
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      const { data: { session }, error } = await supabase.auth.getSession()
+      
+      if (error) throw error
+      
+      if (session?.user) {
+        try {
+          // Check if user exists in our database
+          let existingProfile = null
+          let profileError = null
+          
+          try {
+            existingProfile = await db.getProfile(session.user.id)
+            console.log('👤 Profile check result:', existingProfile ? 'Found existing profile' : 'No profile found')
+          } catch (error) {
+            profileError = error
+            // Profile doesn't exist, which is expected for new users
+            if (!error.code || error.code !== 'PGRST116') {
+              console.error('Unexpected error checking profile:', error)
+            }
+          }
+          
+          // Check if profile was created during auth initialization
+          const cachedProfile = profileCacheRef.current.get(session.user.id)
+          if (cachedProfile) {
+            console.log('📋 Found cached profile during Google callback, using it instead of creating new one')
+            existingProfile = cachedProfile
+          }
+          
+          if (isSignup) {
+            if (existingProfile) {
+              // If we found an existing profile during signup flow, check if it was just created
+              // during the auth initialization process (it will be in the cache)
+              const cachedProfile = profileCacheRef.current.get(session.user.id)
+              const isNewlyCreatedProfile = !!cachedProfile
+              
+              console.log(`🔄 Signup flow - Profile exists: ${!!existingProfile}, Is newly created: ${isNewlyCreatedProfile}`)
+              
+              if (isNewlyCreatedProfile) {
+                // If the profile was just created during auth initialization, use it instead of throwing an error
+                console.log('👤 Using newly created profile from auth initialization')
+                return { user: session.user, isNewUser: true, role: existingProfile.role }
+              } else {
+                // If this is a truly existing profile (not just created), sign out and throw error
+                console.log('⛔ Truly existing profile found during signup, showing error')
+                await supabase.auth.signOut()
+                throw new Error('Account already exists. Please use the login option instead.')
+              }
+            }
+            
+            // Get stored role data for signup
+            const storedRoleData = localStorage.getItem('pendingGoogleSignupRole')
+            console.log('Retrieved stored role data:', storedRoleData)
+            let roleData = null
+            
+            if (storedRoleData) {
+              try {
+                roleData = JSON.parse(storedRoleData)
+                console.log('Parsed role data:', roleData)
+                // Only remove after successful profile creation
+              } catch (parseError) {
+                console.error('Error parsing role data:', parseError)
+              }
+            }
+            
+            if (!roleData || !roleData.role) {
+              // If no role data during signup, sign out and throw error
+              await supabase.auth.signOut()
+              throw new Error('Role selection required. Please complete the signup process.')
+            }
+            
+            // Create profile with Google data and selected role
+            const profileData = {
+              email: session.user.email,
+              name: session.user.user_metadata.full_name || session.user.user_metadata.name || session.user.email.split('@')[0],
+              role: roleData.role,
+              account_type: 'individual',
+              phone_number: roleData.phone || '09000000000',
+              address: 'Philippines',
+              city: 'Cagayan de Oro City',
+              province: 'Misamis Oriental',
+              zip_code: '9000'
+            }
+            
+            console.log('Creating Google profile with data:', profileData)
+            
+            // Add role-specific fields
+            if (roleData.role === 'donor') {
+              profileData.donation_types = []
+              profileData.bio = null
+              profileData.primary_id_type = null
+              profileData.primary_id_number = null
+            } else if (roleData.role === 'volunteer') {
+              profileData.has_vehicle = false
+              profileData.vehicle_type = null
+              profileData.max_delivery_distance = 20
+              profileData.volunteer_experience = null
+              profileData.background_check_consent = false
+              profileData.availability_days = []
+              profileData.availability_times = []
+              profileData.primary_id_type = null
+              profileData.primary_id_number = null
+            } else if (roleData.role === 'recipient') {
+              profileData.household_size = null
+              profileData.assistance_needs = []
+              profileData.emergency_contact_name = null
+              profileData.emergency_contact_phone = null
+              profileData.primary_id_type = null
+              profileData.primary_id_number = null
+            } else if (roleData.role === 'admin') {
+              profileData.is_verified = true
+            }
+            
+            await db.createProfile(session.user.id, profileData)
+            // Only remove localStorage data after successful profile creation
+            localStorage.removeItem('pendingGoogleSignupRole')
+            return { user: session.user, isNewUser: true, role: roleData.role }
+          } else {
+            // Login flow
+            if (!existingProfile) {
+              // If no account found during login, sign out and throw error
+              await supabase.auth.signOut()
+              throw new Error('No account found. Please sign up first.')
+            }
+            return { user: session.user, isNewUser: false, role: existingProfile.role }
+          }
+        } catch (profileError) {
+          // For any error in profile handling, ensure we sign out
+          await supabase.auth.signOut()
+          throw profileError
+        }
+      }
+      
+      throw new Error('No session found')
+    } catch (error) {
+      console.error('Google callback error:', error)
+      throw error
+    } finally {
+      // Clear flags regardless of success or failure
+      setIsHandlingGoogleCallback(false)
+      profileCreationInProgress = false
+      console.log('🔄 Google callback completed, profile creation flag cleared')
+    }
   }
 
   const signOut = async () => {
@@ -433,6 +746,9 @@ export const AuthProvider = ({ children }) => {
     loading,
     signUp: supabase ? signUp : signUpFallback,
     signIn: supabase ? signIn : signInFallback,
+    signInWithGoogle: supabase ? signInWithGoogle : signInFallback,
+    signUpWithGoogle: supabase ? signUpWithGoogle : signUpFallback,
+    handleGoogleCallback,
     signOut: supabase ? signOut : signOutFallback,
     updateProfile,
     resetPassword,
