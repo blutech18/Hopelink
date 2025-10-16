@@ -24,7 +24,9 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
+import { FormSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import LocationPicker from '../../components/ui/LocationPicker'
 
 const PostDonationPage = () => {
   const { user, profile } = useAuth()
@@ -34,6 +36,8 @@ const PostDonationPage = () => {
   const [isLoading, setIsLoading] = useState(false)
   const [uploadedImages, setUploadedImages] = useState([])
   const [imageFiles, setImageFiles] = useState([])
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [selectedLocation, setSelectedLocation] = useState(null)
 
   const {
     register,
@@ -174,14 +178,14 @@ const PostDonationPage = () => {
 
   if (!user || !profile) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#00237d'}}>
         <LoadingSpinner size="lg" />
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -238,7 +242,8 @@ const PostDonationPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="card p-8"
+          className="card p-8 border border-gray-600"
+          style={{backgroundColor: '#001a5c'}}
         >
           <form onSubmit={(e) => {
             if (currentStep !== 3) {
@@ -401,16 +406,38 @@ const PostDonationPage = () => {
                     <label className="block text-sm font-medium text-white mb-2">
                       Pickup Location *
                     </label>
-                    <input
-                      {...register('pickup_location', {
-                        required: 'Pickup location is required'
-                      })}
-                      className="input"
-                      placeholder="Enter pickup address or location"
-                    />
-                    {errors.pickup_location && (
-                      <p className="mt-1 text-sm text-danger-600">{errors.pickup_location.message}</p>
-                    )}
+                    <div className="space-y-2">
+                      <div className="flex space-x-2">
+                        <input
+                          {...register('pickup_location', {
+                            required: 'Pickup location is required'
+                          })}
+                          className="input flex-1"
+                          placeholder="Enter pickup address or location"
+                          value={selectedLocation?.address || watch('pickup_location') || ''}
+                          readOnly={selectedLocation !== null}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowLocationPicker(true)}
+                          className="px-4 py-2 bg-skyblue-600 hover:bg-skyblue-700 text-white rounded-lg transition-colors flex items-center space-x-2"
+                        >
+                          <MapPin className="w-4 h-4" />
+                          <span>Map</span>
+                        </button>
+                      </div>
+                      {selectedLocation && (
+                        <div className="bg-green-900/20 border border-green-500/20 p-2 rounded-lg">
+                          <p className="text-xs text-green-400 flex items-center">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Location set on map
+                          </p>
+                        </div>
+                      )}
+                      {errors.pickup_location && (
+                        <p className="mt-1 text-sm text-danger-600">{errors.pickup_location.message}</p>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -650,6 +677,19 @@ const PostDonationPage = () => {
             </div>
           </form>
         </motion.div>
+
+        {/* Location Picker Modal */}
+        <LocationPicker
+          isOpen={showLocationPicker}
+          onClose={() => setShowLocationPicker(false)}
+          onLocationSelect={(location) => {
+            setSelectedLocation(location)
+            setValue('pickup_location', location.address)
+            setShowLocationPicker(false)
+          }}
+          initialLocation={selectedLocation}
+          title="Select Pickup Location"
+        />
       </div>
     </div>
   )

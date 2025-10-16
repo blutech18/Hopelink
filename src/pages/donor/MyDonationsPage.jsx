@@ -33,7 +33,10 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db, supabase } from '../../lib/supabase'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import ConfirmationModal from '../../components/ui/ConfirmationModal'
+import DonorRecipientTrackingModal from '../../components/ui/DonorRecipientTrackingModal'
 
 const MyDonationsPage = () => {
   const { user } = useAuth()
@@ -46,6 +49,8 @@ const MyDonationsPage = () => {
   const [categoryFilter, setCategoryFilter] = useState('all')
   const [deletingId, setDeletingId] = useState(null)
   const [selectedDonation, setSelectedDonation] = useState(null)
+  const [trackingDelivery, setTrackingDelivery] = useState(null)
+  const [showTrackingModal, setShowTrackingModal] = useState(false)
   const [showViewModal, setShowViewModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
@@ -55,6 +60,8 @@ const MyDonationsPage = () => {
   const [selectedDonationRequests, setSelectedDonationRequests] = useState([])
   const [selectedVolunteerRequests, setSelectedVolunteerRequests] = useState([])
   const [processingRequestId, setProcessingRequestId] = useState(null)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+  const [donationToDelete, setDonationToDelete] = useState(null)
   
   // Delivery confirmation states for final donor confirmation
   const [deliveryConfirmationNotifications, setDeliveryConfirmationNotifications] = useState([])
@@ -295,16 +302,21 @@ const MyDonationsPage = () => {
   }
 
   const handleDeleteDonation = async (donationId) => {
-    if (!window.confirm('Are you sure you want to delete this donation? This action cannot be undone.')) {
-      return
-    }
+    setDonationToDelete(donationId)
+    setShowDeleteConfirmation(true)
+  }
+
+  const confirmDeleteDonation = async () => {
+    if (!donationToDelete) return
 
     try {
-      setDeletingId(donationId)
+      setDeletingId(donationToDelete)
       // Add delete functionality to supabase.js if not exists
-      await db.deleteDonation(donationId, user.id)
+      await db.deleteDonation(donationToDelete, user.id)
       success('Donation deleted successfully!')
       await fetchDonations() // Refresh the list
+      setShowDeleteConfirmation(false)
+      setDonationToDelete(null)
     } catch (err) {
       console.error('Error deleting donation:', err)
       error(err.message || 'Failed to delete donation. Please try again.')
@@ -662,15 +674,11 @@ const MyDonationsPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -678,11 +686,11 @@ const MyDonationsPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8"
         >
-          <div className="flex items-center mb-4 sm:mb-0">
+            <div className="flex items-center mb-4 sm:mb-0">
             <Package className="h-8 w-8 text-skyblue-500 mr-3" />
             <div>
               <h1 className="text-3xl font-bold text-white">My Donations</h1>
-              <p className="text-skyblue-300">Manage and track your donations</p>
+                <p className="text-yellow-200">Manage and track your donations</p>
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -712,7 +720,7 @@ const MyDonationsPage = () => {
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
         >
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-skyblue-400">Total Donations</p>
@@ -722,7 +730,7 @@ const MyDonationsPage = () => {
             </div>
           </div>
           
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-skyblue-400">Available</p>
@@ -732,7 +740,7 @@ const MyDonationsPage = () => {
             </div>
           </div>
           
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-skyblue-400">In Progress</p>
@@ -765,7 +773,8 @@ const MyDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="card p-6 mb-8 border-l-4 border-emerald-500"
+            className="card p-6 mb-8 border border-navy-700 border-l-4 border-l-emerald-500"
+            style={{backgroundColor: '#001a5c'}}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -824,7 +833,8 @@ const MyDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.17 }}
-            className="card p-6 mb-8 border-l-4 border-blue-500"
+            className="card p-6 mb-8 border border-navy-700 border-l-4 border-l-blue-500"
+            style={{backgroundColor: '#001a5c'}}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -878,7 +888,8 @@ const MyDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.19 }}
-            className="card p-6 mb-8 border-l-4 border-purple-500"
+            className="card p-6 mb-8 border border-navy-700 border-l-4 border-l-purple-500"
+            style={{backgroundColor: '#001a5c'}}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -937,7 +948,8 @@ const MyDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.21 }}
-            className="card p-6 mb-8 border-l-4 border-orange-500"
+            className="card p-6 mb-8 border border-navy-700 border-l-4 border-l-orange-500"
+            style={{backgroundColor: '#001a5c'}}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -991,7 +1003,8 @@ const MyDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.23 }}
-            className="card p-6 mb-8 border-l-4 border-indigo-500"
+            className="card p-6 mb-8 border border-navy-700 border-l-4 border-l-indigo-500"
+            style={{backgroundColor: '#001a5c'}}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-3">
@@ -1855,6 +1868,23 @@ const MyDonationsPage = () => {
           </div>
         )}
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showDeleteConfirmation}
+        onClose={() => {
+          setShowDeleteConfirmation(false)
+          setDonationToDelete(null)
+        }}
+        onConfirm={confirmDeleteDonation}
+        title="Delete Donation"
+        message="Are you sure you want to delete this donation? This action cannot be undone and will remove the donation permanently."
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        type="danger"
+        confirmButtonVariant="danger"
+        loading={deletingId === donationToDelete}
+      />
     </div>
   )
 }

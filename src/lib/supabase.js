@@ -103,14 +103,17 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    // Apply limit first for better performance
+    const limit = filters.limit || 1000 // Default reasonable limit
+
     let query = supabase
       .from('donations')
       .select(`
         *,
-        donor:users!donations_donor_id_fkey(name, email, profile_image_url),
-        event:events(name, id)
+        donor:users!donations_donor_id_fkey(name, email, profile_image_url)
       `)
       .order('created_at', { ascending: false })
+      .limit(limit)
 
     if (filters.status) {
       query = query.eq('status', filters.status)
@@ -229,14 +232,17 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    // Apply limit first for better performance
+    const limit = filters.limit || 1000 // Default reasonable limit
+
     let query = supabase
       .from('donation_requests')
       .select(`
         *,
-        requester:users!donation_requests_requester_id_fkey(name, email, profile_image_url),
-        event:events(name, id)
+        requester:users!donation_requests_requester_id_fkey(name, email, profile_image_url)
       `)
       .order('created_at', { ascending: false })
+      .limit(limit)
 
     if (filters.status) {
       query = query.eq('status', filters.status)
@@ -690,6 +696,9 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    // Apply limit first for better performance
+    const limit = filters.limit || 500 // Default reasonable limit
+
     let query = supabase
       .from('deliveries')
       .select(`
@@ -697,13 +706,12 @@ export const db = {
         volunteer:users!deliveries_volunteer_id_fkey(id, name, email, phone_number),
         claim:donation_claims(
           *,
-          donation:donations(title, description, category, donor:users!donations_donor_id_fkey(id, name, phone_number)),
-          request:donation_requests(title, requester:users!donation_requests_requester_id_fkey(id, name, phone_number)),
-          donor:users!donation_claims_donor_id_fkey(id, name, phone_number),
+          donation:donations(title, description, category),
           recipient:users!donation_claims_recipient_id_fkey(id, name, phone_number)
         )
       `)
       .order('created_at', { ascending: false })
+      .limit(limit)
 
     if (filters.volunteer_id) {
       query = query.eq('volunteer_id', filters.volunteer_id)
@@ -1822,11 +1830,15 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    // Apply limit first for better performance
+    const limit = filters.limit || 500 // Default reasonable limit
+
     let query = supabase
       .from('users')
-      .select('*')
+      .select('id, name, email, phone_number, city, province, role, is_active, is_verified, created_at, volunteer_rating, total_deliveries, completed_deliveries')
       .eq('role', 'volunteer')
       .order('created_at', { ascending: false })
+      .limit(limit)
 
     if (filters.status) {
       query = query.eq('is_active', filters.status === 'active')
@@ -2463,6 +2475,149 @@ export const db = {
       }
     } catch (error) {
       console.error('Error confirming direct delivery completion:', error)
+      throw error
+    }
+  },
+
+  // Location Tracking
+  async updateDeliveryLocation(deliveryId, location, volunteerId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('deliveries')
+        .update({
+          volunteer_location: location,
+          location_updated_at: new Date().toISOString()
+        })
+        .eq('id', deliveryId)
+        .eq('volunteer_id', volunteerId)
+        .select()
+
+      if (error) throw error
+      return data?.[0]
+    } catch (error) {
+      console.error('Error updating delivery location:', error)
+      throw error
+    }
+  },
+
+  async getDeliveryLocationHistory(deliveryId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('delivery_location_history')
+        .select('*')
+        .eq('delivery_id', deliveryId)
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error getting delivery location history:', error)
+      throw error
+    }
+  },
+
+  async logDeliveryLocation(deliveryId, location, volunteerId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('delivery_location_history')
+        .insert({
+          delivery_id: deliveryId,
+          volunteer_id: volunteerId,
+          location: location,
+          created_at: new Date().toISOString()
+        })
+        .select()
+
+      if (error) throw error
+      return data?.[0]
+    } catch (error) {
+      console.error('Error logging delivery location:', error)
+      throw error
+    }
+  },
+
+  async getVolunteerDeliveriesWithLocation(volunteerId, status = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      let query = supabase
+        .from('deliveries')
+        .select(`
+          *,
+          donation:donation_id(*),
+          recipient:recipient_id(*),
+          donor:donor_id(*)
+        `)
+        .eq('volunteer_id', volunteerId)
+
+      if (status) {
+        if (Array.isArray(status)) {
+          query = query.in('status', status)
+        } else {
+          query = query.eq('status', status)
+        }
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error getting volunteer deliveries with location:', error)
+      throw error
+    }
+  },
+
+  async updateDeliveryStatus(deliveryId, status, volunteerId, additionalData = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      const updateData = {
+        status,
+        updated_at: new Date().toISOString(),
+        ...additionalData
+      }
+
+      // Add timestamp based on status
+      switch (status) {
+        case 'in_transit':
+          updateData.started_at = new Date().toISOString()
+          break
+        case 'arrived':
+          updateData.arrived_at = new Date().toISOString()
+          break
+        case 'completed':
+          updateData.completed_at = new Date().toISOString()
+          break
+      }
+
+      const { data, error } = await supabase
+        .from('deliveries')
+        .update(updateData)
+        .eq('id', deliveryId)
+        .eq('volunteer_id', volunteerId)
+        .select()
+
+      if (error) throw error
+      return data?.[0]
+    } catch (error) {
+      console.error('Error updating delivery status:', error)
       throw error
     }
   },

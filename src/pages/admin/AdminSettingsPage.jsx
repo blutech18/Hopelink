@@ -20,11 +20,14 @@ import {
   Activity
 } from 'lucide-react'
 import { useToast } from '../../contexts/ToastContext'
+import { FormSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import ConfirmationModal from '../../components/ui/ConfirmationModal'
 
 const AdminSettingsPage = () => {
   const { showToast } = useToast()
   const [loading, setLoading] = useState(false)
+  const [showResetConfirmation, setShowResetConfirmation] = useState(false)
   const [systemStatus, setSystemStatus] = useState({
     database: 'healthy',
     email: 'healthy',
@@ -135,59 +138,62 @@ const AdminSettingsPage = () => {
   }
 
   const handleResetToDefaults = () => {
-    if (window.confirm('Are you sure you want to reset all settings to their default values?')) {
-      // Reset to default values without page reload
-      setSettings({
-        // Platform Settings
-        platformName: 'HopeLink',
-        platformDescription: 'Community-driven donation management platform',
-        maintenanceMode: false,
-        registrationEnabled: true,
-        emailVerificationRequired: true,
-        supportEmail: 'support@hopelink.org',
-        maxFileUploadSize: 10,
-        
-        // User Management
-        autoApproveUsers: false,
-        requireIdVerification: true,
-        maxDonationsPerUser: 50,
-        maxRequestsPerUser: 10,
-        userSessionTimeout: 24,
-        
-        // Content Moderation
-        autoModerationEnabled: true,
-        moderationKeywords: 'inappropriate, spam, scam',
-        requireDonationApproval: false,
-        flaggedContentThreshold: 3,
-        
-        // Email Configuration
-        emailProvider: 'sendgrid',
-        sendNotificationEmails: true,
-        emailRateLimit: 100,
-        
-        // Security Settings
-        passwordMinLength: 8,
-        requireTwoFactor: false,
-        maxLoginAttempts: 5,
-        adminSessionTimeout: 60,
-        
-        // Platform Limits
-        maxEventDuration: 30,
-        maxDonationValue: 100000,
-        donationCategories: 'Food, Clothing, Electronics, Books, Medical, Household',
-        
-        // System Monitoring
-        enableSystemLogs: true,
-        logRetentionDays: 30,
-        enablePerformanceMonitoring: true,
-        
-        // Notification Settings
-        emailNotifications: true,
-        systemAlerts: true,
-        securityAlerts: true
-      })
-      showToast('Settings reset to defaults', 'success')
-    }
+    setShowResetConfirmation(true)
+  }
+
+  const confirmResetToDefaults = () => {
+    // Reset to default values without page reload
+    setSettings({
+      // Platform Settings
+      platformName: 'HopeLink',
+      platformDescription: 'Community-driven donation management platform',
+      maintenanceMode: false,
+      registrationEnabled: true,
+      emailVerificationRequired: true,
+      supportEmail: 'support@hopelink.org',
+      maxFileUploadSize: 10,
+      
+      // User Management
+      autoApproveUsers: false,
+      requireIdVerification: true,
+      maxDonationsPerUser: 50,
+      maxRequestsPerUser: 10,
+      userSessionTimeout: 24,
+      
+      // Content Moderation
+      autoModerationEnabled: true,
+      moderationKeywords: 'inappropriate, spam, scam',
+      requireDonationApproval: false,
+      flaggedContentThreshold: 3,
+      
+      // Email Configuration
+      emailProvider: 'sendgrid',
+      sendNotificationEmails: true,
+      emailRateLimit: 100,
+      
+      // Security Settings
+      passwordMinLength: 8,
+      requireTwoFactor: false,
+      maxLoginAttempts: 5,
+      adminSessionTimeout: 60,
+      
+      // Platform Limits
+      maxEventDuration: 30,
+      maxDonationValue: 100000,
+      donationCategories: 'Food, Clothing, Electronics, Books, Medical, Household',
+      
+      // System Monitoring
+      enableSystemLogs: true,
+      logRetentionDays: 30,
+      enablePerformanceMonitoring: true,
+      
+      // Notification Settings
+      emailNotifications: true,
+      systemAlerts: true,
+      securityAlerts: true
+    })
+    showToast('Settings reset to defaults', 'success')
+    setShowResetConfirmation(false)
   }
 
   const SettingSection = ({ icon: Icon, title, children }) => (
@@ -274,7 +280,7 @@ const AdminSettingsPage = () => {
   )
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8 custom-scrollbar">
+    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -559,6 +565,19 @@ const AdminSettingsPage = () => {
           </SettingSection>
         </div>
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showResetConfirmation}
+        onClose={() => setShowResetConfirmation(false)}
+        onConfirm={confirmResetToDefaults}
+        title="Reset Settings"
+        message="Are you sure you want to reset all settings to their default values? This action will overwrite all current settings."
+        confirmText="Yes, Reset"
+        cancelText="Cancel"
+        type="warning"
+        confirmButtonVariant="danger"
+      />
     </div>
   )
 }

@@ -19,6 +19,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db, supabase } from '../../lib/supabase'
+import { DashboardSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import ProfileCompletionPrompt from '../../components/ui/ProfileCompletionPrompt'
 
@@ -168,11 +169,7 @@ const VolunteerDashboardPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   const quickActions = [
@@ -214,7 +211,7 @@ const VolunteerDashboardPage = () => {
   ]
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -228,7 +225,7 @@ const VolunteerDashboardPage = () => {
               <h1 className="text-3xl font-bold text-white">
                 Welcome back, {profile?.name}!
               </h1>
-              <p className="text-skyblue-300 mt-2">
+              <p className="text-yellow-200 mt-2">
                 Thank you for helping connect our community through volunteer deliveries.
               </p>
             </div>
@@ -260,13 +257,13 @@ const VolunteerDashboardPage = () => {
           className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
         >
           {statsCards.map((stat, index) => (
-            <div key={index} className="card p-6">
+            <div key={index} className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <stat.icon className="h-8 w-8 text-skyblue-500" />
+                  <stat.icon className="h-8 w-8 text-yellow-300" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-skyblue-300">{stat.label}</p>
+                  <p className="text-sm font-medium text-yellow-200">{stat.label}</p>
                   <p className="text-2xl font-bold text-white">
                     {stat.isRating ? `${stat.value}★` : stat.value}
                   </p>
@@ -289,17 +286,18 @@ const VolunteerDashboardPage = () => {
               <Link
                 key={index}
                 to={action.link}
-                className="card p-6 hover:shadow-lg transition-shadow group"
+                className="card p-6 hover:shadow-lg transition-shadow group border border-gray-600"
+                style={{backgroundColor: '#001a5c'}}
               >
                 <div className="flex items-center">
                   <div className={`flex-shrink-0 p-3 rounded-lg ${action.color} text-white group-hover:scale-110 transition-transform`}>
                     <action.icon className="h-6 w-6" />
                   </div>
                   <div className="ml-4">
-                    <h3 className="text-lg font-medium text-white group-hover:text-skyblue-400 transition-colors">
+                    <h3 className="text-lg font-medium text-white group-hover:text-yellow-300 transition-colors">
                       {action.title}
                     </h3>
-                    <p className="text-sm text-skyblue-300">{action.description}</p>
+                    <p className="text-sm text-yellow-200">{action.description}</p>
                   </div>
                 </div>
               </Link>
@@ -314,24 +312,24 @@ const VolunteerDashboardPage = () => {
           transition={{ duration: 0.6, delay: 0.3 }}
         >
           <h2 className="text-xl font-semibold text-white mb-4">Recent Deliveries</h2>
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             {recentDeliveries.length > 0 ? (
               <div className="space-y-4">
                 {recentDeliveries.map((delivery, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-navy-800 rounded-lg">
+                  <div key={index} className="flex items-center justify-between p-4 rounded-lg border border-gray-600" style={{backgroundColor: '#001a5c'}}>
                     <div className="flex items-center">
-                      <MapPin className="h-5 w-5 text-skyblue-500 mr-3" />
+                      <MapPin className="h-5 w-5 text-yellow-300 mr-3" />
                       <div>
                         <p className="text-white font-medium">
                           Delivery #{delivery.id?.slice(0, 8)}
                         </p>
-                        <p className="text-sm text-skyblue-300">
+                        <p className="text-sm text-yellow-200">
                           Status: {delivery.status}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-sm text-skyblue-300">
+                      <p className="text-sm text-yellow-200">
                         {new Date(delivery.created_at).toLocaleDateString()}
                       </p>
                     </div>
@@ -340,8 +338,8 @@ const VolunteerDashboardPage = () => {
               </div>
             ) : (
               <div className="text-center py-8">
-                <Truck className="h-12 w-12 text-skyblue-400 mx-auto mb-4" />
-                <p className="text-skyblue-300">No deliveries yet. Check out available tasks to get started!</p>
+                <Truck className="h-12 w-12 text-yellow-300 mx-auto mb-4" />
+                <p className="text-yellow-200">No deliveries yet. Check out available tasks to get started!</p>
                 <Link to="/available-tasks" className="btn btn-primary mt-4">
                   Browse Available Tasks
                 </Link>

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import DeliveryConfirmationModal from '../../components/ui/DeliveryConfirmationModal'
 import PickupManagementModal from '../../components/ui/PickupManagementModal'
 import DirectDeliveryManagementModal from '../../components/ui/DirectDeliveryManagementModal'
@@ -301,11 +301,7 @@ const MyApprovedDonationsPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (

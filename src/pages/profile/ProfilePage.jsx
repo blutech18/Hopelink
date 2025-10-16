@@ -27,6 +27,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { ProfileSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import VolunteerProfileSettings from '../../components/ui/VolunteerProfileSettings'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
@@ -609,7 +610,7 @@ const ProfilePage = () => {
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#00237d'}}>
         <LoadingSpinner size="lg" />
       </div>
     )
@@ -618,7 +619,7 @@ const ProfilePage = () => {
   const RoleIcon = getRoleIcon(profile.role)
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div

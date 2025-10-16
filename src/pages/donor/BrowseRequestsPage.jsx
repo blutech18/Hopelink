@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import { db } from '../../lib/supabase'
 import { intelligentMatcher } from '../../lib/matchingAlgorithm'
 
@@ -272,15 +272,11 @@ const BrowseRequestsPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -291,7 +287,7 @@ const BrowseRequestsPage = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">Browse Requests</h1>
-              <p className="text-skyblue-300">Find recipients who need your help with AI-powered matching</p>
+              <p className="text-yellow-200">Find recipients who need your help with AI-powered matching</p>
             </div>
             <div className="flex items-center space-x-4">
               <div className="flex items-center space-x-2 text-skyblue-400">
@@ -314,7 +310,8 @@ const BrowseRequestsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-gradient-to-r from-green-900/20 to-blue-900/20 border border-green-500/20 rounded-lg p-6 mb-8"
+            className="rounded-lg p-6 mb-8 border border-gray-600"
+            style={{backgroundColor: '#001a5c'}}
           >
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center space-x-3">
@@ -323,7 +320,7 @@ const BrowseRequestsPage = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Smart Match Recommendations</h3>
-                  <p className="text-sm text-green-300">High-compatibility matches based on your available donations</p>
+                  <p className="text-sm text-yellow-200">High-compatibility matches based on your available donations</p>
                 </div>
               </div>
               <button
@@ -336,7 +333,7 @@ const BrowseRequestsPage = () => {
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {smartRecommendations.map((request) => (
-                <div key={request.id} className="bg-navy-800/50 border border-green-500/10 rounded-lg p-4">
+                <div key={request.id} className="rounded-lg p-4 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
                   <div className="flex items-start justify-between mb-3">
                     <h4 className="font-medium text-white text-sm">{request.title}</h4>
                     <div className={`badge text-xs ${getScoreColor(request.matchingScore)}`}>
@@ -344,7 +341,7 @@ const BrowseRequestsPage = () => {
                     </div>
                   </div>
                   
-                  <p className="text-xs text-skyblue-300 mb-3 line-clamp-2">
+                  <p className="text-xs text-yellow-200 mb-3 line-clamp-2">
                     Matches your: {request.bestMatchingDonation?.title}
                   </p>
                   

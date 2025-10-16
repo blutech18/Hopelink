@@ -30,7 +30,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { EventsSkeleton } from '../../components/ui/Skeleton'
 import CreateEventModal from '../../components/ui/CreateEventModal'
 
 const EventsPage = () => {
@@ -207,15 +207,11 @@ const EventsPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <EventsSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -225,9 +221,9 @@ const EventsPage = () => {
         >
           <div className="flex items-center justify-between mb-6">
             <div className="text-center flex-1">
-              <Calendar className="h-16 w-16 text-skyblue-500 mx-auto mb-4" />
+              <Calendar className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
               <h1 className="text-3xl font-bold text-white mb-2">Community Events</h1>
-              <p className="text-skyblue-300 max-w-2xl mx-auto">
+              <p className="text-yellow-200 max-w-2xl mx-auto">
                 {profile?.role === 'admin' 
                   ? 'Manage and create community events that make a difference'
                   : 'Discover and participate in local events that make a difference in our community'
@@ -254,25 +250,25 @@ const EventsPage = () => {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
               <div className="card p-4">
                 <div className="text-2xl font-bold text-white">{events.length}</div>
-                <div className="text-skyblue-300 text-sm">Total Events</div>
+                <div className="text-yellow-200 text-sm">Total Events</div>
               </div>
               <div className="card p-4">
                 <div className="text-2xl font-bold text-green-400">
                   {events.filter(e => new Date(e.start_date) <= new Date() && new Date(e.end_date) >= new Date()).length}
                 </div>
-                <div className="text-skyblue-300 text-sm">Active Events</div>
+                <div className="text-yellow-200 text-sm">Active Events</div>
               </div>
               <div className="card p-4">
                 <div className="text-2xl font-bold text-blue-400">
                   {events.filter(e => new Date(e.start_date) > new Date()).length}
                 </div>
-                <div className="text-skyblue-300 text-sm">Upcoming Events</div>
+                <div className="text-yellow-200 text-sm">Upcoming Events</div>
               </div>
               <div className="card p-4">
                 <div className="text-2xl font-bold text-amber-400">
                   {events.reduce((total, event) => total + (event.participants?.[0]?.count || 0), 0)}
                 </div>
-                <div className="text-skyblue-300 text-sm">Total Participants</div>
+                <div className="text-yellow-200 text-sm">Total Participants</div>
               </div>
             </div>
           )}

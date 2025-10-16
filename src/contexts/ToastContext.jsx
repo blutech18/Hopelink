@@ -23,10 +23,17 @@ const Toast = React.forwardRef(({ toast, onRemove }, ref) => {
   const Icon = icons[toast.type] || Info
 
   const bgColors = {
-    success: 'bg-navy-900 border-success-700',
-    error: 'bg-navy-900 border-danger-700',
-    warning: 'bg-navy-900 border-warning-700',
-    info: 'bg-navy-900 border-skyblue-700',
+    success: 'bg-[#001a5c] border-navy-700',
+    error: 'bg-[#001a5c] border-navy-700',
+    warning: 'bg-[#001a5c] border-navy-700',
+    info: 'bg-[#001a5c] border-navy-700',
+  }
+
+  const leftBorderColors = {
+    success: 'border-l-4 border-l-yellow-500',
+    error: 'border-l-4 border-l-yellow-500',
+    warning: 'border-l-4 border-l-yellow-500',
+    info: 'border-l-4 border-l-yellow-500',
   }
 
   const textColors = {
@@ -37,10 +44,10 @@ const Toast = React.forwardRef(({ toast, onRemove }, ref) => {
   }
 
   const iconColors = {
-    success: 'text-success-400',
-    error: 'text-danger-400',
-    warning: 'text-warning-400',
-    info: 'text-skyblue-400',
+    success: 'text-yellow-300',
+    error: 'text-yellow-300',
+    warning: 'text-yellow-300',
+    info: 'text-yellow-300',
   }
 
   return (
@@ -49,7 +56,7 @@ const Toast = React.forwardRef(({ toast, onRemove }, ref) => {
       initial={{ opacity: 0, x: 300, scale: 0.9 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 300, scale: 0.9, transition: { duration: 0.3 } }}
-      className={`min-w-80 max-w-md w-full border rounded-lg shadow-lg p-4 ${bgColors[toast.type]}`}
+      className={`min-w-80 max-w-md w-full border rounded-lg shadow-lg p-4 ${bgColors[toast.type]} ${leftBorderColors[toast.type]}`}
     >
       <div className="flex items-start space-x-3">
         <div className="flex-shrink-0 mt-0.5">
@@ -69,7 +76,7 @@ const Toast = React.forwardRef(({ toast, onRemove }, ref) => {
         </div>
         <div className="flex-shrink-0">
           <button
-            className={`rounded p-1 hover:bg-navy-800 transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-skyblue-500 ${textColors[toast.type]} opacity-70 hover:opacity-100`}
+            className={`rounded p-1 hover:bg-navy-800 transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-yellow-400 ${textColors[toast.type]} opacity-70 hover:opacity-100`}
             onClick={() => onRemove(toast.id)}
           >
             <X className="h-4 w-4" />

@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Navbar from './components/layout/Navbar'
 import Footer from './components/layout/Footer'
-import LoadingSpinner from './components/ui/LoadingSpinner'
+import { DashboardSkeleton } from './components/ui/Skeleton'
 import SetupGuide from './components/ui/SetupGuide'
+import ScrollToTop from './components/ui/ScrollToTop'
 import { useAuth } from './contexts/AuthContext'
 import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
@@ -56,10 +57,14 @@ const PrivacyPolicyPage = React.lazy(() => import('./pages/legal/PrivacyPolicyPa
 
 // Protected Route component
 const ProtectedRoute = ({ children, allowedRoles }) => {
-  const { user, profile, loading } = useAuth()
+  const { user, profile, loading, isSigningOut } = useAuth()
   
-  if (loading) {
-    return <LoadingSpinner />
+  if (loading || isSigningOut) {
+    return (
+      <div className="min-h-screen" style={{backgroundColor: '#1e293b'}}>
+        <DashboardSkeleton />
+      </div>
+    )
   }
   
   if (!user) {
@@ -75,23 +80,33 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 
 // Public Route component (redirect if already logged in)
 const PublicRoute = ({ children }) => {
-  const { user, loading } = useAuth()
+  const { user, loading, isSigningIn } = useAuth()
   
   if (loading) {
-    return <LoadingSpinner />
+    return (
+      <div className="min-h-screen" style={{backgroundColor: '#1e293b'}}>
+        <DashboardSkeleton />
+      </div>
+    )
   }
   
-  if (user) {
+  // Don't redirect if user is signing in - let the auth flow complete smoothly
+  if (user && !isSigningIn) {
     return <Navigate to="/dashboard" replace />
   }
   
   return children
 }
 
-function App() {
-  const { loading } = useAuth()
+// Component to conditionally render Footer
+function AppContent() {
+  const location = useLocation()
+  const { loading, profile } = useAuth()
   const { showToast } = useToast()
   const [showSetupGuide, setShowSetupGuide] = useState(false)
+  
+  // Hide footer on login and signup pages
+  const hideFooter = location.pathname === '/login' || location.pathname === '/signup'
 
   useEffect(() => {
     // Check if setup is needed in development
@@ -107,22 +122,21 @@ function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner />
+      <div className="min-h-screen" style={{backgroundColor: '#1e293b'}}>
+        <DashboardSkeleton />
       </div>
     )
   }
 
   return (
-    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-      <div className="min-h-screen bg-navy-950 flex flex-col">
-        <Navbar />
-        
-        <main className="flex-1">
+    <div className="min-h-screen flex flex-col" style={{backgroundColor: '#1e293b'}}>
+      <Navbar />
+      
+      <main className="flex-1">
           <React.Suspense 
             fallback={
-              <div className="min-h-screen flex items-center justify-center">
-                <LoadingSpinner />
+              <div className="min-h-screen" style={{backgroundColor: '#1e293b'}}>
+                <DashboardSkeleton />
               </div>
             }
           >
@@ -268,7 +282,7 @@ function App() {
                 <div className="min-h-screen flex items-center justify-center">
                   <div className="text-center">
                     <h1 className="text-4xl font-bold text-white mb-4">404</h1>
-                    <p className="text-skyblue-300 mb-8">Page not found</p>
+                    <p className="text-accent-300 mb-8">Page not found</p>
                     <a href="/" className="btn btn-primary">
                       Go Home
                     </a>
@@ -279,7 +293,7 @@ function App() {
           </React.Suspense>
         </main>
         
-        <Footer />
+        {!hideFooter && <Footer userRole={profile?.role} />}
         
         {/* Development Tools */}
         <AnimatePresence>
@@ -294,6 +308,14 @@ function App() {
           </>
         )}
       </div>
+  )
+}
+
+function App() {
+  return (
+    <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+      <ScrollToTop />
+      <AppContent />
     </Router>
   )
 }

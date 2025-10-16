@@ -26,6 +26,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
+import { FormSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 
 const EventDetailsPage = () => {
@@ -214,11 +215,7 @@ const EventDetailsPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <FormSkeleton />
   }
 
   if (!event) {

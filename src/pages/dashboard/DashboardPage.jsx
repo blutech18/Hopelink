@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db, supabase } from '../../lib/supabase'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { DashboardSkeleton } from '../../components/ui/Skeleton'
 import ProfileCompletionPrompt from '../../components/ui/ProfileCompletionPrompt'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
 
@@ -254,11 +254,7 @@ const DashboardPage = () => {
   }
 
   if (loading || !profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
   const dashboardCards = getDashboardCards()
@@ -267,7 +263,7 @@ const DashboardPage = () => {
   // Handle case where user has unexpected role or no role-specific content
   if (!isDonor && !isRecipient && !isAdmin && profile) {
     return (
-      <div className="min-h-screen bg-navy-950 py-8">
+      <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center">
             <h1 className="text-3xl font-bold text-white mb-4">
@@ -292,7 +288,7 @@ const DashboardPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -306,7 +302,7 @@ const DashboardPage = () => {
               <h1 className="text-3xl font-bold text-white">
                 Welcome back, {profile?.name}!
               </h1>
-              <p className="text-skyblue-300 mt-2">
+              <p className="text-yellow-200 mt-2">
                 {isDonor && "Ready to make a difference with your donations?"}
                 {isRecipient && "Let's find the support you need."}
                 {isVolunteer && "Thank you for helping connect our community."}
@@ -337,13 +333,13 @@ const DashboardPage = () => {
           className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
         >
           {statsCards.map((stat, index) => (
-            <div key={index} className="card p-6">
+            <div key={index} className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <stat.icon className="h-8 w-8 text-skyblue-500" />
+                  <stat.icon className="h-8 w-8 text-yellow-300" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-skyblue-300">{stat.label}</p>
+                  <p className="text-sm font-medium text-yellow-200">{stat.label}</p>
                   <p className="text-2xl font-bold text-white">{stat.value}</p>
                 </div>
               </div>
@@ -364,17 +360,18 @@ const DashboardPage = () => {
               <Link
                 key={index}
                 to={card.link}
-                className="card p-6 hover:shadow-lg transition-shadow group"
+                className="card p-6 hover:shadow-lg transition-shadow group border border-gray-600"
+                style={{backgroundColor: '#001a5c'}}
               >
                 <div className="flex items-center">
                   <div className={`flex-shrink-0 p-3 rounded-lg ${card.color} text-white group-hover:scale-110 transition-transform`}>
                     <card.icon className="h-6 w-6" />
                   </div>
                   <div className="ml-4">
-                    <h3 className="text-lg font-medium text-white group-hover:text-skyblue-400 transition-colors">
+                    <h3 className="text-lg font-medium text-white group-hover:text-yellow-300 transition-colors">
                       {card.title}
                     </h3>
-                    <p className="text-sm text-skyblue-300">{card.description}</p>
+                    <p className="text-sm text-yellow-200">{card.description}</p>
                   </div>
                 </div>
               </Link>
@@ -389,26 +386,26 @@ const DashboardPage = () => {
           transition={{ duration: 0.6, delay: 0.3 }}
           className="grid grid-cols-1 lg:grid-cols-2 gap-8"
         >
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <h2 className="text-xl font-semibold text-white mb-4">Recent Activity</h2>
             {recentActivity.length > 0 ? (
               <div className="space-y-4">
                 {recentActivity.map((activity, index) => (
-                  <div key={index} className="flex items-center space-x-3 p-3 bg-navy-800 rounded-lg">
+                  <div key={index} className="flex items-center space-x-3 p-3 rounded-lg border border-gray-600" style={{backgroundColor: '#001a5c'}}>
                     <div className="flex-shrink-0">
-                      {isDonor && <Gift className="h-5 w-5 text-blue-400" />}
-                      {isRecipient && <Heart className="h-5 w-5 text-pink-400" />}
-                      {isVolunteer && <Truck className="h-5 w-5 text-green-400" />}
+                      {isDonor && <Gift className="h-5 w-5 text-yellow-300" />}
+                      {isRecipient && <Heart className="h-5 w-5 text-yellow-300" />}
+                      {isVolunteer && <Truck className="h-5 w-5 text-yellow-300" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-white truncate">
                         {activity.title}
                       </p>
-                      <p className="text-sm text-skyblue-300">
+                      <p className="text-sm text-yellow-200">
                         Status: {activity.status}
                       </p>
                     </div>
-                    <div className="text-xs text-skyblue-400">
+                    <div className="text-xs text-yellow-300">
                       {new Date(activity.created_at).toLocaleDateString()}
                     </div>
                   </div>
@@ -416,34 +413,34 @@ const DashboardPage = () => {
               </div>
             ) : (
               <div className="text-center py-8">
-                <p className="text-skyblue-400">No recent activity</p>
-                <p className="text-sm text-skyblue-300 mt-1">Get started with the quick actions above!</p>
+                <p className="text-yellow-300">No recent activity</p>
+                <p className="text-sm text-yellow-200 mt-1">Get started with the quick actions above!</p>
               </div>
             )}
           </div>
 
           {/* Community Events */}
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <h2 className="text-xl font-semibold text-white mb-4">Community Events</h2>
             <div className="space-y-4">
-              <div className="flex items-center space-x-3 p-3 bg-skyblue-900/30 rounded-lg">
-                <Calendar className="h-5 w-5 text-skyblue-400" />
+              <div className="flex items-center space-x-3 p-3 rounded-lg border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+                <Calendar className="h-5 w-5 text-yellow-300" />
                 <div>
                   <p className="text-sm font-medium text-white">Winter Clothing Drive</p>
-                  <p className="text-xs text-skyblue-300">Dec 15 - Dec 31</p>
+                  <p className="text-xs text-yellow-200">Dec 15 - Dec 31</p>
                 </div>
               </div>
-              <div className="flex items-center space-x-3 p-3 bg-skyblue-900/30 rounded-lg">
-                <Users className="h-5 w-5 text-skyblue-400" />
+              <div className="flex items-center space-x-3 p-3 rounded-lg border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+                <Users className="h-5 w-5 text-yellow-300" />
                 <div>
                   <p className="text-sm font-medium text-white">Holiday Food Bank</p>
-                  <p className="text-xs text-skyblue-300">Ongoing</p>
+                  <p className="text-xs text-yellow-200">Ongoing</p>
                 </div>
               </div>
             </div>
             <Link
               to="/events"
-              className="block mt-4 text-center text-skyblue-400 hover:text-skyblue-300 font-medium text-sm"
+              className="block mt-4 text-center text-yellow-300 hover:text-yellow-200 font-medium text-sm"
             >
               View All Events →
             </Link>

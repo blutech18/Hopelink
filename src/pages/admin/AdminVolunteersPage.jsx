@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/supabase'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
 
 const AdminVolunteersPage = () => {
   const { user } = useAuth()
@@ -36,10 +36,10 @@ const AdminVolunteersPage = () => {
     try {
       setLoading(true)
       
-      // Fetch volunteers (users with volunteer role) and deliveries
+      // Fetch volunteers and deliveries with limits for better performance
       const [volunteersData, deliveriesData] = await Promise.all([
-        db.getVolunteers(),
-        db.getDeliveries()
+        db.getVolunteers({ limit: 100 }),
+        db.getDeliveries({ limit: 50 })
       ])
       
       setVolunteers(volunteersData || [])
@@ -82,15 +82,11 @@ const AdminVolunteersPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8 custom-scrollbar">
+    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div

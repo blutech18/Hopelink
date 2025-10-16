@@ -15,7 +15,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/supabase'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
+import ConfirmationModal from '../../components/ui/ConfirmationModal'
 
 const AdminRequestsPage = () => {
   const { user } = useAuth()
@@ -25,6 +26,9 @@ const AdminRequestsPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [urgencyFilter, setUrgencyFilter] = useState('all')
+  const [showStatusConfirmation, setShowStatusConfirmation] = useState(false)
+  const [requestToUpdate, setRequestToUpdate] = useState(null)
+  const [newStatus, setNewStatus] = useState(null)
 
   useEffect(() => {
     loadRequests()
@@ -34,8 +38,8 @@ const AdminRequestsPage = () => {
     try {
       setLoading(true)
       
-      // Fetch all donation requests with requester and event information
-      const requestsData = await db.getRequests()
+      // Fetch recent donation requests with limit for better performance
+      const requestsData = await db.getRequests({ limit: 100 })
       setRequests(requestsData || [])
     } catch (error) {
       console.error('Error loading requests:', error)
@@ -78,12 +82,21 @@ const AdminRequestsPage = () => {
     alert(`Request Details:\n\nTitle: ${request.title}\nDescription: ${request.description}\nRequester: ${request.requester?.name || 'Unknown'}\nStatus: ${request.status}\nUrgency: ${request.urgency}\nCreated: ${new Date(request.created_at).toLocaleDateString()}`)
   }
 
-  const handleUpdateRequestStatus = async (requestId, newStatus) => {
+  const handleUpdateRequestStatus = async (requestId, status) => {
+    setRequestToUpdate(requestId)
+    setNewStatus(status)
+    setShowStatusConfirmation(true)
+  }
+
+  const confirmUpdateRequestStatus = async () => {
+    if (!requestToUpdate || !newStatus) return
+
     try {
-      if (window.confirm(`Are you sure you want to ${newStatus === 'cancelled' ? 'close' : 'reopen'} this request?`)) {
-        await db.updateRequest(requestId, { status: newStatus })
-        await loadRequests()
-      }
+      await db.updateRequest(requestToUpdate, { status: newStatus })
+      await loadRequests()
+      setShowStatusConfirmation(false)
+      setRequestToUpdate(null)
+      setNewStatus(null)
     } catch (error) {
       console.error('Error updating request status:', error)
       alert('Failed to update request status. Please try again.')
@@ -91,15 +104,11 @@ const AdminRequestsPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8 custom-scrollbar">
+    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -324,6 +333,23 @@ const AdminRequestsPage = () => {
           )}
         </motion.div>
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showStatusConfirmation}
+        onClose={() => {
+          setShowStatusConfirmation(false)
+          setRequestToUpdate(null)
+          setNewStatus(null)
+        }}
+        onConfirm={confirmUpdateRequestStatus}
+        title={`${newStatus === 'cancelled' ? 'Close' : 'Reopen'} Request`}
+        message={`Are you sure you want to ${newStatus === 'cancelled' ? 'close' : 'reopen'} this request?`}
+        confirmText={`Yes, ${newStatus === 'cancelled' ? 'Close' : 'Reopen'}`}
+        cancelText="Cancel"
+        type="warning"
+        confirmButtonVariant={newStatus === 'cancelled' ? 'danger' : 'primary'}
+      />
     </div>
   )
 }

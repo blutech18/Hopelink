@@ -118,15 +118,16 @@ const ProfileCompletionPrompt = () => {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="bg-gradient-to-r from-amber-900/20 to-orange-900/20 border border-amber-700/30 rounded-lg p-4 mb-6"
+      className="rounded-lg p-4 mb-6 border border-gray-600"
+      style={{ backgroundColor: '#001a5c' }}
     >
       <div className="flex items-start space-x-3">
         <div className="flex-shrink-0">
-          <AlertCircle className="h-5 w-5 text-amber-400 mt-0.5" />
+          <AlertCircle className="h-5 w-5 text-yellow-300 mt-0.5" />
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-amber-100">
+            <h3 className="text-sm font-medium text-white">
               Complete Your Profile for Verification
             </h3>
             <div className="flex items-center space-x-2">
@@ -138,13 +139,13 @@ const ProfileCompletionPrompt = () => {
                 showText={true}
                 showDescription={false}
               />
-              <span className="text-xs text-amber-300 bg-amber-900/30 px-2 py-1 rounded-full">
+              <span className="text-xs text-yellow-300 bg-navy-800 px-2 py-1 rounded-full">
                 {completionPercentage}% Complete
               </span>
             </div>
           </div>
           
-          <p className="text-xs text-amber-200/80 mb-3">
+          <p className="text-xs text-yellow-200 mb-3">
             Complete your profile to gain trust from the community and access all features. 
             Verified profiles are prioritized for {profile.role === 'donor' ? 'donation requests' : 
             profile.role === 'recipient' ? 'receiving donations' : 'volunteer opportunities'}.
@@ -152,18 +153,18 @@ const ProfileCompletionPrompt = () => {
 
           {missingFields.length > 0 && (
             <div className="mb-3">
-              <p className="text-xs font-medium text-amber-200 mb-1">Missing Information:</p>
+              <p className="text-xs font-medium text-yellow-200 mb-1">Missing Information:</p>
               <div className="flex flex-wrap gap-1">
                 {missingFields.slice(0, 4).map((field, index) => (
                   <span
                     key={index}
-                    className="inline-flex items-center px-2 py-1 text-xs bg-amber-900/40 text-amber-200 rounded"
+                    className="inline-flex items-center px-2 py-1 text-xs bg-navy-800 text-yellow-200 rounded"
                   >
                     {field}
                   </span>
                 ))}
                 {missingFields.length > 4 && (
-                  <span className="inline-flex items-center px-2 py-1 text-xs bg-amber-900/40 text-amber-200 rounded">
+                  <span className="inline-flex items-center px-2 py-1 text-xs bg-navy-800 text-yellow-200 rounded">
                     +{missingFields.length - 4} more
                   </span>
                 )}
@@ -173,18 +174,18 @@ const ProfileCompletionPrompt = () => {
 
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <div className="w-20 bg-amber-900/30 rounded-full h-2">
+              <div className="w-20 bg-navy-800 rounded-full h-2">
                 <div
-                  className="bg-gradient-to-r from-amber-500 to-orange-500 h-2 rounded-full transition-all duration-300"
+                  className="bg-yellow-400 h-2 rounded-full transition-all duration-300"
                   style={{ width: `${completionPercentage}%` }}
                 />
               </div>
-              <span className="text-xs text-amber-300">{completionPercentage}%</span>
+              <span className="text-xs text-yellow-300">{completionPercentage}%</span>
             </div>
             
             <Link
               to="/profile"
-              className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors duration-200"
+              className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-navy-950 bg-yellow-500 hover:bg-yellow-600 rounded-md transition-colors duration-200"
             >
               <Settings className="h-3 w-3 mr-1" />
               Complete Profile

@@ -18,8 +18,10 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { FormSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { db } from '../../lib/supabase'
+import LocationPicker from '../../components/ui/LocationPicker'
 
 const CreateRequestPage = () => {
   const { user, profile } = useAuth()
@@ -27,6 +29,8 @@ const CreateRequestPage = () => {
   const navigate = useNavigate()
   const location = useLocation()
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [selectedLocation, setSelectedLocation] = useState(null)
   
   // Check if we're in edit mode
   const editMode = location.state?.editMode || false
@@ -38,6 +42,7 @@ const CreateRequestPage = () => {
     watch,
     control,
     reset,
+    setValue,
     formState: { errors }
   } = useForm({
     defaultValues: {
@@ -175,7 +180,7 @@ const CreateRequestPage = () => {
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#00237d'}}>
         <div className="text-center">
           <AlertCircle className="h-16 w-16 text-amber-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-white mb-2">Profile Required</h2>
@@ -192,7 +197,7 @@ const CreateRequestPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -400,20 +405,42 @@ const CreateRequestPage = () => {
                 <label className="block text-sm font-medium text-white mb-2">
                   Pickup/Delivery Location *
                 </label>
-                <input
-                  {...register('location', {
-                    required: 'Location is required',
-                    minLength: { value: 5, message: 'Location must be at least 5 characters' }
-                  })}
-                  className="input"
-                  placeholder="Enter your address or pickup location"
-                />
-                {errors.location && (
-                  <p className="mt-1 text-sm text-danger-600">{errors.location.message}</p>
-                )}
-                <p className="mt-1 text-xs text-skyblue-400">
-                  This will help donors and volunteers coordinate delivery
-                </p>
+                <div className="space-y-2">
+                  <div className="flex space-x-2">
+                    <input
+                      {...register('location', {
+                        required: 'Location is required',
+                        minLength: { value: 5, message: 'Location must be at least 5 characters' }
+                      })}
+                      className="input flex-1"
+                      placeholder="Enter your address or pickup location"
+                      value={selectedLocation?.address || watch('location') || ''}
+                      readOnly={selectedLocation !== null}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationPicker(true)}
+                      className="px-4 py-2 bg-skyblue-600 hover:bg-skyblue-700 text-white rounded-lg transition-colors flex items-center space-x-2"
+                    >
+                      <MapPin className="w-4 h-4" />
+                      <span>Map</span>
+                    </button>
+                  </div>
+                  {selectedLocation && (
+                    <div className="bg-green-900/20 border border-green-500/20 p-2 rounded-lg">
+                      <p className="text-xs text-green-400 flex items-center">
+                        <Clock className="w-3 h-3 mr-1" />
+                        Location set on map
+                      </p>
+                    </div>
+                  )}
+                  {errors.location && (
+                    <p className="mt-1 text-sm text-danger-600">{errors.location.message}</p>
+                  )}
+                  <p className="mt-1 text-xs text-skyblue-400">
+                    This will help donors and volunteers coordinate delivery
+                  </p>
+                </div>
               </div>
 
               <div>
@@ -516,6 +543,19 @@ const CreateRequestPage = () => {
             </button>
           </motion.div>
         </form>
+
+        {/* Location Picker Modal */}
+        <LocationPicker
+          isOpen={showLocationPicker}
+          onClose={() => setShowLocationPicker(false)}
+          onLocationSelect={(location) => {
+            setSelectedLocation(location)
+            setValue('location', location.address)
+            setShowLocationPicker(false)
+          }}
+          initialLocation={selectedLocation}
+          title="Select Delivery Location"
+        />
       </div>
     </div>
   )

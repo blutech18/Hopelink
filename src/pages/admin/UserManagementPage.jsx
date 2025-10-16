@@ -21,7 +21,7 @@ import {
   Eye,
   Key
 } from 'lucide-react'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import { supabase } from '../../lib/supabase'
 
 const UserManagementPage = () => {
@@ -43,7 +43,7 @@ const UserManagementPage = () => {
     try {
       setLoading(true)
       
-      // Fetch users from database
+      // Fetch users from database with limit for better performance
       const { data: users, error } = await supabase
         .from('users')
         .select(`
@@ -65,6 +65,7 @@ const UserManagementPage = () => {
           secondary_id_image_url
         `)
         .order('created_at', { ascending: false })
+        .limit(100) // Limit to 100 most recent users for better performance
 
       if (error) {
         console.error('Error loading users:', error)
@@ -227,15 +228,11 @@ const UserManagementPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8 custom-scrollbar">
+    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div

@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db, supabase } from '../../lib/supabase'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { DashboardSkeleton } from '../../components/ui/Skeleton'
 
 const AdminDashboard = () => {
   const { user } = useAuth()
@@ -169,21 +169,18 @@ const AdminDashboard = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <DashboardSkeleton />
   }
 
-  const StatCard = ({ icon: Icon, title, value, description, trend, color = "skyblue" }) => (
+  const StatCard = ({ icon: Icon, title, value, description, trend, color = "yellow" }) => (
     <motion.div
       whileHover={{ scale: 1.02 }}
-      className="card p-6"
+      className="card p-6 border border-gray-600"
+    style={{backgroundColor: '#001a5c'}}
     >
       <div className="flex items-center justify-between mb-4">
-        <div className={`p-3 rounded-lg bg-${color}-500/20`}>
-          <Icon className={`h-6 w-6 text-${color}-400`} />
+        <div className={`p-3 rounded-lg bg-navy-800`}>
+          <Icon className={`h-6 w-6 text-yellow-300`} />
         </div>
         {trend && (
           <div className="flex items-center text-green-400 text-sm">
@@ -193,9 +190,9 @@ const AdminDashboard = () => {
         )}
       </div>
       <h3 className="text-2xl font-bold text-white mb-1">{value}</h3>
-      <p className="text-skyblue-300 text-sm">{title}</p>
+      <p className="text-yellow-200 text-sm">{title}</p>
       {description && (
-        <p className="text-skyblue-400 text-xs mt-2">{description}</p>
+        <p className="text-yellow-300 text-xs mt-2">{description}</p>
       )}
     </motion.div>
   )
@@ -240,7 +237,7 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8 custom-scrollbar">
+    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -249,7 +246,6 @@ const AdminDashboard = () => {
           className="mb-8"
         >
           <div className="flex items-center space-x-3 mb-4">
-            <Shield className="h-8 w-8 text-amber-400" />
             <div>
               <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
               <p className="text-skyblue-300">Platform management and oversight</p>
@@ -300,44 +296,45 @@ const AdminDashboard = () => {
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="card p-6"
+          className="card p-6 border border-gray-600"
+          style={{backgroundColor: '#001a5c'}}
           >
             <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-              <BarChart3 className="h-5 w-5 text-skyblue-400 mr-2" />
+              <BarChart3 className="h-5 w-5 text-yellow-300 mr-2" />
               Quick Actions
             </h2>
                          <div className="space-y-3">
                <button 
                  onClick={() => navigate('/admin/users')}
-                 className="w-full btn btn-primary text-left flex items-center"
+              className="w-full btn btn-primary text-left flex items-center border border-gray-600"
                >
                  <Users className="h-4 w-4 mr-2" />
                  Manage Users
                </button>
                <button 
                  onClick={() => navigate('/admin/donations')}
-                 className="w-full btn btn-secondary text-left flex items-center"
+              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
                >
                  <Package className="h-4 w-4 mr-2" />
                  Review Donations
                </button>
                <button 
                  onClick={() => navigate('/admin/volunteers')}
-                 className="w-full btn btn-secondary text-left flex items-center"
+              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
                >
                  <Truck className="h-4 w-4 mr-2" />
                  Volunteer Management
                </button>
                <button 
                  onClick={() => navigate('/admin/requests')}
-                 className="w-full btn btn-secondary text-left flex items-center"
+              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
                >
                  <AlertTriangle className="h-4 w-4 mr-2" />
                  Review Requests
                </button>
                <button 
                  onClick={() => navigate('/admin/settings')}
-                 className="w-full btn btn-secondary text-left flex items-center"
+              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
                >
                  <Shield className="h-4 w-4 mr-2" />
                  Platform Settings
@@ -350,10 +347,11 @@ const AdminDashboard = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="lg:col-span-2 card p-6"
+            className="lg:col-span-2 card p-6 border border-gray-600"
+            style={{backgroundColor: '#001a5c'}}
           >
             <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-              <Clock className="h-5 w-5 text-skyblue-400 mr-2" />
+              <Clock className="h-5 w-5 text-yellow-300 mr-2" />
               Recent Activity
             </h2>
                          <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
@@ -363,9 +361,9 @@ const AdminDashboard = () => {
                  ))
                ) : (
                  <div className="text-center py-8">
-                   <Clock className="h-12 w-12 text-skyblue-400 mx-auto mb-4" />
-                   <p className="text-skyblue-300">No recent activity</p>
-                   <p className="text-skyblue-400 text-sm">Activity will appear here as users interact with the platform</p>
+                  <Clock className="h-12 w-12 text-yellow-300 mx-auto mb-4" />
+                  <p className="text-yellow-200">No recent activity</p>
+                  <p className="text-yellow-300 text-sm">Activity will appear here as users interact with the platform</p>
                  </div>
                )}
              </div>
@@ -379,18 +377,18 @@ const AdminDashboard = () => {
           transition={{ delay: 0.4 }}
           className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6"
         >
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
               <CheckCircle className="h-5 w-5 text-green-400 mr-2" />
               Delivery Status
             </h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-skyblue-300">Completed</span>
+                <span className="text-yellow-200">Completed</span>
                 <span className="text-white font-medium">{stats.completedDeliveries}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-skyblue-300">Pending</span>
+                <span className="text-yellow-200">Pending</span>
                 <span className="text-white font-medium">{stats.pendingDeliveries}</span>
               </div>
                              <div className="w-full bg-navy-800 rounded-full h-2">
@@ -404,23 +402,23 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          <div className="card p-6">
+          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <Users className="h-5 w-5 text-skyblue-400 mr-2" />
+              <Users className="h-5 w-5 text-yellow-300 mr-2" />
               User Verification
             </h3>
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <span className="text-skyblue-300">Verified</span>
+                <span className="text-yellow-200">Verified</span>
                 <span className="text-white font-medium">{stats.verifiedUsers}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span className="text-skyblue-300">Unverified</span>
+                <span className="text-yellow-200">Unverified</span>
                 <span className="text-white font-medium">{stats.unverifiedUsers}</span>
               </div>
                              <div className="w-full bg-navy-800 rounded-full h-2">
                  <div 
-                   className="bg-skyblue-500 h-2 rounded-full"
+                  className="bg-yellow-400 h-2 rounded-full"
                    style={{ 
                      width: `${stats.verifiedUsers + stats.unverifiedUsers > 0 ? (stats.verifiedUsers / (stats.verifiedUsers + stats.unverifiedUsers)) * 100 : 0}%` 
                    }}

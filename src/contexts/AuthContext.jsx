@@ -21,6 +21,8 @@ export const AuthProvider = ({ children }) => {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [isHandlingGoogleCallback, setIsHandlingGoogleCallback] = useState(false)
+  const [isSigningOut, setIsSigningOut] = useState(false)
+  const [isSigningIn, setIsSigningIn] = useState(false)
   
   // Simple cache to prevent repeated profile loading
   const profileCacheRef = useRef(new Map())
@@ -390,35 +392,52 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
     
-    console.log('AUTHCONTEXT SIGNUP - USERDATA:', userData)
-    console.log('AUTHCONTEXT SIGNUP - ROLE FIELD:', userData.role)
-    
-    // Validate that role is correctly set
-    if (!userData.role || !['donor', 'recipient', 'volunteer', 'admin'].includes(userData.role)) {
-      throw new Error(`Invalid role provided: ${userData.role}. Must be one of: donor, recipient, volunteer, admin`)
-    }
-    
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: userData,
-        emailRedirectTo: `${window.location.origin}/login?verified=true`
+    try {
+      // Set signing in flag for smooth transition
+      setIsSigningIn(true)
+      
+      console.log('AUTHCONTEXT SIGNUP - USERDATA:', userData)
+      console.log('AUTHCONTEXT SIGNUP - ROLE FIELD:', userData.role)
+      
+      // Validate that role is correctly set
+      if (!userData.role || !['donor', 'recipient', 'volunteer', 'admin'].includes(userData.role)) {
+        throw new Error(`Invalid role provided: ${userData.role}. Must be one of: donor, recipient, volunteer, admin`)
       }
-    })
-    
-    console.log('SUPABASE SIGNUP RESPONSE:', data)
-    console.log('SUPABASE USER METADATA:', data?.user?.user_metadata)
-    
-    if (error) throw error
-    
-    // If user was created successfully, the profile will be created automatically
-    // by the auth state change listener calling loadUserProfile
-    if (data.user && !data.session) {
-      console.log('Email confirmation required for:', email)
+      
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: userData,
+          emailRedirectTo: `${window.location.origin}/login?verified=true`
+        }
+      })
+      
+      console.log('SUPABASE SIGNUP RESPONSE:', data)
+      console.log('SUPABASE USER METADATA:', data?.user?.user_metadata)
+      
+      if (error) throw error
+      
+      // If user was created successfully, the profile will be created automatically
+      // by the auth state change listener calling loadUserProfile
+      if (data.user && !data.session) {
+        console.log('Email confirmation required for:', email)
+      }
+      
+      // Keep signing in flag active for smooth transition
+      if (data.session) {
+        setTimeout(() => {
+          setIsSigningIn(false)
+        }, 1000)
+      } else {
+        setIsSigningIn(false)
+      }
+      
+      return data
+    } catch (error) {
+      setIsSigningIn(false)
+      throw error
     }
-    
-    return data
   }
 
   const signIn = async (email, password) => {
@@ -426,13 +445,27 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
     
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-    
-    if (error) throw error
-    return data
+    try {
+      // Set signing in flag for smooth transition
+      setIsSigningIn(true)
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
+      
+      if (error) throw error
+      
+      // Keep signing in flag active for smooth transition
+      setTimeout(() => {
+        setIsSigningIn(false)
+      }, 1000)
+      
+      return data
+    } catch (error) {
+      setIsSigningIn(false)
+      throw error
+    }
   }
 
   // Provide fallback functions when supabase is not configured
@@ -449,15 +482,23 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
     
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback`
-      }
-    })
-    
-    if (error) throw error
-    return data
+    try {
+      // Set signing in flag for smooth transition
+      setIsSigningIn(true)
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback`
+        }
+      })
+      
+      if (error) throw error
+      return data
+    } catch (error) {
+      setIsSigningIn(false)
+      throw error
+    }
   }
 
   const signUpWithGoogle = async (roleData) => {
@@ -465,27 +506,35 @@ export const AuthProvider = ({ children }) => {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
     
-    // Store role data in localStorage temporarily for the callback
-    if (roleData) {
-      console.log('Storing role data for Google signup:', roleData)
-      localStorage.setItem('pendingGoogleSignupRole', JSON.stringify(roleData))
+    try {
+      // Set signing in flag for smooth transition
+      setIsSigningIn(true)
       
-      // Verify storage was successful
-      const storedData = localStorage.getItem('pendingGoogleSignupRole')
-      console.log('Verified stored role data:', storedData)
-    } else {
-      console.error('No role data provided for Google signup')
-    }
-    
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: `${window.location.origin}/auth/callback?signup=true`
+      // Store role data in localStorage temporarily for the callback
+      if (roleData) {
+        console.log('Storing role data for Google signup:', roleData)
+        localStorage.setItem('pendingGoogleSignupRole', JSON.stringify(roleData))
+        
+        // Verify storage was successful
+        const storedData = localStorage.getItem('pendingGoogleSignupRole')
+        console.log('Verified stored role data:', storedData)
+      } else {
+        console.error('No role data provided for Google signup')
       }
-    })
-    
-    if (error) throw error
-    return data
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/auth/callback?signup=true`
+        }
+      })
+      
+      if (error) throw error
+      return data
+    } catch (error) {
+      setIsSigningIn(false)
+      throw error
+    }
   }
 
   const handleGoogleCallback = async (isSignup = false) => {
@@ -652,6 +701,10 @@ export const AuthProvider = ({ children }) => {
     authDebug.logSignOut('START')
     
     try {
+      // Set signing out flag to prevent redirects during sign out
+      setIsSigningOut(true)
+      authDebug.logSignOut('SIGNING_OUT_FLAG_SET')
+      
       // Always clear local state first to ensure UI updates immediately
       setUser(null)
       setProfile(null)
@@ -686,6 +739,12 @@ export const AuthProvider = ({ children }) => {
       setUser(null)
       setProfile(null)
       setSession(null)
+    } finally {
+      // Keep signing out flag active for a brief moment to allow navigation to complete
+      setTimeout(() => {
+        setIsSigningOut(false)
+        authDebug.logSignOut('SIGNING_OUT_FLAG_CLEARED')
+      }, 500)
     }
     
     authDebug.logSignOut('COMPLETED')
@@ -693,11 +752,15 @@ export const AuthProvider = ({ children }) => {
 
   // Provide fallback signOut function when supabase is not configured
   const signOutFallback = async () => {
+    setIsSigningOut(true)
     console.log('Sign out completed (no authentication service)')
     setUser(null)
     setProfile(null)
     setSession(null)
     profileCacheRef.current.clear()
+    setTimeout(() => {
+      setIsSigningOut(false)
+    }, 500)
   }
 
   const updateProfile = async (updates) => {
@@ -744,6 +807,8 @@ export const AuthProvider = ({ children }) => {
     profile,
     session,
     loading,
+    isSigningOut,
+    isSigningIn,
     signUp: supabase ? signUp : signUpFallback,
     signIn: supabase ? signIn : signInFallback,
     signInWithGoogle: supabase ? signInWithGoogle : signInFallback,

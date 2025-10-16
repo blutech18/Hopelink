@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { DashboardSkeleton } from '../../components/ui/Skeleton'
 
 const CallbackPage = () => {
   const [isProcessing, setIsProcessing] = useState(true)
@@ -100,53 +100,77 @@ const CallbackPage = () => {
   }, [handleGoogleCallback, navigate, searchParams, success, showError])
 
   return (
-    <div className="min-h-screen bg-navy-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
+    <div className="min-h-screen" style={{backgroundColor: '#1e293b'}}>
+      {isProcessing ? (
         <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="flex justify-center"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3 }}
         >
-          <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 w-12 rounded" />
+          <DashboardSkeleton />
         </motion.div>
-        
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mt-8 text-center"
-        >
-          {isProcessing ? (
-            <div className="space-y-4">
-              <LoadingSpinner size="lg" />
-              <h2 className="text-2xl font-bold text-white">Processing Authentication</h2>
-              <p className="text-skyblue-300">Please wait while we complete your sign-in...</p>
-            </div>
-          ) : error ? (
-            <div className="space-y-4">
-              <div className="w-16 h-16 mx-auto bg-red-900/30 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+      ) : error ? (
+        <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+          <div className="sm:mx-auto sm:w-full sm:max-w-md">
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="flex justify-center"
+            >
+              <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 w-12 rounded" />
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="mt-8 text-center"
+            >
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-red-900/30 rounded-full flex items-center justify-center">
+                  <svg className="w-8 h-8 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white">Authentication Error</h2>
+                <p className="text-red-300">{error}</p>
+                <p className="text-gray-400 text-sm">Redirecting you back...</p>
               </div>
-              <h2 className="text-2xl font-bold text-white">Authentication Error</h2>
-              <p className="text-red-300">{error}</p>
-              <p className="text-skyblue-300 text-sm">Redirecting you back...</p>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              <div className="w-16 h-16 mx-auto bg-green-900/30 rounded-full flex items-center justify-center">
-                <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+            </motion.div>
+          </div>
+        </div>
+      ) : (
+        <div className="min-h-screen flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+          <div className="sm:mx-auto sm:w-full sm:max-w-md">
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6 }}
+              className="flex justify-center"
+            >
+              <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 w-12 rounded" />
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.2 }}
+              className="mt-8 text-center"
+            >
+              <div className="space-y-4">
+                <div className="w-16 h-16 mx-auto bg-green-900/30 rounded-full flex items-center justify-center">
+                  <svg className="w-8 h-8 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h2 className="text-2xl font-bold text-white">Success!</h2>
+                <p className="text-gray-400">Redirecting to your dashboard...</p>
               </div>
-              <h2 className="text-2xl font-bold text-white">Success!</h2>
-              <p className="text-skyblue-300">Redirecting to your dashboard...</p>
-            </div>
-          )}
-        </motion.div>
-      </div>
+            </motion.div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

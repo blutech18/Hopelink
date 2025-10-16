@@ -25,6 +25,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 
 const MyDeliveriesPage = () => {
@@ -284,15 +285,11 @@ const MyDeliveriesPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-navy-950">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
+    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div

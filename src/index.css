@@ -8,7 +8,8 @@
   }
   
   body {
-    @apply bg-navy-950 text-white;
+    @apply text-white;
+    background-color: #1e293b; /* Dark blue from logo */
   }
   
   * {
@@ -22,11 +23,11 @@
   }
   
   .btn-primary {
-    @apply bg-skyblue-600 text-white hover:bg-skyblue-700 focus:ring-skyblue-500;
+    @apply bg-yellow-500 text-navy-950 hover:bg-yellow-600 focus:ring-yellow-400;
   }
   
   .btn-secondary {
-    @apply bg-navy-800 text-skyblue-300 hover:bg-navy-700 focus:ring-skyblue-500 border border-navy-600;
+    @apply bg-navy-800 text-white hover:bg-navy-700 focus:ring-yellow-400 border border-navy-600;
   }
   
   .btn-success {
@@ -34,15 +35,15 @@
   }
   
   .btn-danger {
-    @apply bg-danger-600 text-white hover:bg-danger-700 focus:ring-danger-500;
+    @apply bg-secondary-500 text-white hover:bg-secondary-600 focus:ring-secondary-400;
   }
   
   .btn-outline-danger {
-    @apply bg-transparent text-danger-400 border border-danger-400 hover:bg-danger-600 hover:text-white focus:ring-danger-500;
+    @apply bg-transparent text-secondary-400 border border-secondary-400 hover:bg-secondary-600 hover:text-white focus:ring-secondary-500;
   }
   
   .input {
-    @apply w-full px-3 py-2 bg-navy-900 border border-navy-700 rounded-lg text-white placeholder-skyblue-400 focus:outline-none focus:ring-2 focus:ring-skyblue-500 focus:border-transparent;
+    @apply w-full px-3 py-2 bg-navy-900 border border-navy-700 rounded-lg text-white placeholder-yellow-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent;
   }
   
   /* White calendar icon for date inputs */
@@ -51,12 +52,21 @@
   }
   
   input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(1) brightness(2);
+    filter: invert(1) brightness(2) hue-rotate(180deg);
     cursor: pointer;
+    opacity: 1;
+  }
+  
+  /* Ensure calendar icon is white on dark backgrounds */
+  .input[type="date"]::-webkit-calendar-picker-indicator {
+    filter: invert(1) brightness(1.5) contrast(1.2);
+    cursor: pointer;
+    opacity: 1;
   }
   
   .card {
-    @apply bg-navy-900 rounded-lg shadow-lg border border-navy-800;
+    @apply rounded-lg shadow-lg border border-gray-600;
+    background-color: #001a5c;
   }
   
   .badge {
@@ -64,11 +74,11 @@
   }
   
   .badge-primary {
-    @apply bg-skyblue-900 text-skyblue-300;
+    @apply bg-yellow-900 text-yellow-100;
   }
   
   .badge-secondary {
-    @apply bg-navy-800 text-skyblue-400;
+    @apply bg-navy-800 text-yellow-300;
   }
   
   .badge-success {
@@ -80,7 +90,7 @@
   }
   
   .badge-danger {
-    @apply bg-danger-900 text-danger-300;
+    @apply bg-secondary-900 text-secondary-300;
   }
 }
 
@@ -133,4 +143,46 @@
 .custom-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: #475569 #1e293b;
+}
+
+/* Scroll to top utility */
+.scroll-to-top {
+  scroll-behavior: smooth;
+}
+
+/* Ensure smooth scrolling for the entire app */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Custom slider styles */
+.slider::-webkit-slider-thumb {
+  appearance: none;
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #fbbf24; /* accent-400 yellow color */
+  cursor: pointer;
+  border: 2px solid #1e293b; /* navy-800 */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-webkit-slider-thumb:hover {
+  background: #f59e0b; /* accent-500 darker yellow */
+  transform: scale(1.1);
+}
+
+.slider::-moz-range-thumb {
+  height: 20px;
+  width: 20px;
+  border-radius: 50%;
+  background: #fbbf24; /* accent-400 yellow color */
+  cursor: pointer;
+  border: 2px solid #1e293b; /* navy-800 */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.slider::-moz-range-thumb:hover {
+  background: #f59e0b; /* accent-500 darker yellow */
+  transform: scale(1.1);
 } 

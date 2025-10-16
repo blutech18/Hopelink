@@ -17,7 +17,8 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/supabase'
-import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { ListPageSkeleton } from '../../components/ui/Skeleton'
+import ConfirmationModal from '../../components/ui/ConfirmationModal'
 
 const AdminDonationsPage = () => {
   const { user } = useAuth()
@@ -27,6 +28,8 @@ const AdminDonationsPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
+  const [showArchiveConfirmation, setShowArchiveConfirmation] = useState(false)
+  const [donationToArchive, setDonationToArchive] = useState(null)
 
   useEffect(() => {
     loadDonations()
@@ -36,8 +39,8 @@ const AdminDonationsPage = () => {
     try {
       setLoading(true)
       
-      // Fetch all donations with donor and event information
-      const donationsData = await db.getDonations()
+      // Fetch recent donations with limit for better performance
+      const donationsData = await db.getDonations({ limit: 100 })
       setDonations(donationsData || [])
     } catch (error) {
       console.error('Error loading donations:', error)
@@ -82,11 +85,18 @@ const AdminDonationsPage = () => {
   }
 
   const handleArchiveDonation = async (donationId) => {
+    setDonationToArchive(donationId)
+    setShowArchiveConfirmation(true)
+  }
+
+  const confirmArchiveDonation = async () => {
+    if (!donationToArchive) return
+    
     try {
-      if (window.confirm('Are you sure you want to archive this donation?')) {
-        await db.updateDonation(donationId, { status: 'archived' })
-        await loadDonations()
-      }
+      await db.updateDonation(donationToArchive, { status: 'archived' })
+      await loadDonations()
+      setShowArchiveConfirmation(false)
+      setDonationToArchive(null)
     } catch (error) {
       console.error('Error archiving donation:', error)
       alert('Failed to archive donation. Please try again.')
@@ -94,15 +104,11 @@ const AdminDonationsPage = () => {
   }
 
   if (loading) {
-    return (
-      <div className="min-h-screen bg-navy-950 flex items-center justify-center">
-        <LoadingSpinner size="lg" />
-      </div>
-    )
+    return <ListPageSkeleton />
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8 custom-scrollbar">
+    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
@@ -334,6 +340,22 @@ const AdminDonationsPage = () => {
           )}
         </motion.div>
       </div>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={showArchiveConfirmation}
+        onClose={() => {
+          setShowArchiveConfirmation(false)
+          setDonationToArchive(null)
+        }}
+        onConfirm={confirmArchiveDonation}
+        title="Archive Donation"
+        message="Are you sure you want to archive this donation? This action will move the donation to archived status."
+        confirmText="Yes, Archive"
+        cancelText="Cancel"
+        type="warning"
+        confirmButtonVariant="danger"
+      />
     </div>
   )
 }
