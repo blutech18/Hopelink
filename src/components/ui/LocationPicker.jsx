@@ -18,6 +18,7 @@ const LocationPicker = ({
   const [mapCenter, setMapCenter] = useState(initialLocation || { lat: 14.5995, lng: 120.9842 })
   const [searchQuery, setSearchQuery] = useState('')
   const [address, setAddress] = useState('')
+  const [addressComponents, setAddressComponents] = useState(null)
   const [isLoadingLocation, setIsLoadingLocation] = useState(false)
   const [autocomplete, setAutocomplete] = useState(null)
   const [isOfflineMode, setIsOfflineMode] = useState(false)
@@ -112,10 +113,12 @@ const LocationPicker = ({
     try {
       const result = await LocationService.reverseGeocode(lat, lng)
       setAddress(result.formatted_address)
+      setAddressComponents(result.address_components)
     } catch (err) {
       console.error('Error reverse geocoding:', err)
       // Set a fallback address if geocoding fails
       setAddress(`Location: ${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+      setAddressComponents(null)
       if (err.message.includes('Network error')) {
         error('Network error: Unable to get address. Please check your internet connection.')
       } else if (err.message.includes('API key')) {
@@ -144,6 +147,7 @@ const LocationPicker = ({
         setSelectedLocation(location)
         setMapCenter(location)
         setAddress(place.formatted_address)
+        setAddressComponents(place.address_components)
         
         // Zoom to the selected place
         if (mapRef.current) {
@@ -167,6 +171,7 @@ const LocationPicker = ({
       setSelectedLocation(location)
       setMapCenter(location)
       setAddress(result.formatted_address)
+      setAddressComponents(result.address_components)
       
       // Zoom to the searched location
       if (mapRef.current) {
@@ -192,7 +197,8 @@ const LocationPicker = ({
     onLocationSelect({
       lat: selectedLocation.lat,
       lng: selectedLocation.lng,
-      address: address
+      address: address,
+      addressComponents: addressComponents
     })
     
     onClose()

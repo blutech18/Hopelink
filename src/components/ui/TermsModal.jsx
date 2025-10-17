@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, ScrollText, CheckCircle } from 'lucide-react'
 
-const TermsModal = ({ isOpen, onClose, title, children, onScrolledToBottom, hasScrolledToBottom }) => {
+const TermsModal = ({ isOpen, onClose, title, children, onScrolledToBottom, hasScrolledToBottom, onAccept }) => {
   const [isScrolledToBottom, setIsScrolledToBottom] = useState(false)
   const contentRef = useRef(null)
 
@@ -28,7 +28,11 @@ const TermsModal = ({ isOpen, onClose, title, children, onScrolledToBottom, hasS
 
   const handleAccept = () => {
     if (isScrolledToBottom) {
-      onClose(true) // Pass true to indicate acceptance
+      if (onAccept) {
+        onAccept() // Use the onAccept callback if provided
+      } else {
+        onClose(true) // Fallback to old behavior
+      }
     }
   }
 

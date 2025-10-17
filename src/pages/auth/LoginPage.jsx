@@ -11,7 +11,7 @@ const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
-  const { signIn, signInWithGoogle, isSigningIn } = useAuth()
+  const { signIn: emailSignIn, signInWithGoogle, isSigningIn } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
@@ -36,11 +36,24 @@ const LoginPage = () => {
   const onSubmit = async (data) => {
     setIsLoading(true)
     try {
-      await signIn(data.email, data.password)
+      if (typeof emailSignIn !== 'function') {
+        throw new Error('Email sign-in is temporarily unavailable. Please try again later.')
+      }
+      await emailSignIn(data.email, data.password)
       
       // Wait for auth state to update before navigating
       setTimeout(() => {
-        success('Welcome back!')
+        let suppressWelcome = false
+        try {
+          if (localStorage.getItem('justSignedUp') === 'true') {
+            suppressWelcome = true
+            localStorage.removeItem('justSignedUp')
+          }
+        } catch {}
+
+        if (!suppressWelcome) {
+          success('Welcome back!')
+        }
         navigate(from, { replace: true })
       }, 500)
     } catch (err) {
@@ -144,6 +157,7 @@ const LoginPage = () => {
                     <button
                       type="button"
                       className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                      tabIndex={-1}
                       onClick={() => setShowPassword(!showPassword)}
                     >
                       {showPassword ? (
@@ -164,6 +178,7 @@ const LoginPage = () => {
                       id="remember-me"
                       name="remember-me"
                       type="checkbox"
+                      tabIndex={-1}
                       className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                     />
                     <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-300">
@@ -174,6 +189,7 @@ const LoginPage = () => {
                   <div className="text-sm">
                     <Link
                       to="/reset-password"
+                      tabIndex={-1}
                       className="font-medium text-primary-600 hover:text-primary-500"
                     >
                       Forgot your password?

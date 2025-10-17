@@ -31,7 +31,6 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
 import { EventsSkeleton } from '../../components/ui/Skeleton'
-import CreateEventModal from '../../components/ui/CreateEventModal'
 
 const EventsPage = () => {
   const { user, profile } = useAuth()
@@ -41,9 +40,6 @@ const EventsPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [categoryFilter, setCategoryFilter] = useState('all')
-  const [viewMode, setViewMode] = useState('grid') // 'grid' or 'list'
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [editingEvent, setEditingEvent] = useState(null)
 
   const statusOptions = [
     { value: 'all', label: 'All Events' },
@@ -83,50 +79,6 @@ const EventsPage = () => {
   useEffect(() => {
     fetchEvents()
   }, [])
-
-  const handleCreateEvent = () => {
-    setEditingEvent(null)
-    setShowCreateModal(true)
-  }
-
-  const handleEditEvent = (event) => {
-    setEditingEvent(event)
-    setShowCreateModal(true)
-  }
-
-  const handleCancelEvent = async (eventId) => {
-    try {
-      // TODO: Implement actual cancel event API call
-      // await db.cancelEvent(eventId)
-      
-      // For now, update local state
-      setEvents(events.map(event => 
-        event.id === eventId ? { ...event, status: 'cancelled' } : event
-      ))
-      success('Event cancelled successfully')
-    } catch (err) {
-      console.error('Error cancelling event:', err)
-      error('Failed to cancel event')
-    }
-  }
-
-  const handleDeleteEvent = async (eventId) => {
-    if (!confirm('Are you sure you want to delete this event? This action cannot be undone.')) {
-      return
-    }
-    
-    try {
-      // TODO: Implement actual delete event API call
-      // await db.deleteEvent(eventId)
-      
-      // For now, update local state
-      setEvents(events.filter(event => event.id !== eventId))
-      success('Event deleted successfully')
-    } catch (err) {
-      console.error('Error deleting event:', err)
-      error('Failed to delete event')
-    }
-  }
 
   const filteredEvents = events.filter(event => {
     const matchesSearch = event.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -224,54 +176,11 @@ const EventsPage = () => {
               <Calendar className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
               <h1 className="text-3xl font-bold text-white mb-2">Community Events</h1>
               <p className="text-yellow-200 max-w-2xl mx-auto">
-                {profile?.role === 'admin' 
-                  ? 'Manage and create community events that make a difference'
-                  : 'Discover and participate in local events that make a difference in our community'
-                }
+                Discover and participate in local events that make a difference in our community
               </p>
             </div>
-            
-            {/* Admin Actions */}
-            {profile?.role === 'admin' && (
-              <div className="flex items-center space-x-3">
-                <button 
-                  onClick={handleCreateEvent}
-                  className="btn btn-primary flex items-center"
-                >
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Event
-                </button>
-              </div>
-            )}
           </div>
 
-          {/* Admin Stats */}
-          {profile?.role === 'admin' && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-              <div className="card p-4">
-                <div className="text-2xl font-bold text-white">{events.length}</div>
-                <div className="text-yellow-200 text-sm">Total Events</div>
-              </div>
-              <div className="card p-4">
-                <div className="text-2xl font-bold text-green-400">
-                  {events.filter(e => new Date(e.start_date) <= new Date() && new Date(e.end_date) >= new Date()).length}
-                </div>
-                <div className="text-yellow-200 text-sm">Active Events</div>
-              </div>
-              <div className="card p-4">
-                <div className="text-2xl font-bold text-blue-400">
-                  {events.filter(e => new Date(e.start_date) > new Date()).length}
-                </div>
-                <div className="text-yellow-200 text-sm">Upcoming Events</div>
-              </div>
-              <div className="card p-4">
-                <div className="text-2xl font-bold text-amber-400">
-                  {events.reduce((total, event) => total + (event.participants?.[0]?.count || 0), 0)}
-                </div>
-                <div className="text-yellow-200 text-sm">Total Participants</div>
-              </div>
-            </div>
-          )}
         </motion.div>
 
         {/* Filters */}
@@ -489,44 +398,14 @@ const EventsPage = () => {
                           <Eye className="h-4 w-4" />
                         </Link>
                         
-                        {profile?.role === 'admin' ? (
-                          <>
-                            <button 
-                              onClick={() => handleEditEvent(event)}
-                              className="p-2 text-skyblue-400 hover:text-skyblue-300 hover:bg-navy-700 rounded-lg transition-all"
-                              title="Edit Event"
-                            >
-                              <Edit className="h-4 w-4" />
-                            </button>
-                            {event.status !== 'cancelled' && (
-                              <button 
-                                onClick={() => handleCancelEvent(event.id)}
-                                className="p-2 text-skyblue-400 hover:text-amber-300 hover:bg-navy-700 rounded-lg transition-all"
-                                title="Cancel Event"
-                              >
-                                <XCircle className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button 
-                              onClick={() => handleDeleteEvent(event.id)}
-                              className="p-2 text-skyblue-400 hover:text-danger-300 hover:bg-navy-700 rounded-lg transition-all"
-                              title="Delete Event"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            {isUpcoming && event.status !== 'cancelled' && (
-                              <button className="p-2 text-skyblue-400 hover:text-green-300 hover:bg-navy-700 rounded-lg transition-all" title="Join Event">
-                                <UserPlus className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button className="p-2 text-skyblue-400 hover:text-pink-300 hover:bg-navy-700 rounded-lg transition-all" title="Share Event">
-                              <Share2 className="h-4 w-4" />
-                            </button>
-                          </>
+                        {isUpcoming && event.status !== 'cancelled' && (
+                          <button className="p-2 text-skyblue-400 hover:text-green-300 hover:bg-navy-700 rounded-lg transition-all" title="Join Event">
+                            <UserPlus className="h-4 w-4" />
+                          </button>
                         )}
+                        <button className="p-2 text-skyblue-400 hover:text-pink-300 hover:bg-navy-700 rounded-lg transition-all" title="Share Event">
+                          <Share2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
                   </motion.div>
@@ -569,32 +448,6 @@ const EventsPage = () => {
             </div>
           </motion.div>
         )}
-
-        {/* Create/Edit Event Modal */}
-        <CreateEventModal
-          isOpen={showCreateModal}
-          onClose={() => {
-            setShowCreateModal(false)
-            setEditingEvent(null)
-          }}
-          event={editingEvent}
-          onSave={(eventData) => {
-            if (editingEvent) {
-              // Update existing event
-              setEvents(events.map(event => 
-                event.id === editingEvent.id ? { ...event, ...eventData } : event
-              ))
-            } else {
-              // Add new event
-              const newEvent = {
-                ...eventData,
-                id: Date.now().toString(), // Temporary ID
-                participants: [{ count: 0 }]
-              }
-              setEvents([newEvent, ...events])
-            }
-          }}
-        />
       </div>
     </div>
   )

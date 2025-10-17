@@ -23,7 +23,8 @@ import {
   Globe,
   Camera,
   Upload,
-  Trash2
+  Trash2,
+  Navigation
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -31,6 +32,7 @@ import { ProfileSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import VolunteerProfileSettings from '../../components/ui/VolunteerProfileSettings'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
+import LocationPicker from '../../components/ui/LocationPicker'
 
 const ProfilePage = () => {
   const { user, profile, updateProfile, updatePassword } = useAuth()
@@ -47,6 +49,8 @@ const ProfilePage = () => {
   const [uploadingIdImage, setUploadingIdImage] = useState(false)
   const [secondaryIdImagePreview, setSecondaryIdImagePreview] = useState(null)
   const [uploadingSecondaryIdImage, setUploadingSecondaryIdImage] = useState(false)
+  const [showLocationPicker, setShowLocationPicker] = useState(false)
+  const [selectedLocation, setSelectedLocation] = useState(null)
   const fileInputRef = useRef(null)
 
   const {
@@ -139,6 +143,15 @@ const ProfilePage = () => {
       }
       if (profile.secondary_id_image_url) {
         setSecondaryIdImagePreview(profile.secondary_id_image_url)
+      }
+
+      // Set location if coordinates exist
+      if (profile.latitude && profile.longitude) {
+        setSelectedLocation({
+          lat: profile.latitude,
+          lng: profile.longitude,
+          address: profile.address || ''
+        })
       }
     }
   }, [profile, reset])
@@ -324,6 +337,96 @@ const ProfilePage = () => {
   const watchedHasVehicle = watch('has_vehicle')
   const newPassword = watchPassword('newPassword')
 
+  // Helper function to parse Google Maps address components
+  const parseAddressComponents = (addressComponents) => {
+    if (!addressComponents || !Array.isArray(addressComponents)) return {}
+
+    const parsed = {
+      street_number: '',
+      route: '',
+      sublocality: '',
+      locality: '',
+      administrative_area_level_2: '',
+      administrative_area_level_1: '',
+      postal_code: '',
+      country: ''
+    }
+
+    addressComponents.forEach(component => {
+      const type = component.types[0]
+      if (parsed.hasOwnProperty(type)) {
+        parsed[type] = component.long_name
+      }
+    })
+
+    return parsed
+  }
+
+  // Handle location selection from LocationPicker
+  const handleLocationSelect = (location) => {
+    setSelectedLocation(location)
+    
+    // Parse address components if available
+    if (location.addressComponents) {
+      const parsed = parseAddressComponents(location.addressComponents)
+      
+      // Build street address from street number and route
+      const streetAddress = [parsed.street_number, parsed.route].filter(Boolean).join(' ').trim()
+      
+      // Update all address fields
+      if (streetAddress) {
+        setValue('address', streetAddress, { shouldDirty: true })
+      } else if (location.address) {
+        // Fallback to full formatted address
+        setValue('address', location.address, { shouldDirty: true })
+      }
+      
+      // City: Try locality first, then sublocality, then administrative_area_level_2
+      const city = parsed.locality || parsed.sublocality || parsed.administrative_area_level_2
+      if (city) {
+        setValue('city', city, { shouldDirty: true })
+      }
+      
+      if (parsed.administrative_area_level_1) {
+        // Check if the province matches one of our options
+        const province = parsed.administrative_area_level_1
+        const validProvinces = ['Misamis Oriental', 'Misamis Occidental', 'Bukidnon', 'Camiguin', 'Lanao del Norte']
+        
+        // Try to find a matching province (case-insensitive)
+        const matchedProvince = validProvinces.find(p => 
+          p.toLowerCase() === province.toLowerCase() || 
+          province.toLowerCase().includes(p.toLowerCase()) ||
+          p.toLowerCase().includes(province.toLowerCase())
+        )
+        
+        if (matchedProvince) {
+          setValue('province', matchedProvince, { shouldDirty: true })
+        } else {
+          // If not in our list, still set it
+          setValue('province', province, { shouldDirty: true })
+        }
+      }
+      
+      if (parsed.postal_code) {
+        setValue('zip_code', parsed.postal_code, { shouldDirty: true })
+      }
+      
+      success('Location and address fields updated successfully')
+    } else if (location.address) {
+      // Fallback if no address components available
+      setValue('address', location.address, { shouldDirty: true })
+      
+      // Try to extract city from address
+      const addressParts = location.address.split(',')
+      if (addressParts.length >= 2) {
+        const city = addressParts[addressParts.length - 2].trim()
+        setValue('city', city, { shouldDirty: true })
+      }
+      
+      success('Location updated successfully')
+    }
+  }
+
   const onSubmit = async (data) => {
     setIsLoading(true)
     try {
@@ -366,6 +469,12 @@ const ProfilePage = () => {
       addFieldIfValid('province', data.province)
       addFieldIfValid('zip_code', data.zip_code)
       addFieldIfValid('bio', data.bio)
+
+      // Location coordinates for matching algorithm
+      if (selectedLocation && selectedLocation.lat && selectedLocation.lng) {
+        processedData.latitude = selectedLocation.lat
+        processedData.longitude = selectedLocation.lng
+      }
       
       // Account info
       addFieldIfValid('account_type', data.account_type)
@@ -922,10 +1031,50 @@ const ProfilePage = () => {
                 transition={{ delay: 0.2 }}
                 className="card p-6"
               >
-                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                  <MapPin className="h-5 w-5 text-skyblue-400 mr-2" />
-                  Address Information
-                </h2>
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-xl font-semibold text-white flex items-center">
+                    <MapPin className="h-5 w-5 text-skyblue-400 mr-2" />
+                    Address Information
+                  </h2>
+                  {isEditing && (
+                    <button
+                      type="button"
+                      onClick={() => setShowLocationPicker(true)}
+                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                    >
+                      <Navigation className="h-4 w-4" />
+                      Select on Map
+                    </button>
+                  )}
+                </div>
+
+                {/* Matching Algorithm Info Banner */}
+                {(profile.role === 'donor' || profile.role === 'recipient' || profile.role === 'volunteer') && (
+                  <div className="mb-6 p-4 bg-gradient-to-r from-green-500/10 to-skyblue-500/10 border border-green-500/20 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0 w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+                        <Globe className="h-5 w-5 text-green-400" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-semibold text-white mb-1">
+                          Smart Location Matching
+                        </h3>
+                        <p className="text-xs text-skyblue-200 leading-relaxed">
+                          Your location helps our intelligent matching algorithm connect you with nearby{' '}
+                          {profile.role === 'donor' && 'recipients and volunteers'}
+                          {profile.role === 'recipient' && 'donors and volunteers'}
+                          {profile.role === 'volunteer' && 'donors and recipients'}
+                          . This ensures faster deliveries and more efficient assistance. 
+                          {selectedLocation && selectedLocation.lat && selectedLocation.lng && (
+                            <span className="text-green-400 font-medium ml-1">
+                              ✓ Location verified
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="md:col-span-2">
@@ -945,15 +1094,24 @@ const ProfilePage = () => {
                           }
                         })}
                         className="input"
-                        placeholder="Enter your street address"
+                        placeholder="Enter your street address or use 'Select on Map'"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.address || 'Not provided'}
+                      <div className="input bg-navy-800 text-skyblue-200 flex items-center justify-between">
+                        <span>{profile.address || 'Not provided'}</span>
+                        {selectedLocation && selectedLocation.lat && selectedLocation.lng && (
+                          <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0 ml-2" />
+                        )}
                       </div>
                     )}
                     {errors.address && (
                       <p className="mt-1 text-sm text-danger-600">{errors.address.message}</p>
+                    )}
+                    {selectedLocation && selectedLocation.lat && selectedLocation.lng && (
+                      <p className="mt-1 text-xs text-green-400 flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        GPS Coordinates: {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
+                      </p>
                     )}
                   </div>
 
@@ -1571,7 +1729,7 @@ const ProfilePage = () => {
                                   />
                                   <label
                                     htmlFor="id-upload"
-                                    className="btn-secondary inline-flex items-center gap-2 cursor-pointer"
+                                    className="btn btn-secondary inline-flex items-center px-4 py-2 rounded cursor-pointer"
                                   >
                                     {uploadingIdImage ? (
                                       <>
@@ -1580,7 +1738,7 @@ const ProfilePage = () => {
                                       </>
                                     ) : (
                                       <>
-                                        <Upload className="h-4 w-4" />
+                                        <Upload className="h-4 w-4 mr-2" />
                                         Choose Image
                                       </>
                                     )}
@@ -1662,7 +1820,7 @@ const ProfilePage = () => {
                                     />
                                     <label
                                       htmlFor="secondary-id-upload"
-                                      className="btn-secondary inline-flex items-center gap-2 cursor-pointer"
+                                      className="btn btn-secondary inline-flex items-center px-4 py-2 rounded cursor-pointer"
                                     >
                                       {uploadingSecondaryIdImage ? (
                                         <>
@@ -1671,7 +1829,7 @@ const ProfilePage = () => {
                                         </>
                                       ) : (
                                         <>
-                                          <Upload className="h-4 w-4" />
+                                          <Upload className="h-4 w-4 mr-2" />
                                           Choose Image
                                         </>
                                       )}
@@ -2844,6 +3002,15 @@ const ProfilePage = () => {
           </div>
         </form>
       </div>
+
+      {/* Location Picker Modal */}
+      <LocationPicker
+        isOpen={showLocationPicker}
+        onClose={() => setShowLocationPicker(false)}
+        onLocationSelect={handleLocationSelect}
+        initialLocation={selectedLocation}
+        title="Select Your Location"
+      />
     </div>
   )
 }

@@ -50,10 +50,13 @@ const AdminSettingsPage = React.lazy(() => import('./pages/admin/AdminSettingsPa
 const AdminDonationsPage = React.lazy(() => import('./pages/admin/AdminDonationsPage'))
 const AdminVolunteersPage = React.lazy(() => import('./pages/admin/AdminVolunteersPage'))
 const AdminRequestsPage = React.lazy(() => import('./pages/admin/AdminRequestsPage'))
+const AdminEventsPage = React.lazy(() => import('./pages/admin/AdminEventsPage'))
 
 // Legal pages
 const TermsOfServicePage = React.lazy(() => import('./pages/legal/TermsOfServicePage'))
 const PrivacyPolicyPage = React.lazy(() => import('./pages/legal/PrivacyPolicyPage'))
+const CookiesPolicyPage = React.lazy(() => import('./pages/legal/CookiesPolicyPage'))
+const CodeOfConductPage = React.lazy(() => import('./pages/legal/CodeOfConductPage'))
 
 // Protected Route component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -150,6 +153,8 @@ function AppContent() {
               {/* Legal pages */}
               <Route path="/terms" element={<TermsOfServicePage />} />
               <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+              <Route path="/cookies" element={<CookiesPolicyPage />} />
+              <Route path="/conduct" element={<CodeOfConductPage />} />
               
               {/* Public auth routes */}
               <Route path="/login" element={
@@ -274,6 +279,11 @@ function AppContent() {
               <Route path="/admin/requests" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AdminRequestsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/events" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminEventsPage />
                 </ProtectedRoute>
               } />
               

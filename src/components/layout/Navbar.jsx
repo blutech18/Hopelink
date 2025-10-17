@@ -31,6 +31,10 @@ const Navbar = () => {
   const navigate = useNavigate()
   const desktopProfileMenuRef = useRef(null)
   const mobileProfileMenuRef = useRef(null)
+  
+  // Hide profile display during callback processing to prevent flash of user info before error handling
+  const isCallbackPage = location.pathname === '/auth/callback'
+  const shouldShowProfile = isAuthenticated && profile && !isCallbackPage
 
   // Close profile menu when clicking outside either desktop or mobile dropdowns
   useEffect(() => {
@@ -133,6 +137,7 @@ const Navbar = () => {
       { path: '/admin/donations', label: 'Donations', icon: Gift },
       { path: '/admin/volunteers', label: 'Volunteers', icon: Truck },
       { path: '/admin/requests', label: 'Requests', icon: Heart },
+      { path: '/admin/events', label: 'Events', icon: Calendar },
     ]
   }
 
@@ -148,7 +153,7 @@ const Navbar = () => {
           {/* Logo and Hamburger Container */}
           <div className="flex items-center relative">
             {/* Left: Desktop Sidebar Toggle for authenticated users */}
-            {isAuthenticated && (
+            {shouldShowProfile && (
               <button
                 onClick={() => setIsSideMenuOpen(true)}
                 className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800 mr-2"
@@ -157,7 +162,7 @@ const Navbar = () => {
                 <Menu className="h-6 w-6" />
               </button>
             )}
-            {isAuthenticated ? (
+            {shouldShowProfile ? (
               <Link to="/" className="flex items-center space-x-2">
                 <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 rounded" />
                 <div className="flex flex-col">
@@ -215,7 +220,7 @@ const Navbar = () => {
             )}
 
             {/* Auth Section */}
-            {isAuthenticated ? (
+            {shouldShowProfile ? (
               <div className="relative" ref={desktopProfileMenuRef}>
                 <button
                   onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
@@ -312,7 +317,7 @@ const Navbar = () => {
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-2">
             {/* Mobile Profile Dropdown - for authenticated users */}
-            {isAuthenticated ? (
+            {shouldShowProfile ? (
               <div className="relative" ref={mobileProfileMenuRef}>
                 <button
                   onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
@@ -396,7 +401,7 @@ const Navbar = () => {
 
       {/* Desktop Sidebar Drawer for authenticated users */}
       <AnimatePresence>
-        {isAuthenticated && isSideMenuOpen && (
+        {shouldShowProfile && isSideMenuOpen && (
           <>
             {/* Backdrop */}
             <motion.div

@@ -46,20 +46,17 @@
     @apply w-full px-3 py-2 bg-navy-900 border border-navy-700 rounded-lg text-white placeholder-yellow-300 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent;
   }
   
-  /* White calendar icon for date inputs */
-  input[type="date"] {
-    color-scheme: dark;
+  /* Date/Time inputs: force dark scheme and blue picker icon */
+  input[type="date"],
+  input[type="time"] {
+    color-scheme: dark; /* keeps native popover dark */
   }
-  
-  input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(1) brightness(2) hue-rotate(180deg);
-    cursor: pointer;
-    opacity: 1;
-  }
-  
-  /* Ensure calendar icon is white on dark backgrounds */
-  .input[type="date"]::-webkit-calendar-picker-indicator {
-    filter: invert(1) brightness(1.5) contrast(1.2);
+
+  /* WebKit picker icon color to sky-blue */
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator {
+    /* Transform default icon to blue that matches skyblue palette */
+    filter: brightness(0) saturate(100%) invert(66%) sepia(61%) saturate(608%) hue-rotate(171deg) brightness(101%) contrast(96%);
     cursor: pointer;
     opacity: 1;
   }

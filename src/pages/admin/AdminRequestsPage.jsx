@@ -117,7 +117,6 @@ const AdminRequestsPage = () => {
           className="mb-8"
         >
           <div className="flex items-center space-x-3 mb-6">
-            <AlertTriangle className="h-8 w-8 text-orange-400" />
             <div>
               <h1 className="text-3xl font-bold text-white">Requests Management</h1>
               <p className="text-skyblue-300">Monitor and manage recipient requests</p>
@@ -169,49 +168,49 @@ const AdminRequestsPage = () => {
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
         >
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Total Requests</p>
-                <p className="text-2xl font-bold text-white">{requests.length}</p>
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 text-orange-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">{requests.length}</p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Total Requests</p>
               </div>
-              <AlertTriangle className="h-8 w-8 text-orange-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Open Requests</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {requests.filter(r => r.status === 'open').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Open Requests</p>
               </div>
-              <Clock className="h-8 w-8 text-yellow-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Fulfilled</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {requests.filter(r => r.status === 'fulfilled').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Fulfilled</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">High Priority</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 text-red-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {requests.filter(r => r.urgency === 'high').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">High Priority</p>
               </div>
-              <AlertTriangle className="h-8 w-8 text-red-400" />
             </div>
           </div>
         </motion.div>

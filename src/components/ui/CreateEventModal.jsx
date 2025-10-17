@@ -429,7 +429,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                   <div className="border-2 border-dashed border-navy-700 rounded-lg p-8 text-center">
                     <Upload className="h-12 w-12 text-skyblue-500 mx-auto mb-4" />
                     <div className="mb-4">
-                      <label className="btn btn-secondary cursor-pointer">
+                      <label className="btn btn-secondary inline-flex items-center px-4 py-2 rounded cursor-pointer">
                         <Upload className="h-4 w-4 mr-2" />
                         Choose Image
                         <input
@@ -455,7 +455,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
                 <label className="block text-white font-medium mb-2">
-                  <Calendar className="h-4 w-4 inline mr-2" />
+                  <Calendar className="h-4 w-4 inline mr-2 text-skyblue-400" />
                   Start Date *
                 </label>
                 <input
@@ -469,7 +469,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
 
               <div>
                 <label className="block text-white font-medium mb-2">
-                  <Clock className="h-4 w-4 inline mr-2" />
+                  <Clock className="h-4 w-4 inline mr-2 text-skyblue-400" />
                   Start Time *
                 </label>
                 <input
@@ -482,7 +482,10 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
               </div>
 
               <div>
-                <label className="block text-white font-medium mb-2">End Date *</label>
+                <label className="block text-white font-medium mb-2">
+                  <Calendar className="h-4 w-4 inline mr-2 text-skyblue-400" />
+                  End Date *
+                </label>
                 <input
                   type="date"
                   value={formData.end_date}
@@ -493,7 +496,10 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
               </div>
 
               <div>
-                <label className="block text-white font-medium mb-2">End Time *</label>
+                <label className="block text-white font-medium mb-2">
+                  <Clock className="h-4 w-4 inline mr-2 text-skyblue-400" />
+                  End Time *
+                </label>
                 <input
                   type="time"
                   value={formData.end_time}

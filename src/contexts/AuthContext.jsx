@@ -27,23 +27,23 @@ export const AuthProvider = ({ children }) => {
   // Simple cache to prevent repeated profile loading
   const profileCacheRef = useRef(new Map())
 
-  // Failsafe: Force stop loading after 10 seconds to prevent infinite loading
+  // Failsafe: Force stop loading after 5 seconds to prevent infinite loading (optimized)
   useEffect(() => {
     const failsafeTimeout = setTimeout(() => {
       console.log('🔒 Auth initialization timeout reached - completing authentication flow')
       setLoading(false)
-    }, 10000)
+    }, 5000)
 
     return () => clearTimeout(failsafeTimeout)
   }, [])
 
-  // Additional safeguard: prevent loading state from lasting too long
+  // Additional safeguard: prevent loading state from lasting too long (optimized)
   useEffect(() => {
     if (loading) {
       const maxLoadingTimeout = setTimeout(() => {
         console.warn('⚠️ Loading state lasted too long, forcing completion')
         setLoading(false)
-      }, 12000)
+      }, 6000)
 
       return () => clearTimeout(maxLoadingTimeout)
     }
@@ -156,47 +156,33 @@ export const AuthProvider = ({ children }) => {
     authDebug.logProfileLoading(userId, 'START')
 
     try {
-      // Retry logic with exponential backoff
-      let attempt = 0
-      const maxAttempts = 3
-      let userProfile = null
+      // Single fast attempt - no retries for maximum speed
+      const userProfile = await db.getProfile(userId)
       
-      while (attempt < maxAttempts && !userProfile) {
-        try {
-          const timeout = Math.min(5000 + (attempt * 2000), 15000) // 5s, 7s, 9s
-          const profilePromise = db.getProfile(userId)
-          const timeoutPromise = new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Profile loading timeout')), timeout)
-          )
-          
-          userProfile = await Promise.race([profilePromise, timeoutPromise])
-          break
-        } catch (retryError) {
-          attempt++
-          if (attempt >= maxAttempts) {
-            throw retryError
-          }
-          // Wait before retry (exponential backoff)
-          await new Promise(resolve => setTimeout(resolve, 1000 * attempt))
-          console.log(`Profile loading attempt ${attempt + 1}/${maxAttempts}`)
-        }
+      if (userProfile) {
+        authDebug.logProfileLoading(userId, 'SUCCESS', userProfile)
+        // Cache the profile for future use
+        profileCacheRef.current.set(userId, userProfile)
+        setProfile(userProfile)
+        setLoading(false)
+        return
+      } else {
+        // Profile is null - user doesn't exist in database yet
+        console.log('Profile is null, user may need to be created from metadata')
+        throw new Error('Profile not found - needs creation from metadata')
       }
-      
-             if (userProfile) {
-         authDebug.logProfileLoading(userId, 'SUCCESS', userProfile)
-         // Cache the profile for future use
-         profileCacheRef.current.set(userId, userProfile)
-         setProfile(userProfile)
-         setLoading(false)
-         return
-       } else {
-         // Profile is null - user doesn't exist in database yet
-         console.log('Profile is null, user may need to be created from metadata')
-         throw new Error('Profile not found - needs creation from metadata')
-       }
     } catch (error) {
-      authDebug.logProfileLoading(userId, 'ERROR', { error: error.message, code: error.code })
-      console.error('Error loading user profile:', error)
+      // Only log if it's NOT an expected "profile not found" scenario
+      const isExpectedError = error.code === 'PGRST116' || 
+                             error.message?.includes('No rows found') || 
+                             error.message?.includes('Profile not found')
+      
+      if (!isExpectedError) {
+        authDebug.logProfileLoading(userId, 'ERROR', { error: error.message, code: error.code })
+        console.error('Error loading user profile:', error)
+      } else {
+        authDebug.logProfileLoading(userId, 'NOT_FOUND')
+      }
       
              // If profile doesn't exist, times out, or profile is null, try to create from metadata
        if (error.code === 'PGRST116' || 
@@ -211,83 +197,24 @@ export const AuthProvider = ({ children }) => {
           console.log('Current user metadata:', currentUser?.user_metadata)
           
           // Check for pending Google signup role data first
+          // IMPORTANT: Don't create profile here during Google signup flow
+          // Let handleGoogleCallback do it after checking for existing accounts
           const pendingRoleData = localStorage.getItem('pendingGoogleSignupRole')
+          
+          // Skip profile creation if there's pending Google signup data
+          // The callback handler will create the profile after verifying no existing account
           if (pendingRoleData) {
-            try {
-              // Set flag to prevent duplicate profile creation
-              profileCreationInProgress = true
-              console.log('🔄 Profile creation started in loadUserProfile, flag set')
-              
-              const roleData = JSON.parse(pendingRoleData)
-              console.log('Found pending Google signup role data during profile loading:', roleData)
-              
-              if (roleData.role && ['donor', 'recipient', 'volunteer', 'admin'].includes(roleData.role)) {
-                const profileData = {
-                  email: currentUser.email,
-                  name: currentUser.user_metadata?.full_name || currentUser.user_metadata?.name || currentUser.email.split('@')[0],
-                  role: roleData.role,
-                  account_type: 'individual',
-                  phone_number: roleData.phone || '09000000000',
-                  address: 'Philippines',
-                  city: 'Cagayan de Oro City',
-                  province: 'Misamis Oriental',
-                  zip_code: '9000'
-                }
-                
-                // Add role-specific fields
-                if (roleData.role === 'donor') {
-                  profileData.donation_types = []
-                  profileData.bio = null
-                  profileData.primary_id_type = null
-                  profileData.primary_id_number = null
-                } else if (roleData.role === 'volunteer') {
-                  profileData.has_vehicle = false
-                  profileData.vehicle_type = null
-                  profileData.max_delivery_distance = 20
-                  profileData.volunteer_experience = null
-                  profileData.background_check_consent = false
-                  profileData.availability_days = []
-                  profileData.availability_times = []
-                  profileData.primary_id_type = null
-                  profileData.primary_id_number = null
-                } else if (roleData.role === 'recipient') {
-                  profileData.household_size = null
-                  profileData.assistance_needs = []
-                  profileData.emergency_contact_name = null
-                  profileData.emergency_contact_phone = null
-                  profileData.primary_id_type = null
-                  profileData.primary_id_number = null
-                } else if (roleData.role === 'admin') {
-                  profileData.is_verified = true
-                }
-                
-                console.log('Creating profile from pending Google signup data in loadUserProfile:', profileData)
-                const newProfile = await db.createProfile(userId, profileData)
-                console.log('Successfully created profile from pending data:', newProfile)
-                
-                // Clear the pending data
-                localStorage.removeItem('pendingGoogleSignupRole')
-                
-                // Cache and set the profile
-                profileCacheRef.current.set(userId, newProfile)
-                setProfile(newProfile)
-                setLoading(false)
-                
-                // Reset flag after successful profile creation
-                profileCreationInProgress = false
-                console.log('🔄 Profile creation completed in loadUserProfile, flag cleared')
-                return
-              }
-            } catch (pendingError) {
-              console.error('Error processing pending Google signup data in loadUserProfile:', pendingError)
-              localStorage.removeItem('pendingGoogleSignupRole')
-              // Reset flag in case of error
-              profileCreationInProgress = false
-              console.log('🔄 Profile creation failed in loadUserProfile, flag cleared')
-            }
+            console.log('⏭️ Skipping profile creation in loadUserProfile - pending Google signup detected')
+            authDebug.logProfileLoading(userId, 'SKIPPED_PENDING_GOOGLE_SIGNUP')
+            setProfile(null)
+            setLoading(false)
+            return
           }
           
-          if (currentUser?.user_metadata && currentUser.user_metadata.name) {
+          // Check for name or full_name in metadata for regular (non-Google) signups
+          const userName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name
+          
+          if (currentUser?.user_metadata && userName) {
             // Set flag to prevent duplicate profile creation
             profileCreationInProgress = true
             console.log('🔄 Profile creation from metadata started in loadUserProfile, flag set')
@@ -295,14 +222,14 @@ export const AuthProvider = ({ children }) => {
             // Try to create profile from user metadata
             const profileData = {
               email: currentUser.email,
-              name: currentUser.user_metadata.name,
+              name: userName,
               role: currentUser.user_metadata.role,
               account_type: currentUser.user_metadata.accountType || 'individual',
               phone_number: currentUser.user_metadata.phone || '09000000000',
               address: currentUser.user_metadata.address || 'Philippines',
               city: currentUser.user_metadata.city || 'Cagayan de Oro City',
               province: 'Misamis Oriental',
-              zip_code: currentUser.user_metadata.zipcode || '9000'
+              zip_code: currentUser.user_metadata.zipcode || currentUser.user_metadata.zip_code || '9000'
             }
             
             // Ensure we have a valid role from metadata
@@ -404,6 +331,12 @@ export const AuthProvider = ({ children }) => {
         throw new Error(`Invalid role provided: ${userData.role}. Must be one of: donor, recipient, volunteer, admin`)
       }
       
+      // Check if email exists in our users table before attempting signup
+      const isEmailAvailable = await db.checkEmailAvailability(email)
+      if (!isEmailAvailable) {
+        throw new Error('This email is already registered. Please login instead.')
+      }
+      
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
@@ -416,7 +349,16 @@ export const AuthProvider = ({ children }) => {
       console.log('SUPABASE SIGNUP RESPONSE:', data)
       console.log('SUPABASE USER METADATA:', data?.user?.user_metadata)
       
-      if (error) throw error
+      if (error) {
+        // Check if error is about existing user
+        const errMsg = error.message || ''
+        if (errMsg.toLowerCase().includes('already registered') || 
+            errMsg.toLowerCase().includes('user already exists') ||
+            errMsg.toLowerCase().includes('duplicate')) {
+          throw new Error('This email is already registered. Please login instead.')
+        }
+        throw error
+      }
       
       // If user was created successfully, the profile will be created automatically
       // by the auth state change listener calling loadUserProfile
@@ -449,12 +391,41 @@ export const AuthProvider = ({ children }) => {
       // Set signing in flag for smooth transition
       setIsSigningIn(true)
       
+      // Note: Failed login attempts will show as 400 errors in browser Network tab
+      // This is normal browser behavior for HTTP requests and cannot be suppressed
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
       
-      if (error) throw error
+      if (error) {
+        const msg = (error.message || '').toLowerCase()
+        if (msg.includes('email not confirmed') || msg.includes('email not confirmed')) {
+          throw new Error('Email not confirmed. Please check your email inbox for the verification link, then try again.')
+        }
+        // Handle invalid credentials / 400 responses more clearly
+        if (error.status === 400 || msg.includes('invalid login credentials') || msg.includes('invalid_grant')) {
+          // Check if this account was created with Google OAuth
+          throw new Error('Invalid email or password. If you signed up with Google, please use the "Continue with Google" button instead.')
+        }
+        throw error
+      }
+
+      // If user is not yet verified, sign out and instruct to verify email first
+      try {
+        const { data: userData } = await supabase.auth.getUser()
+        const confirmedAt = userData?.user?.email_confirmed_at || userData?.user?.confirmed_at
+        if (!confirmedAt) {
+          await supabase.auth.signOut()
+          setIsSigningIn(false)
+          throw new Error('Please verify your email to activate your account. Check your inbox for the confirmation link.')
+        }
+      } catch (checkErr) {
+        if (checkErr?.message?.includes('Please verify your email')) {
+          throw checkErr
+        }
+        // Fall through if we can't determine, continue normal flow
+      }
       
       // Keep signing in flag active for smooth transition
       setTimeout(() => {
@@ -550,8 +521,8 @@ export const AuthProvider = ({ children }) => {
     console.log('🔄 Google callback started, profile creation flag set')
 
     try {
-      // Wait a bit for session to be fully established
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      // Minimal delay for session establishment (100ms for maximum speed)
+      await new Promise(resolve => setTimeout(resolve, 100))
       
       const { data: { session }, error } = await supabase.auth.getSession()
       
@@ -559,7 +530,7 @@ export const AuthProvider = ({ children }) => {
       
       if (session?.user) {
         try {
-          // Check if user exists in our database
+          // Check if user exists in our database (ignore cache for signup verification)
           let existingProfile = null
           let profileError = null
           
@@ -574,32 +545,15 @@ export const AuthProvider = ({ children }) => {
             }
           }
           
-          // Check if profile was created during auth initialization
-          const cachedProfile = profileCacheRef.current.get(session.user.id)
-          if (cachedProfile) {
-            console.log('📋 Found cached profile during Google callback, using it instead of creating new one')
-            existingProfile = cachedProfile
-          }
-          
           if (isSignup) {
             if (existingProfile) {
-              // If we found an existing profile during signup flow, check if it was just created
-              // during the auth initialization process (it will be in the cache)
-              const cachedProfile = profileCacheRef.current.get(session.user.id)
-              const isNewlyCreatedProfile = !!cachedProfile
-              
-              console.log(`🔄 Signup flow - Profile exists: ${!!existingProfile}, Is newly created: ${isNewlyCreatedProfile}`)
-              
-              if (isNewlyCreatedProfile) {
-                // If the profile was just created during auth initialization, use it instead of throwing an error
-                console.log('👤 Using newly created profile from auth initialization')
-                return { user: session.user, isNewUser: true, role: existingProfile.role }
-              } else {
-                // If this is a truly existing profile (not just created), sign out and throw error
-                console.log('⛔ Truly existing profile found during signup, showing error')
-                await supabase.auth.signOut()
-                throw new Error('Account already exists. Please use the login option instead.')
-              }
+              // If we found an existing profile during signup flow, this means the account already exists
+              // We should NOT allow signup to proceed - sign out and show error
+              console.log('⛔ Existing profile found during signup flow - account already exists')
+              await supabase.auth.signOut()
+              // Clear the pending role data
+              localStorage.removeItem('pendingGoogleSignupRole')
+              throw new Error('Account already exists. Please use the login option instead.')
             }
             
             // Get stored role data for signup
@@ -665,7 +619,16 @@ export const AuthProvider = ({ children }) => {
               profileData.is_verified = true
             }
             
-            await db.createProfile(session.user.id, profileData)
+            const newProfile = await db.createProfile(session.user.id, profileData)
+            console.log('✅ Successfully created new profile for Google signup:', newProfile)
+            
+            // Cache the newly created profile
+            profileCacheRef.current.set(session.user.id, newProfile)
+            
+            // Set the profile state immediately so dashboard can load
+            setProfile(newProfile)
+            setLoading(false)
+            
             // Only remove localStorage data after successful profile creation
             localStorage.removeItem('pendingGoogleSignupRole')
             return { user: session.user, isNewUser: true, role: roleData.role }
@@ -676,6 +639,15 @@ export const AuthProvider = ({ children }) => {
               await supabase.auth.signOut()
               throw new Error('No account found. Please sign up first.')
             }
+            
+            // Cache the existing profile for login flow
+            profileCacheRef.current.set(session.user.id, existingProfile)
+            console.log('✅ Existing profile cached for Google login')
+            
+            // Set the profile state immediately so dashboard can load
+            setProfile(existingProfile)
+            setLoading(false)
+            
             return { user: session.user, isNewUser: false, role: existingProfile.role }
           }
         } catch (profileError) {
@@ -687,7 +659,12 @@ export const AuthProvider = ({ children }) => {
       
       throw new Error('No session found')
     } catch (error) {
-      console.error('Google callback error:', error)
+      // Only log unexpected errors, not controlled flow errors
+      if (!error.message.includes('Account already exists') && 
+          !error.message.includes('No account found') &&
+          !error.message.includes('Role selection required')) {
+        console.error('Google callback error:', error)
+      }
       throw error
     } finally {
       // Clear flags regardless of success or failure

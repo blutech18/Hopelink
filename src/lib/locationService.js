@@ -84,7 +84,8 @@ export class LocationService {
               lat: location.lat(),
               lng: location.lng(),
               formatted_address: results[0].formatted_address,
-              place_id: results[0].place_id
+              place_id: results[0].place_id,
+              address_components: results[0].address_components
             })
           } else if (status === 'ZERO_RESULTS') {
             reject(new Error('No results found for the given address'))

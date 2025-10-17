@@ -175,22 +175,26 @@ const AdminDashboard = () => {
   const StatCard = ({ icon: Icon, title, value, description, trend, color = "yellow" }) => (
     <motion.div
       whileHover={{ scale: 1.02 }}
-      className="card p-6 border border-gray-600"
-    style={{backgroundColor: '#001a5c'}}
+      className="card p-4 sm:p-6 border border-gray-600"
+      style={{backgroundColor: '#001a5c'}}
     >
-      <div className="flex items-center justify-between mb-4">
-        <div className={`p-3 rounded-lg bg-navy-800`}>
-          <Icon className={`h-6 w-6 text-yellow-300`} />
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center space-x-3">
+          <div className={`p-2 sm:p-3 rounded-lg bg-navy-800`}>
+            <Icon className={`h-5 w-5 sm:h-6 sm:w-6 text-yellow-300`} />
+          </div>
+          <div className="flex flex-col">
+            <h3 className="text-xl sm:text-2xl font-bold text-white">{value}</h3>
+            <p className="text-yellow-200 text-xs sm:text-sm">{title}</p>
+          </div>
         </div>
         {trend && (
-          <div className="flex items-center text-green-400 text-sm">
-            <TrendingUp className="h-4 w-4 mr-1" />
+          <div className="flex items-center text-green-400 text-xs sm:text-sm">
+            <TrendingUp className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
             {trend}
           </div>
         )}
       </div>
-      <h3 className="text-2xl font-bold text-white mb-1">{value}</h3>
-      <p className="text-yellow-200 text-sm">{title}</p>
       {description && (
         <p className="text-yellow-300 text-xs mt-2">{description}</p>
       )}
@@ -331,6 +335,13 @@ const AdminDashboard = () => {
                >
                  <AlertTriangle className="h-4 w-4 mr-2" />
                  Review Requests
+               </button>
+               <button 
+                 onClick={() => navigate('/admin/events')}
+              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
+               >
+                 <Calendar className="h-4 w-4 mr-2" />
+                 Manage Events
                </button>
                <button 
                  onClick={() => navigate('/admin/settings')}

@@ -61,6 +61,31 @@ export const db = {
     }
   },
 
+  async checkEmailAvailability(email) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('email')
+        .eq('email', email.toLowerCase())
+        .maybeSingle()
+      
+      if (error && error.code !== 'PGRST116') {
+        // PGRST116 means no rows found, which is fine
+        console.error('Database error in checkEmailAvailability:', error)
+        throw error
+      }
+      
+      return !data // Returns true if email is available (no user found)
+    } catch (error) {
+      console.error('Error checking email availability:', error)
+      throw error
+    }
+  },
+
   async createProfile(userId, profileData) {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')

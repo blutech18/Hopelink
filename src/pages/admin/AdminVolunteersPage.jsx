@@ -95,7 +95,6 @@ const AdminVolunteersPage = () => {
           className="mb-8"
         >
           <div className="flex items-center space-x-3 mb-6">
-            <Truck className="h-8 w-8 text-blue-400" />
             <div>
               <h1 className="text-3xl font-bold text-white">Volunteer Management</h1>
               <p className="text-skyblue-300">Monitor volunteers and delivery operations</p>
@@ -135,49 +134,49 @@ const AdminVolunteersPage = () => {
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
         >
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Total Volunteers</p>
-                <p className="text-2xl font-bold text-white">{volunteers.length}</p>
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <User className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">{volunteers.length}</p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Total Volunteers</p>
               </div>
-              <User className="h-8 w-8 text-blue-400" />
             </div>
           </div>
           
-                        <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Active Volunteers</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {volunteers.filter(v => v.is_active).length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Active Volunteers</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Active Deliveries</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <Truck className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {deliveries.filter(d => d.status === 'in_progress').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Active Deliveries</p>
               </div>
-              <Truck className="h-8 w-8 text-yellow-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Completed Today</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <Package className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {deliveries.filter(d => d.status === 'delivered').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Completed Today</p>
               </div>
-              <Package className="h-8 w-8 text-green-400" />
             </div>
           </div>
         </motion.div>

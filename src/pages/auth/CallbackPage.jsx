@@ -31,6 +31,7 @@ const CallbackPage = () => {
         
         if (result.isNewUser) {
           success(`Welcome to HopeLink! Your ${result.role} account has been created.`)
+          // Immediate navigation for maximum speed
           // Redirect to appropriate dashboard based on role
           switch (result.role) {
             case 'donor':
@@ -50,6 +51,7 @@ const CallbackPage = () => {
           }
         } else {
           success('Welcome back!')
+          // Immediate navigation for maximum speed
           // Redirect to appropriate dashboard based on role
           switch (result.role) {
             case 'donor':
@@ -69,30 +71,40 @@ const CallbackPage = () => {
           }
         }
       } catch (err) {
-        console.error('Callback processing error:', err)
-        setError(err.message)
-        
-        // Show error toast with better error handling
-        const errorMessage = err.message || 'Authentication failed. Please try again.'
-        
-        // Only show error toast for errors that won't be redirected with state
-        if (!err.message.includes('No account found')) {
-          showError(errorMessage)
+        // Only log unexpected errors, not controlled flow errors
+        if (!err.message.includes('Account already exists') && 
+            !err.message.includes('No account found') &&
+            !err.message.includes('Role selection required')) {
+          console.error('Callback processing error:', err)
         }
         
-        // Redirect based on error type
+        // Show error toast and redirect based on error type (fast redirects)
         if (err.message.includes('No account found')) {
-          // Keep user on login page with error message
-          setTimeout(() => navigate('/login', { state: { error: 'No account found. Please sign up first.' }, replace: true }), 2000)
+          showError('No account found. Please sign up first.')
+          setTimeout(() => {
+            setIsProcessing(false)
+            navigate('/signup', { replace: true })
+          }, 1000)
         } else if (err.message.includes('Account already exists')) {
-          setTimeout(() => navigate('/login', { state: { error: 'Account already exists. Please use the login option instead.' }, replace: true }), 2000)
+          showError('This account already exists. Redirecting to login...')
+          setTimeout(() => {
+            setIsProcessing(false)
+            navigate('/login', { replace: true })
+          }, 1000)
         } else if (err.message.includes('Role selection required')) {
-          setTimeout(() => navigate('/signup', { replace: true }), 2000)
+          showError('Role selection required. Please complete the signup process.')
+          setTimeout(() => {
+            setIsProcessing(false)
+            navigate('/signup', { replace: true })
+          }, 1000)
         } else {
-          setTimeout(() => navigate('/login', { replace: true }), 2000)
+          setError(err.message)
+          showError(err.message || 'Authentication failed. Please try again.')
+          setTimeout(() => {
+            setIsProcessing(false)
+            navigate('/login', { replace: true })
+          }, 1000)
         }
-      } finally {
-        setIsProcessing(false)
       }
     }
 

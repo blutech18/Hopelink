@@ -117,7 +117,6 @@ const AdminDonationsPage = () => {
           className="mb-8"
         >
           <div className="flex items-center space-x-3 mb-6">
-            <Package className="h-8 w-8 text-green-400" />
             <div>
               <h1 className="text-3xl font-bold text-white">Donations Management</h1>
               <p className="text-skyblue-300">Monitor and manage all platform donations</p>
@@ -171,49 +170,49 @@ const AdminDonationsPage = () => {
           transition={{ delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
         >
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Total Donations</p>
-                <p className="text-2xl font-bold text-white">{donations.length}</p>
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <Package className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">{donations.length}</p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Total Donations</p>
               </div>
-              <Package className="h-8 w-8 text-green-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Available</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {donations.filter(d => d.status === 'available').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Available</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-green-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Claimed</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {donations.filter(d => d.status === 'claimed').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Claimed</p>
               </div>
-              <Clock className="h-8 w-8 text-yellow-400" />
             </div>
           </div>
           
-          <div className="card p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-skyblue-300 text-sm">Delivered</p>
-                <p className="text-2xl font-bold text-white">
+          <div className="card p-4 sm:p-6">
+            <div className="flex items-center space-x-3">
+              <Package className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+              <div className="flex flex-col">
+                <p className="text-xl sm:text-2xl font-bold text-white">
                   {donations.filter(d => d.status === 'delivered').length}
                 </p>
+                <p className="text-skyblue-300 text-xs sm:text-sm">Delivered</p>
               </div>
-              <Package className="h-8 w-8 text-blue-400" />
             </div>
           </div>
         </motion.div>

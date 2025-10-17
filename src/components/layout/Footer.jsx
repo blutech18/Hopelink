@@ -69,6 +69,12 @@ const Footer = ({ userRole = null }) => {
       { name: 'Success Stories', href: '/stories' },
       { name: 'FAQ', href: '/faq' },
     ],
+    resources: [
+      { name: 'Getting Started', href: '/getting-started' },
+      { name: 'Donation Guidelines', href: '/guidelines' },
+      { name: 'Safety & Security', href: '/safety' },
+      { name: 'Support Center', href: '/support' },
+    ],
     legal: [
       { name: 'Privacy Policy', href: '/privacy-policy' },
       { name: 'Terms of Service', href: '/terms' },
@@ -83,7 +89,7 @@ const Footer = ({ userRole = null }) => {
   return (
     <footer className="text-white" style={{backgroundColor: '#000f3d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
           {/* Brand Section */}
           <div className="lg:col-span-2">
             <div className="flex items-center space-x-2 mb-4">
@@ -114,9 +120,9 @@ const Footer = ({ userRole = null }) => {
 
           {/* Role-specific Section */}
           {currentConfig ? (
-            <div className="lg:col-span-2">
+            <div className="lg:col-span-1">
               <h3 className="text-lg font-semibold mb-4 text-center">Quick Links</h3>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {currentConfig.primaryLinks.map((link) => (
                   <Link
                     key={link.name}
@@ -130,7 +136,7 @@ const Footer = ({ userRole = null }) => {
             </div>
           ) : (
             /* Default Platform Links for non-authenticated users */
-            <div>
+            <div className="lg:col-span-1">
               <h3 className="text-lg font-semibold mb-4">Platform</h3>
               <ul className="space-y-2">
                 {commonLinks.platform.map((link) => (
@@ -148,7 +154,7 @@ const Footer = ({ userRole = null }) => {
           )}
 
           {/* Additional Resources */}
-          <div>
+          <div className="lg:col-span-1">
             <h3 className="text-lg font-semibold mb-4">Resources</h3>
             <ul className="space-y-2">
               {currentConfig ? (
@@ -163,7 +169,7 @@ const Footer = ({ userRole = null }) => {
                   </li>
                 ))
               ) : (
-                commonLinks.platform.map((link) => (
+                commonLinks.resources.map((link) => (
                   <li key={link.name}>
                     <Link
                       to={link.href}
@@ -178,7 +184,7 @@ const Footer = ({ userRole = null }) => {
           </div>
 
           {/* Community Section */}
-          <div>
+          <div className="lg:col-span-1">
             <h3 className="text-lg font-semibold mb-4">Community</h3>
             <ul className="space-y-2">
               <li>
@@ -186,7 +192,7 @@ const Footer = ({ userRole = null }) => {
                   to="/events"
                   className="text-yellow-200 hover:text-yellow-400 transition-colors text-sm"
                 >
-                  Events
+                  Community Events
                 </Link>
               </li>
               <li>
@@ -207,10 +213,10 @@ const Footer = ({ userRole = null }) => {
               </li>
               <li>
                 <Link
-                  to="/faq"
+                  to="/contact"
                   className="text-yellow-200 hover:text-yellow-400 transition-colors text-sm"
                 >
-                  FAQ
+                  Contact Us
                 </Link>
               </li>
             </ul>
