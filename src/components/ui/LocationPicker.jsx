@@ -30,7 +30,7 @@ const LocationPicker = ({
 
   const mapContainerStyle = {
     width: '100%',
-    height: '500px',
+    height: '320px',
     borderRadius: '8px'
   }
 
@@ -207,13 +207,13 @@ const LocationPicker = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#001a5c] rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto border border-gray-600">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
+      <div className="bg-[#001a5c] rounded-lg shadow-xl max-w-3xl w-full overflow-hidden border border-gray-600">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-600">
+        <div className="flex items-center justify-between p-4 border-b border-gray-600">
           <div>
-            <h2 className="text-xl font-semibold text-white">{title}</h2>
-            <p className="text-sm text-yellow-200">Click on the map or search for a location</p>
+            <h2 className="text-lg font-semibold text-white">{title}</h2>
+            <p className="text-xs text-yellow-200">Click on the map or search for a location</p>
           </div>
           <button
             onClick={onClose}
@@ -223,9 +223,9 @@ const LocationPicker = ({
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-4 space-y-3">
           {/* Google Maps is loaded globally in main.jsx */}
-          <div className="space-y-4">
+          <div className="space-y-3">
               {/* Network Status Indicator */}
               {isOfflineMode && (
                 <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
@@ -257,7 +257,7 @@ const LocationPicker = ({
                       <input
                         type="text"
                         placeholder="Search for a location..."
-                        className="w-full pl-10 pr-4 py-2 bg-[#00237d] border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300"
+                        className="w-full pl-8 pr-3 py-2 bg-[#00237d] border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300 text-sm"
                       />
                     </Autocomplete>
                   ) : (
@@ -267,10 +267,10 @@ const LocationPicker = ({
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleManualSearch()}
-                      className="w-full pl-10 pr-4 py-2 bg-[#00237d] border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300"
+                      className="w-full pl-8 pr-3 py-2 bg-[#00237d] border border-gray-600 text-white placeholder-gray-400 rounded-lg focus:ring-2 focus:ring-yellow-300 focus:border-yellow-300 text-sm"
                     />
                   )}
-                  <Search className="w-5 h-5 text-yellow-300 absolute left-3 top-2.5" />
+                  <Search className="w-4 h-4 text-yellow-300 absolute left-2.5 top-2.5" />
                 </div>
                 
                 {/* Search Button for Manual Search */}
@@ -278,7 +278,7 @@ const LocationPicker = ({
                   <button
                     onClick={handleManualSearch}
                     disabled={isLoadingLocation || !searchQuery.trim()}
-                    className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:bg-gray-600"
+                    className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:bg-gray-600 text-sm"
                   >
                     <Search className="w-4 h-4" />
                     <span>Search</span>
@@ -288,7 +288,7 @@ const LocationPicker = ({
                 <button
                   onClick={getCurrentLocation}
                   disabled={isLoadingLocation}
-                  className="px-4 py-2 bg-yellow-500 text-[#00237d] font-semibold rounded-lg hover:bg-yellow-400 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:bg-gray-600"
+                  className="px-3 py-2 bg-yellow-500 text-[#00237d] font-semibold rounded-lg hover:bg-yellow-400 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:bg-gray-600 text-sm"
                 >
                   <Navigation className="w-4 h-4" />
                   <span>{isLoadingLocation ? 'Loading...' : 'Use Current'}</span>
@@ -297,14 +297,14 @@ const LocationPicker = ({
 
               {/* Selected Address Display */}
               {address && (
-                <div className="bg-[#00237d] p-3 rounded-lg border border-gray-600">
+                <div className="bg-[#00237d] p-2 rounded-lg border border-gray-600">
                   <div className="flex items-start space-x-2">
-                    <MapPin className="w-5 h-5 text-yellow-300 mt-0.5 flex-shrink-0" />
+                    <MapPin className="w-4 h-4 text-yellow-300 mt-0.5 flex-shrink-0" />
                     <div>
-                      <p className="text-sm font-medium text-white">Selected Location</p>
-                      <p className="text-sm text-yellow-200">{address}</p>
+                      <p className="text-xs font-medium text-white">Selected Location</p>
+                      <p className="text-xs text-yellow-200">{address}</p>
                       {selectedLocation && (
-                        <p className="text-xs text-gray-400 mt-1">
+                        <p className="text-[11px] text-gray-400 mt-1">
                           Coordinates: {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
                         </p>
                       )}
@@ -443,25 +443,25 @@ const LocationPicker = ({
                 {isLoadingLocation && (
                   <div className="absolute inset-0 bg-white bg-opacity-75 flex items-center justify-center">
                     <div className="text-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2"></div>
-                      <p className="text-sm text-gray-600">Getting your location...</p>
+                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto mb-2"></div>
+                      <p className="text-xs text-gray-600">Getting your location...</p>
                     </div>
                   </div>
                 )}
               </div>
 
               {/* Instructions */}
-              <div className="bg-[#00237d] p-3 rounded-lg border border-gray-600">
+              <div className="bg-[#00237d] p-2 rounded-lg border border-gray-600">
                 {mapsApiLoaded ? (
-                  <p className="text-sm text-gray-300">
-                    <strong className="text-yellow-300">Tip:</strong> You can drag the marker to fine-tune the location, or click anywhere on the map to set a new position.
+                  <p className="text-xs text-gray-300">
+                    <strong className="text-yellow-300">Tip:</strong> Drag the marker or click the map to set position.
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    <p className="text-sm text-gray-300">
+                    <p className="text-xs text-gray-300">
                       <strong className="text-yellow-300">Manual Location Selection:</strong> Since Google Maps is unavailable, you can:
                     </p>
-                    <ul className="text-xs text-gray-400 space-y-1 ml-4">
+                    <ul className="text-[11px] text-gray-400 space-y-1 ml-4">
                       <li>• Enter coordinates manually in the fields above</li>
                       <li>• Use the "Get Address" button to find the location name</li>
                       <li>• Search for addresses using the search box above</li>
@@ -470,13 +470,13 @@ const LocationPicker = ({
                 )}
                 
                 {isOfflineMode && (
-                  <p className="text-sm text-yellow-300 mt-2">
+                  <p className="text-xs text-yellow-300 mt-2">
                     <strong>Offline Mode:</strong> If you see network errors, check your internet connection or try disabling browser extensions that might block Google Maps requests.
                   </p>
                 )}
                 
                 {mapsApiError && (
-                  <p className="text-sm text-red-400 mt-2">
+                  <p className="text-xs text-red-400 mt-2">
                     <strong>API Error:</strong> Google Maps API failed to load. This might be due to network issues, API key restrictions, or missing API permissions.
                   </p>
                 )}
@@ -484,17 +484,17 @@ const LocationPicker = ({
             </div>
 
           {/* Action Buttons */}
-          <div className="flex space-x-4 pt-4 border-t border-gray-600">
+          <div className="flex space-x-3 p-4 pt-3 border-t border-gray-600">
             <button
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-600 text-yellow-200 rounded-lg hover:bg-[#00237d] hover:border-yellow-300 transition-colors"
+              className="flex-1 px-3 py-2 border border-gray-600 text-yellow-200 rounded-lg hover:bg-[#00237d] hover:border-yellow-300 transition-colors text-sm"
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
               disabled={!selectedLocation}
-              className="flex-1 bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:bg-gray-600 flex items-center justify-center space-x-2"
+              className="flex-1 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:bg-gray-600 flex items-center justify-center space-x-2 text-sm"
             >
               <CheckCircle className="w-4 h-4" />
               <span>Confirm Location</span>

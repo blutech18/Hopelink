@@ -72,7 +72,14 @@ const ProfilePage = () => {
       receive_notifications: true,
       share_contact_info: false,
       has_vehicle: false,
-      background_check_consent: false
+      background_check_consent: false,
+      // Granular address fields
+      address_house: '',
+      address_street: '',
+      address_barangay: '',
+      address_subdivision: '',
+      address_landmark: '',
+      delivery_instructions: ''
     }
   })
 
@@ -118,6 +125,13 @@ const ProfilePage = () => {
         public_profile: profile.public_profile || false,
         receive_notifications: profile.receive_notifications !== false, // Default to true
         share_contact_info: profile.share_contact_info || false,
+        // Granular address fields
+        address_house: profile.address_house || '',
+        address_street: profile.address_street || '',
+        address_barangay: profile.address_barangay || '',
+        address_subdivision: profile.address_subdivision || '',
+        address_landmark: profile.address_landmark || '',
+        delivery_instructions: profile.delivery_instructions || '',
         // Valid ID fields
         primary_id_type: profile.primary_id_type || '',
         primary_id_number: profile.primary_id_number || '',
@@ -345,21 +359,62 @@ const ProfilePage = () => {
       street_number: '',
       route: '',
       sublocality: '',
+      sublocality_level_1: '',
+      sublocality_level_2: '',
+      neighborhood: '',
       locality: '',
+      administrative_area_level_3: '',
+      administrative_area_level_4: '',
+      administrative_area_level_5: '',
       administrative_area_level_2: '',
       administrative_area_level_1: '',
       postal_code: '',
       country: ''
     }
 
+    // Parse all types, not just the first one
     addressComponents.forEach(component => {
-      const type = component.types[0]
-      if (parsed.hasOwnProperty(type)) {
-        parsed[type] = component.long_name
-      }
+      component.types.forEach(type => {
+        if (parsed.hasOwnProperty(type) && !parsed[type]) {
+          parsed[type] = component.long_name
+        }
+      })
     })
 
     return parsed
+  }
+
+  // Helper: derive barangay from parsed components or formatted address
+  const deriveBarangay = (parsed, formattedAddress = '') => {
+    const candidates = [
+      parsed.sublocality_level_1,
+      parsed.sublocality_level_2,
+      parsed.administrative_area_level_3,
+      parsed.administrative_area_level_4,
+      parsed.administrative_area_level_5,
+      parsed.neighborhood,
+      parsed.sublocality
+    ].filter(Boolean)
+
+    let barangay = candidates.find(val => /barangay|brgy/i.test(val)) || candidates[0] || ''
+
+    // Normalize common prefixes
+    if (barangay) {
+      barangay = barangay
+        .replace(/^barangay\s*/i, '')
+        .replace(/^brgy\.?\s*/i, '')
+        .trim()
+    }
+
+    // Fallback: try to extract from formatted address
+    if (!barangay && formattedAddress) {
+      const match = formattedAddress.match(/\b(?:Barangay|Brgy\.?)[\s-]*([^,]+)\b/i)
+      if (match && match[1]) {
+        barangay = match[1].trim()
+      }
+    }
+
+    return barangay
   }
 
   // Handle location selection from LocationPicker
@@ -368,10 +423,15 @@ const ProfilePage = () => {
     
     // Parse address components if available
     if (location.addressComponents) {
+      console.log('Raw address components:', location.addressComponents)
       const parsed = parseAddressComponents(location.addressComponents)
+      console.log('Parsed address components:', parsed)
       
       // Build street address from street number and route
-      const streetAddress = [parsed.street_number, parsed.route].filter(Boolean).join(' ').trim()
+      const houseNumber = parsed.street_number
+      const streetName = parsed.route
+      const barangay = deriveBarangay(parsed, location.address)
+      const streetAddress = [houseNumber, streetName].filter(Boolean).join(' ').trim()
       
       // Update all address fields
       if (streetAddress) {
@@ -380,35 +440,72 @@ const ProfilePage = () => {
         // Fallback to full formatted address
         setValue('address', location.address, { shouldDirty: true })
       }
+
+      // Set granular fields when available
+      if (houseNumber) setValue('address_house', houseNumber, { shouldDirty: true })
+      if (streetName) setValue('address_street', streetName, { shouldDirty: true })
+      if (barangay) setValue('address_barangay', barangay, { shouldDirty: true })
       
       // City: Try locality first, then sublocality, then administrative_area_level_2
-      const city = parsed.locality || parsed.sublocality || parsed.administrative_area_level_2
+      const city = parsed.locality || parsed.sublocality_level_1 || parsed.sublocality || parsed.administrative_area_level_2
       if (city) {
         setValue('city', city, { shouldDirty: true })
       }
       
-      if (parsed.administrative_area_level_1) {
-        // Check if the province matches one of our options
-        const province = parsed.administrative_area_level_1
+      // Province: Check both administrative_area_level_1 and administrative_area_level_2
+      // In Philippines, sometimes province is in level_2 and region is in level_1
+      const provinceCandidate = parsed.administrative_area_level_2 || parsed.administrative_area_level_1
+      
+      if (provinceCandidate) {
         const validProvinces = ['Misamis Oriental', 'Misamis Occidental', 'Bukidnon', 'Camiguin', 'Lanao del Norte']
         
-        // Try to find a matching province (case-insensitive)
-        const matchedProvince = validProvinces.find(p => 
-          p.toLowerCase() === province.toLowerCase() || 
-          province.toLowerCase().includes(p.toLowerCase()) ||
-          p.toLowerCase().includes(province.toLowerCase())
-        )
+        // Try to find a matching province (case-insensitive and partial match)
+        const matchedProvince = validProvinces.find(p => {
+          const pLower = p.toLowerCase()
+          const candidateLower = provinceCandidate.toLowerCase()
+          
+          return pLower === candidateLower || 
+                 candidateLower.includes(pLower) ||
+                 pLower.includes(candidateLower)
+        })
         
         if (matchedProvince) {
           setValue('province', matchedProvince, { shouldDirty: true })
         } else {
-          // If not in our list, still set it
-          setValue('province', province, { shouldDirty: true })
+          // If not in our predefined list, still set the value
+          setValue('province', provinceCandidate, { shouldDirty: true })
         }
       }
       
+      // ZIP Code: Sometimes postal_code might be empty, try to infer from city for common areas
       if (parsed.postal_code) {
         setValue('zip_code', parsed.postal_code, { shouldDirty: true })
+      } else if (city) {
+        // Common ZIP codes for Northern Mindanao region
+        const cityZipMap = {
+          'cagayan de oro': '9000',
+          'cagayan de oro city': '9000',
+          'iligan': '9200',
+          'iligan city': '9200',
+          'valencia': '8709',
+          'valencia city': '8709',
+          'malaybalay': '8700',
+          'malaybalay city': '8700',
+          'oroquieta': '7207',
+          'oroquieta city': '7207',
+          'ozamiz': '7200',
+          'ozamiz city': '7200',
+          'tangub': '7214',
+          'tangub city': '7214',
+          'mambajao': '9100',
+          'gingoog': '9014',
+          'gingoog city': '9014'
+        }
+        
+        const cityLower = city.toLowerCase()
+        if (cityZipMap[cityLower]) {
+          setValue('zip_code', cityZipMap[cityLower], { shouldDirty: true })
+        }
       }
       
       success('Location and address fields updated successfully')
@@ -475,6 +572,14 @@ const ProfilePage = () => {
         processedData.latitude = selectedLocation.lat
         processedData.longitude = selectedLocation.lng
       }
+
+      // Persist granular address fields (after migration)
+      addFieldIfValid('address_house', data.address_house)
+      addFieldIfValid('address_street', data.address_street)
+      addFieldIfValid('address_barangay', data.address_barangay)
+      addFieldIfValid('address_subdivision', data.address_subdivision)
+      addFieldIfValid('address_landmark', data.address_landmark)
+      addFieldIfValid('delivery_instructions', data.delivery_instructions)
       
       // Account info
       addFieldIfValid('account_type', data.account_type)
@@ -1077,47 +1182,10 @@ const ProfilePage = () => {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-white mb-2">
-                      Street Address
-                    </label>
-                    {isEditing ? (
-                      <input
-                        {...register('address', {
-                          validate: {
-                            validIfProvided: (value) => {
-                              if (value && value.trim().length > 0) {
-                                return value.trim().length >= 5 || 'Address must be at least 5 characters'
-                              }
-                              return true
-                            }
-                          }
-                        })}
-                        className="input"
-                        placeholder="Enter your street address or use 'Select on Map'"
-                      />
-                    ) : (
-                      <div className="input bg-navy-800 text-skyblue-200 flex items-center justify-between">
-                        <span>{profile.address || 'Not provided'}</span>
-                        {selectedLocation && selectedLocation.lat && selectedLocation.lng && (
-                          <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0 ml-2" />
-                        )}
-                      </div>
-                    )}
-                    {errors.address && (
-                      <p className="mt-1 text-sm text-danger-600">{errors.address.message}</p>
-                    )}
-                    {selectedLocation && selectedLocation.lat && selectedLocation.lng && (
-                      <p className="mt-1 text-xs text-green-400 flex items-center gap-1">
-                        <MapPin className="h-3 w-3" />
-                        GPS Coordinates: {selectedLocation.lat.toFixed(6)}, {selectedLocation.lng.toFixed(6)}
-                      </p>
-                    )}
-                  </div>
-
+                  {/* City (first), Province (second), Barangay (third), Street (fourth) */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
-                      City
+                      City / Municipality
                     </label>
                     {isEditing ? (
                       <input
@@ -1132,7 +1200,7 @@ const ProfilePage = () => {
                           }
                         })}
                         className="input"
-                        placeholder="Enter your city"
+                        placeholder="e.g., Cagayan de Oro"
                       />
                     ) : (
                       <div className="input bg-navy-800 text-skyblue-200">
@@ -1166,6 +1234,79 @@ const ProfilePage = () => {
                     )}
                   </div>
 
+                  {/* Barangay (third) */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Barangay
+                    </label>
+                    {isEditing ? (
+                      <input
+                        {...register('address_barangay')}
+                        className="input"
+                        placeholder="e.g., Brgy. 28 or Gusa"
+                      />
+                    ) : (
+                      <div className="input bg-navy-800 text-skyblue-200">
+                        {profile.address_barangay || 'Not provided'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Street Name (fourth) */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Street Name
+                    </label>
+                    {isEditing ? (
+                      <input
+                        {...register('address_street')}
+                        className="input"
+                        placeholder="e.g., J. Ramirez St."
+                      />
+                    ) : (
+                      <div className="input bg-navy-800 text-skyblue-200">
+                        {profile.address_street || 'Not provided'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* House / Unit Number */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      House/Unit Number
+                    </label>
+                    {isEditing ? (
+                      <input
+                        {...register('address_house')}
+                        className="input"
+                        placeholder="e.g., Unit 3B or #12"
+                      />
+                    ) : (
+                      <div className="input bg-navy-800 text-skyblue-200">
+                        {profile.address_house || 'Not provided'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Subdivision / Building */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Subdivision / Building
+                    </label>
+                    {isEditing ? (
+                      <input
+                        {...register('address_subdivision')}
+                        className="input"
+                        placeholder="e.g., Villa Ernesto Phase 2 or Limketkai Center"
+                      />
+                    ) : (
+                      <div className="input bg-navy-800 text-skyblue-200">
+                        {profile.address_subdivision || 'Not provided'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ZIP Code (after main locality lines) */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       ZIP Code
@@ -1174,11 +1315,49 @@ const ProfilePage = () => {
                       <input
                         {...register('zip_code')}
                         className="input"
-                        placeholder="Enter ZIP code"
+                        placeholder="e.g., 9000"
                       />
                     ) : (
                       <div className="input bg-navy-800 text-skyblue-200">
                         {profile.zip_code || 'Not provided'}
+                      </div>
+                    )}
+                  </div>
+
+                  
+
+                  {/* Landmark (optional) */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Landmark (optional)
+                    </label>
+                    {isEditing ? (
+                      <input
+                        {...register('address_landmark')}
+                        className="input"
+                        placeholder="Near church, beside pharmacy, etc."
+                      />
+                    ) : (
+                      <div className="input bg-navy-800 text-skyblue-200">
+                        {profile.address_landmark || 'Not provided'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Delivery Instructions */}
+                  <div className="md:col-span-2">
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Delivery Instructions (for volunteers)
+                    </label>
+                    {isEditing ? (
+                      <textarea
+                        {...register('delivery_instructions')}
+                        className="input min-h-[88px]"
+                        placeholder="Gate code, contact person, best time to deliver, etc."
+                      />
+                    ) : (
+                      <div className="input bg-navy-800 text-skyblue-200 min-h-[48px] flex items-center">
+                        {profile.delivery_instructions || 'Not provided'}
                       </div>
                     )}
                   </div>
