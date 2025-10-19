@@ -118,28 +118,24 @@ const Navbar = () => {
 
   const roleBasedLinks = {
     donor: [
-      { path: "/dashboard", label: "Dashboard", icon: User },
       { path: "/post-donation", label: "Post Donation", icon: Gift },
       { path: "/my-donations", label: "My Donations", icon: Heart },
       { path: "/browse-requests", label: "Browse Requests", icon: Users },
       { path: "/events", label: "Events", icon: Calendar },
     ],
     recipient: [
-      { path: "/dashboard", label: "Dashboard", icon: User },
       { path: "/browse-donations", label: "Browse Donations", icon: Gift },
       { path: "/create-request", label: "Create Request", icon: Heart },
       { path: "/my-requests", label: "My Requests", icon: Users },
       { path: "/events", label: "Events", icon: Calendar },
     ],
     volunteer: [
-      { path: "/volunteer-dashboard", label: "Dashboard", icon: User },
       { path: "/available-tasks", label: "Available Tasks", icon: Truck },
       { path: "/my-deliveries", label: "My Deliveries", icon: Calendar },
       { path: "/volunteer-schedule", label: "Manage Schedule", icon: Clock },
       { path: "/events", label: "Events", icon: Calendar },
     ],
     admin: [
-      { path: "/admin", label: "Dashboard", icon: Shield },
       { path: "/admin/users", label: "Users", icon: Users },
       { path: "/admin/donations", label: "Donations", icon: Gift },
       { path: "/admin/volunteers", label: "Volunteers", icon: Truck },
