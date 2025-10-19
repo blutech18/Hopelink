@@ -25,6 +25,7 @@ const Navbar = () => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
+  const [activeSection, setActiveSection] = useState("home");
   const { isAuthenticated, profile, signOut } = useAuth();
   const { success, error } = useToast();
   const location = useLocation();
@@ -62,32 +63,49 @@ const Navbar = () => {
     setIsMenuOpen(false);
   }, [isAuthenticated]);
 
+  // Track scroll position to update active section
+  useEffect(() => {
+    const handleScroll = () => {
+      if (location.pathname !== "/") {
+        setActiveSection("home");
+        return;
+      }
+
+      const sections = ["home", "events", "about"];
+      const scrollPosition = window.scrollY + 100; // Offset for navbar height
+
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const section = sections[i];
+        const element = section === "home" ? document.body : document.getElementById(section);
+
+        if (element) {
+          const elementTop = section === "home" ? 0 : element.offsetTop;
+          if (scrollPosition >= elementTop) {
+            setActiveSection(section);
+            break;
+          }
+        }
+      }
+    };
+
+    // Set initial active section
+    handleScroll();
+
+    window.addEventListener("scroll", handleScroll);
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [location.pathname]);
+
   const handleSignOut = async () => {
-    // Prevent double-clicking
     if (isSigningOut) return;
 
     try {
       setIsSigningOut(true);
-
-      // Close the profile menu first
       setIsProfileMenuOpen(false);
-
-      // Add a loading state to prevent multiple clicks
-      console.log("Starting sign out process...");
-
       await signOut();
-
-      // Navigate to home page first, then show toast
-      // This ensures a smooth transition without double navigation
       navigate("/", { replace: true });
-
-      // Show success message after navigation
-      setTimeout(() => {
-        success("Successfully signed out");
-      }, 100);
+      setTimeout(() => success("Successfully signed out"), 100);
     } catch (signOutError) {
       console.error("Error signing out:", signOutError);
-      // Show error message but still try to navigate (in case of partial sign out)
       error("Error signing out, but you have been logged out locally");
       navigate("/", { replace: true });
     } finally {
@@ -95,24 +113,52 @@ const Navbar = () => {
     }
   };
 
-  // Public navigation links (shown only when not authenticated or when clicking logo)
+  const handleScrollNavigation = (scrollTo) => {
+    if (location.pathname !== "/") {
+      navigate("/");
+      setTimeout(() => {
+        if (scrollTo === "home") {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        } else {
+          const element = document.getElementById(scrollTo);
+          if (element) element.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }, 100);
+    } else {
+      if (scrollTo === "home") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        const element = document.getElementById(scrollTo);
+        if (element) element.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+  };
+
+  // Public navigation links (with scroll targets)
   const publicNavLinks = [
-    { path: "/", label: "Home" },
-    { path: "/events", label: "Events" },
-    { path: "/about", label: "About" },
+    { path: "/", label: "Home", scrollTo: "home" },
+    { path: "/events", label: "Events", scrollTo: "events" },
+    { path: "/about", label: "About", scrollTo: "about" },
   ];
+
+  const isLinkActive = (link) => {
+    if (link.scrollTo) {
+      return location.pathname === "/" && activeSection === link.scrollTo;
+    }
+    return location.pathname === link.path;
+  };
 
   // Get navigation links based on user role
   const getNavLinksForRole = (role) => {
     switch (role) {
       case "donor":
       case "admin":
-        return [{ path: "/events", label: "Events" }]; // Events for donors and admins
+        return [{ path: "/events", label: "Events" }];
       case "recipient":
       case "volunteer":
-        return []; // No public nav links for recipients and volunteers
+        return [];
       default:
-        return publicNavLinks; // Show all for non-authenticated users
+        return publicNavLinks;
     }
   };
 
@@ -159,286 +205,93 @@ const Navbar = () => {
         <div className="flex justify-between h-16">
           {/* Logo Container */}
           <div className="flex items-center relative">
-            {shouldShowProfile ? (
-              <Link to="/" className="flex items-center space-x-2">
-                <img
-                  src="/hopelinklogo.png"
-                  alt="HopeLink"
-                  className="h-12 rounded"
-                />
-                <div className="flex flex-col">
-                  <span className="text-xl font-bold text-white">HopeLink</span>
-                  <span className="text-[10px] text-yellow-300">CFC-GK</span>
-                </div>
-              </Link>
-            ) : (
-              <Link to="/" className="flex items-center space-x-2">
-                <img
-                  src="/hopelinklogo.png"
-                  alt="HopeLink"
-                  className="h-12 rounded"
-                />
-                <div className="flex flex-col">
-                  <span className="text-xl font-bold text-white">HopeLink</span>
-                  <span className="text-[10px] text-yellow-300">CFC-GK</span>
-                </div>
-              </Link>
-            )}
+            <Link to="/" className="flex items-center space-x-2">
+              <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 rounded" />
+              <div className="flex flex-col">
+                <span className="text-xl font-bold text-white">HopeLink</span>
+                <span className="text-[10px] text-yellow-300">CFC-GK</span>
+              </div>
+            </Link>
           </div>
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:space-x-4 lg:space-x-8">
-            {/* Role-based Public Navigation - show only for non-authenticated users */}
-            {!isAuthenticated &&
-              currentNavLinks.map((link) => (
-                <Link
+            {/* Public Navigation */}
+            {publicNavLinks.map((link) => (
+              link.scrollTo ? (
+                <button
                   key={link.path}
-                  to={link.path}
-                  className={`px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-colors ${
-                    location.pathname === link.path
-                      ? "text-yellow-400 border-b-2 border-yellow-400"
+                  onClick={() => handleScrollNavigation(link.scrollTo)}
+                  className={`px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-all duration-300 ease-in-out relative ${
+                    isLinkActive(link)
+                      ? "text-yellow-400"
                       : "text-yellow-200 hover:text-yellow-400"
                   }`}
                 >
                   {link.label}
+                  <div
+                    className={`absolute bottom-0 left-0 h-0.5 bg-yellow-400 transition-all duration-300 ease-in-out ${
+                      isLinkActive(link) ? "w-full" : "w-0"
+                    }`}
+                  />
+                </button>
+              ) : (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-all duration-300 ease-in-out relative ${
+                    isLinkActive(link)
+                      ? "text-yellow-400"
+                      : "text-yellow-200 hover:text-yellow-400"
+                  }`}
+                >
+                  {link.label}
+                  <div
+                    className={`absolute bottom-0 left-0 h-0.5 bg-yellow-400 transition-all duration-300 ease-in-out ${
+                      isLinkActive(link) ? "w-full" : "w-0"
+                    }`}
+                  />
                 </Link>
-              ))}
+              )
+            ))}
 
             {/* Role-based Navigation - show for authenticated users in desktop view */}
-            {shouldShowProfile &&
-              profile?.role &&
-              roleBasedLinks[profile.role] && (
-                <>
-                  {roleBasedLinks[profile.role].map((link) => (
-                    <button
-                      key={link.path}
-                      onClick={() => {
-                        // For dashboard-related links, scroll to section instead of navigating
-                        if (
-                          link.path === "/dashboard" ||
-                          link.path.startsWith("/dashboard")
-                        ) {
-                          window.scrollTo({ top: 0, behavior: "smooth" });
-                        } else if (link.path === "/events") {
-                          // Navigate to dashboard first, then scroll to events section
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element = document.getElementById("events");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
+            {shouldShowProfile && profile?.role && roleBasedLinks[profile.role] && (
+              <>
+                {roleBasedLinks[profile.role].map((link) => (
+                  <button
+                    key={link.path}
+                    onClick={() => {
+                      // For dashboard-related links, scroll to section instead of navigating
+                      if (link.path === "/dashboard" || link.path.startsWith("/dashboard")) {
+                        window.scrollTo({ top: 0, behavior: "smooth" });
+                      } else if (link.path === "/events") {
+                        if (location.pathname !== "/dashboard") {
+                          navigate("/dashboard");
+                          setTimeout(() => {
                             const element = document.getElementById("events");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/post-donation") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("postdonation");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("postdonation");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/my-donations") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("mydonations");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("mydonations");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/browse-requests") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("browserequests");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("browserequests");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/browse-donations") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("browsedonations");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("browsedonations");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/create-request") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("createrequest");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("createrequest");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/my-requests") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("myrequests");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("myrequests");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/available-tasks") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("availabletasks");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("availabletasks");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/my-deliveries") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("mydeliveries");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("mydeliveries");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/volunteer-schedule") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("volunteerschedule");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("volunteerschedule");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/admin/users") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("adminusers");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("adminusers");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/admin/donations") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("admindonations");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("admindonations");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
+                            if (element) element.scrollIntoView({ behavior: "smooth" });
+                          }, 100);
                         } else {
-                          // Navigate to other pages normally
-                          window.location.href = link.path;
+                          const element = document.getElementById("events");
+                          if (element) element.scrollIntoView({ behavior: "smooth" });
                         }
-                      }}
-                      className={`flex items-center space-x-1 px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-colors ${
-                        location.pathname === link.path
-                          ? "text-yellow-400"
-                          : "text-yellow-200 hover:text-yellow-400"
-                      }`}
-                    >
-                      <link.icon className="h-4 w-4" />
-                      <span>{link.label}</span>
-                    </button>
-                  ))}
-                </>
-              )}
+                      } else {
+                        window.location.href = link.path;
+                      }
+                    }}
+                    className={`flex items-center space-x-1 px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-colors ${
+                      location.pathname === link.path
+                        ? "text-yellow-400"
+                        : "text-yellow-200 hover:text-yellow-400"
+                    }`}
+                  >
+                    <link.icon className="h-4 w-4" />
+                    <span>{link.label}</span>
+                  </button>
+                ))}
+              </>
+            )}
 
             {/* Auth Section */}
             {shouldShowProfile ? (
@@ -449,11 +302,7 @@ const Navbar = () => {
                 >
                   <div className="h-8 w-8 bg-yellow-600 rounded-full overflow-hidden flex items-center justify-center">
                     {profile?.profile_image_url ? (
-                      <img
-                        src={profile.profile_image_url}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                      />
+                      <img src={profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
                       <span className="text-white text-sm font-medium">
                         {profile?.name?.charAt(0)?.toUpperCase() || "U"}
@@ -507,9 +356,7 @@ const Navbar = () => {
                         }`}
                       >
                         <LogOut className="h-4 w-4" />
-                        <span>
-                          {isSigningOut ? "Signing Out..." : "Sign Out"}
-                        </span>
+                        <span>{isSigningOut ? "Signing Out..." : "Sign Out"}</span>
                       </button>
                     </motion.div>
                   )}
@@ -530,8 +377,7 @@ const Navbar = () => {
                 <Link
                   to="/signup"
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    location.pathname === "/signup" ||
-                    location.pathname.startsWith("/signup/")
+                    location.pathname === "/signup" || location.pathname.startsWith("/signup/")
                       ? "bg-[#001a5c] text-yellow-300 border-2 border-yellow-400"
                       : "bg-yellow-600 text-navy-950 hover:bg-yellow-700"
                   }`}
@@ -544,7 +390,6 @@ const Navbar = () => {
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-2">
-            {/* Mobile Hamburger Menu - for authenticated users */}
             {shouldShowProfile ? (
               <button
                 onClick={() => setIsSideMenuOpen(true)}
@@ -553,11 +398,7 @@ const Navbar = () => {
               >
                 <div className="h-6 w-6 bg-yellow-600 rounded-full overflow-hidden flex items-center justify-center">
                   {profile?.profile_image_url ? (
-                    <img
-                      src={profile.profile_image_url}
-                      alt="Profile"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={profile.profile_image_url} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-white text-xs font-medium">
                       {profile?.name?.charAt(0)?.toUpperCase() || "U"}
@@ -566,95 +407,12 @@ const Navbar = () => {
                 </div>
                 <Menu className="h-5 w-5" />
               </button>
-            ) : null}
-
-            {/* Mobile Profile Dropdown - for authenticated users */}
-            {shouldShowProfile ? (
-              <div className="hidden" ref={mobileProfileMenuRef}>
-                <button
-                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                  className="flex items-center space-x-1 p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800"
-                >
-                  <div className="h-6 w-6 bg-yellow-600 rounded-full overflow-hidden flex items-center justify-center">
-                    {profile?.profile_image_url ? (
-                      <img
-                        src={profile.profile_image_url}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-white text-xs font-medium">
-                        {profile?.name?.charAt(0)?.toUpperCase() || "U"}
-                      </span>
-                    )}
-                  </div>
-                  <ChevronDown
-                    className={`h-4 w-4 transition-transform ${
-                      isProfileMenuOpen ? "rotate-180" : ""
-                    }`}
-                  />
-                </button>
-
-                {/* Mobile Profile Dropdown Menu */}
-                <AnimatePresence>
-                  {isProfileMenuOpen && (
-                    <motion.div
-                      initial={{ opacity: 0, y: -10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -10 }}
-                      className="absolute right-0 mt-2 w-48 bg-navy-900 rounded-lg shadow-lg border border-navy-700 py-1 z-50"
-                    >
-                      <Link
-                        to="/profile"
-                        className="flex items-center space-x-2 px-4 py-2 text-sm text-yellow-300 hover:bg-navy-800"
-                        onClick={() => setIsProfileMenuOpen(false)}
-                      >
-                        <Settings className="h-4 w-4" />
-                        <span>Profile Settings</span>
-                      </Link>
-                      {profile?.role === "admin" && (
-                        <Link
-                          to="/admin/settings"
-                          className="flex items-center space-x-2 px-4 py-2 text-sm text-yellow-300 hover:bg-navy-800"
-                          onClick={() => setIsProfileMenuOpen(false)}
-                        >
-                          <Shield className="h-4 w-4" />
-                          <span>Admin Settings</span>
-                        </Link>
-                      )}
-                      <hr className="my-1 border-navy-700" />
-                      <button
-                        onClick={() => {
-                          setIsProfileMenuOpen(false);
-                          handleSignOut();
-                        }}
-                        disabled={isSigningOut}
-                        className={`flex items-center space-x-2 w-full px-4 py-2 text-sm transition-colors ${
-                          isSigningOut
-                            ? "text-yellow-400 cursor-not-allowed"
-                            : "text-yellow-300 hover:bg-navy-800"
-                        }`}
-                      >
-                        <LogOut className="h-4 w-4" />
-                        <span>
-                          {isSigningOut ? "Signing Out..." : "Sign Out"}
-                        </span>
-                      </button>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
             ) : (
-              /* Mobile Menu Toggle - for non-authenticated users */
               <button
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800"
               >
-                {isMenuOpen ? (
-                  <X className="h-6 w-6" />
-                ) : (
-                  <Menu className="h-6 w-6" />
-                )}
+                {isMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
             )}
           </div>
@@ -665,7 +423,6 @@ const Navbar = () => {
       <AnimatePresence>
         {shouldShowProfile && isSideMenuOpen && (
           <>
-            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.5 }}
@@ -673,7 +430,6 @@ const Navbar = () => {
               className="fixed inset-0 bg-black z-40"
               onClick={() => setIsSideMenuOpen(false)}
             />
-            {/* Drawer */}
             <motion.div
               initial={{ x: -300 }}
               animate={{ x: 0 }}
@@ -684,11 +440,7 @@ const Navbar = () => {
             >
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center space-x-2">
-                  <img
-                    src="/hopelinklogo.png"
-                    alt="HopeLink"
-                    className="h-10 rounded"
-                  />
+                  <img src="/hopelinklogo.png" alt="HopeLink" className="h-10 rounded" />
                   <span className="text-lg font-bold text-white">Menu</span>
                 </div>
                 <button
@@ -708,217 +460,20 @@ const Navbar = () => {
                       key={link.path}
                       onClick={() => {
                         setIsSideMenuOpen(false);
-                        // For dashboard-related links, scroll to section instead of navigating
-                        if (
-                          link.path === "/dashboard" ||
-                          link.path.startsWith("/dashboard")
-                        ) {
+                        if (link.path === "/dashboard" || link.path.startsWith("/dashboard")) {
                           window.scrollTo({ top: 0, behavior: "smooth" });
                         } else if (link.path === "/events") {
-                          // Navigate to dashboard first, then scroll to events section
                           if (location.pathname !== "/dashboard") {
                             navigate("/dashboard");
                             setTimeout(() => {
                               const element = document.getElementById("events");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
+                              if (element) element.scrollIntoView({ behavior: "smooth" });
                             }, 100);
                           } else {
                             const element = document.getElementById("events");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/post-donation") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("postdonation");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("postdonation");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/my-donations") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("mydonations");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("mydonations");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/browse-requests") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("browserequests");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("browserequests");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/browse-donations") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("browsedonations");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("browsedonations");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/create-request") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("createrequest");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("createrequest");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/my-requests") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("myrequests");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("myrequests");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/available-tasks") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("availabletasks");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("availabletasks");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/my-deliveries") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("mydeliveries");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("mydeliveries");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/volunteer-schedule") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("volunteerschedule");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("volunteerschedule");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/admin/users") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("adminusers");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("adminusers");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
-                          }
-                        } else if (link.path === "/admin/donations") {
-                          if (location.pathname !== "/dashboard") {
-                            navigate("/dashboard");
-                            setTimeout(() => {
-                              const element =
-                                document.getElementById("admindonations");
-                              if (element) {
-                                element.scrollIntoView({ behavior: "smooth" });
-                              }
-                            }, 100);
-                          } else {
-                            const element =
-                              document.getElementById("admindonations");
-                            if (element) {
-                              element.scrollIntoView({ behavior: "smooth" });
-                            }
+                            if (element) element.scrollIntoView({ behavior: "smooth" });
                           }
                         } else {
-                          // Navigate to other pages normally
                           window.location.href = link.path;
                         }
                       }}
@@ -940,22 +495,37 @@ const Navbar = () => {
 
               {/* Public quick links */}
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-yellow-300 text-center mb-2">
-                  Public Links
-                </h3>
+                <h3 className="text-sm font-semibold text-yellow-300 text-center mb-2">Public Links</h3>
                 {publicNavLinks.map((link) => (
-                  <Link
-                    key={link.path}
-                    to={link.path}
-                    className={`block text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                      location.pathname === link.path
-                        ? "text-yellow-400 bg-navy-800 border-yellow-400"
-                        : "text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400"
-                    }`}
-                    onClick={() => setIsSideMenuOpen(false)}
-                  >
-                    {link.label}
-                  </Link>
+                  link.scrollTo ? (
+                    <button
+                      key={link.path}
+                      onClick={() => {
+                        handleScrollNavigation(link.scrollTo);
+                        setIsSideMenuOpen(false);
+                      }}
+                      className={`block w-full text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
+                        location.pathname === link.path
+                          ? "text-yellow-400 bg-navy-800 border-yellow-400"
+                          : "text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400"
+                      }`}
+                    >
+                      {link.label}
+                    </button>
+                  ) : (
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      className={`block text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
+                        location.pathname === link.path
+                          ? "text-yellow-400 bg-navy-800 border-yellow-400"
+                          : "text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400"
+                      }`}
+                      onClick={() => setIsSideMenuOpen(false)}
+                    >
+                      {link.label}
+                    </Link>
+                  )
                 ))}
               </div>
             </motion.div>
@@ -963,9 +533,9 @@ const Navbar = () => {
         )}
       </AnimatePresence>
 
-      {/* Mobile Navigation Menu - Only for non-authenticated users */}
+      {/* Mobile Navigation Menu - Show for all users */}
       <AnimatePresence>
-        {isMenuOpen && !isAuthenticated && (
+        {isMenuOpen && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -974,48 +544,66 @@ const Navbar = () => {
             style={{ backgroundColor: "#000f3d" }}
           >
             <div className="px-6 py-6 space-y-3 max-w-md mx-auto">
-              {/* Role-based Public Navigation for Mobile */}
-              {currentNavLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 ${
-                    location.pathname === link.path
-                      ? "text-white bg-navy-800 border border-yellow-400/50"
-                      : "text-gray-200 hover:text-white hover:bg-navy-800/70 border border-navy-700"
-                  }`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {link.label}
-                </Link>
+              {/* Public Navigation for Mobile */}
+              {publicNavLinks.map((link) => (
+                link.scrollTo ? (
+                  <button
+                    key={link.path}
+                    onClick={() => {
+                      handleScrollNavigation(link.scrollTo);
+                      setIsMenuOpen(false);
+                    }}
+                    className={`block w-full px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 ${
+                      isLinkActive(link)
+                        ? "text-white bg-navy-800 border border-yellow-400/50"
+                        : "text-gray-200 hover:text-white hover:bg-navy-800/70 border border-navy-700"
+                    }`}
+                  >
+                    {link.label}
+                  </button>
+                ) : (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 ${
+                      isLinkActive(link)
+                        ? "text-white bg-navy-800 border border-yellow-400/50"
+                        : "text-gray-200 hover:text-white hover:bg-navy-800/70 border border-navy-700"
+                    }`}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                )
               ))}
 
-              {/* Mobile Auth Section */}
-              <div className="pt-4 space-y-3 border-t border-navy-700/50">
-                <Link
-                  to="/login"
-                  className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 border ${
-                    location.pathname === "/login"
-                      ? "text-white bg-navy-800 border-yellow-400/50"
-                      : "text-gray-200 hover:text-white hover:bg-navy-800/70 border-navy-700"
-                  }`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Sign In
-                </Link>
-                <Link
-                  to="/signup"
-                  className={`block px-6 py-3 text-center text-base font-bold rounded-lg transition-all duration-200 shadow-md ${
-                    location.pathname === "/signup" ||
-                    location.pathname.startsWith("/signup/")
-                      ? "bg-yellow-700 text-navy-950 border-2 border-yellow-400"
-                      : "bg-yellow-600 text-navy-950 hover:bg-yellow-500"
-                  }`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Sign Up
-                </Link>
-              </div>
+              {/* Mobile Auth Section - Only for non-authenticated users */}
+              {!isAuthenticated && (
+                <div className="pt-4 space-y-3 border-t border-navy-700/50">
+                  <Link
+                    to="/login"
+                    className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 border ${
+                      location.pathname === "/login"
+                        ? "text-white bg-navy-800 border-yellow-400/50"
+                        : "text-gray-200 hover:text-white hover:bg-navy-800/70 border-navy-700"
+                    }`}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/signup"
+                    className={`block px-6 py-3 text-center text-base font-bold rounded-lg transition-all duration-200 shadow-md ${
+                      location.pathname === "/signup" || location.pathname.startsWith("/signup/")
+                        ? "bg-yellow-700 text-navy-950 border-2 border-yellow-400"
+                        : "bg-yellow-600 text-navy-950 hover:bg-yellow-500"
+                    }`}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Sign Up
+                  </Link>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

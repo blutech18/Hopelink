@@ -49,11 +49,7 @@ const LocationPicker = ({
     }
   }, [isOpen])
 
-  useEffect(() => {
-    if (selectedLocation) {
-      reverseGeocode(selectedLocation.lat, selectedLocation.lng)
-    }
-  }, [selectedLocation])
+  // Note: Removed useEffect for reverseGeocode since we handle it directly in click handlers
 
   useEffect(() => {
     // Check if we're in offline mode
@@ -100,6 +96,18 @@ const LocationPicker = ({
       const location = await LocationService.getCurrentLocation()
       setSelectedLocation(location)
       setMapCenter(location)
+      
+      // Get address components for current location
+      try {
+        const result = await LocationService.reverseGeocode(location.lat, location.lng)
+        setAddress(result.formatted_address)
+        setAddressComponents(result.address_components)
+      } catch (err) {
+        console.error('Error reverse geocoding current location:', err)
+        setAddress(`Location: ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`)
+        setAddressComponents(null)
+      }
+      
       success('Current location detected')
     } catch (err) {
       console.error('Error getting current location:', err)
@@ -127,12 +135,23 @@ const LocationPicker = ({
     }
   }
 
-  const handleMapClick = (e) => {
+  const handleMapClick = async (e) => {
     const location = {
       lat: e.latLng.lat(),
       lng: e.latLng.lng()
     }
     setSelectedLocation(location)
+    
+    // Immediately reverse geocode to get address components
+    try {
+      const result = await LocationService.reverseGeocode(location.lat, location.lng)
+      setAddress(result.formatted_address)
+      setAddressComponents(result.address_components)
+    } catch (err) {
+      console.error('Error reverse geocoding on map click:', err)
+      setAddress(`Location: ${location.lat.toFixed(6)}, ${location.lng.toFixed(6)}`)
+      setAddressComponents(null)
+    }
   }
 
   const handlePlaceSelect = () => {
