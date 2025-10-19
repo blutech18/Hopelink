@@ -16,6 +16,7 @@ import {
   Bell,
   Clock,
   ChevronDown,
+  Info,
 } from "lucide-react";
 import { useAuth } from "../../contexts/AuthContext";
 import { useToast } from "../../contexts/ToastContext";
@@ -63,7 +64,7 @@ const Navbar = () => {
     setIsMenuOpen(false);
   }, [isAuthenticated]);
 
-  // Track scroll position to update active section
+  // Track scroll position to update active section for scroll-based nav
   useEffect(() => {
     const handleScroll = () => {
       if (location.pathname !== "/") {
@@ -77,7 +78,6 @@ const Navbar = () => {
       for (let i = sections.length - 1; i >= 0; i--) {
         const section = sections[i];
         const element = section === "home" ? document.body : document.getElementById(section);
-
         if (element) {
           const elementTop = section === "home" ? 0 : element.offsetTop;
           if (scrollPosition >= elementTop) {
@@ -103,7 +103,9 @@ const Navbar = () => {
       setIsProfileMenuOpen(false);
       await signOut();
       navigate("/", { replace: true });
-      setTimeout(() => success("Successfully signed out"), 100);
+      setTimeout(() => {
+        success("Successfully signed out");
+      }, 100);
     } catch (signOutError) {
       console.error("Error signing out:", signOutError);
       error("Error signing out, but you have been logged out locally");
@@ -114,6 +116,7 @@ const Navbar = () => {
   };
 
   const handleScrollNavigation = (scrollTo) => {
+    // If we're not on the home page, navigate there first
     if (location.pathname !== "/") {
       navigate("/");
       setTimeout(() => {
@@ -134,17 +137,16 @@ const Navbar = () => {
     }
   };
 
-  // Public navigation links (with scroll targets)
+  // Scroll-aware public nav links for Home page top sections
   const publicNavLinks = [
     { path: "/", label: "Home", scrollTo: "home" },
     { path: "/events", label: "Events", scrollTo: "events" },
     { path: "/about", label: "About", scrollTo: "about" },
   ];
 
+  // Helper to check active link
   const isLinkActive = (link) => {
-    if (link.scrollTo) {
-      return location.pathname === "/" && activeSection === link.scrollTo;
-    }
+    if (link.scrollTo) return location.pathname === "/" && activeSection === link.scrollTo;
     return location.pathname === link.path;
   };
 
@@ -153,12 +155,12 @@ const Navbar = () => {
     switch (role) {
       case "donor":
       case "admin":
-        return [{ path: "/events", label: "Events" }];
+        return [{ path: "/events", label: "Events" }]; // Events for donors and admins
       case "recipient":
       case "volunteer":
-        return [];
+        return []; // No public nav links for recipients and volunteers
       default:
-        return publicNavLinks;
+        return publicNavLinks; // Show all for non-authenticated users
     }
   };
 
@@ -190,17 +192,12 @@ const Navbar = () => {
     ],
   };
 
-  // Get the current navigation links based on authentication and role
+  // Links to render based on current auth/role
   const currentNavLinks =
-    isAuthenticated && profile?.role
-      ? getNavLinksForRole(profile.role)
-      : publicNavLinks;
+    isAuthenticated && profile?.role ? getNavLinksForRole(profile.role) : publicNavLinks;
 
   return (
-    <nav
-      className="shadow-sm border-b border-navy-800 sticky top-0 z-40"
-      style={{ backgroundColor: "#000f3d" }}
-    >
+    <nav className="shadow-sm border-b border-navy-800 sticky top-0 z-40" style={{ backgroundColor: "#000f3d" }}>
       <div className="max-w-full xl:max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           {/* Logo Container */}
@@ -216,16 +213,14 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:space-x-4 lg:space-x-8">
-            {/* Public Navigation */}
-            {publicNavLinks.map((link) => (
+            {/* Public Navigation - show only when not authenticated */}
+            {!isAuthenticated && publicNavLinks.map((link) =>
               link.scrollTo ? (
                 <button
                   key={link.path}
                   onClick={() => handleScrollNavigation(link.scrollTo)}
                   className={`px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-all duration-300 ease-in-out relative ${
-                    isLinkActive(link)
-                      ? "text-yellow-400"
-                      : "text-yellow-200 hover:text-yellow-400"
+                    isLinkActive(link) ? "text-yellow-400" : "text-yellow-200 hover:text-yellow-400"
                   }`}
                 >
                   {link.label}
@@ -240,9 +235,7 @@ const Navbar = () => {
                   key={link.path}
                   to={link.path}
                   className={`px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-all duration-300 ease-in-out relative ${
-                    isLinkActive(link)
-                      ? "text-yellow-400"
-                      : "text-yellow-200 hover:text-yellow-400"
+                    isLinkActive(link) ? "text-yellow-400" : "text-yellow-200 hover:text-yellow-400"
                   }`}
                 >
                   {link.label}
@@ -253,7 +246,7 @@ const Navbar = () => {
                   />
                 </Link>
               )
-            ))}
+            )}
 
             {/* Role-based Navigation - show for authenticated users in desktop view */}
             {shouldShowProfile && profile?.role && roleBasedLinks[profile.role] && (
@@ -262,7 +255,6 @@ const Navbar = () => {
                   <button
                     key={link.path}
                     onClick={() => {
-                      // For dashboard-related links, scroll to section instead of navigating
                       if (link.path === "/dashboard" || link.path.startsWith("/dashboard")) {
                         window.scrollTo({ top: 0, behavior: "smooth" });
                       } else if (link.path === "/events") {
@@ -275,6 +267,39 @@ const Navbar = () => {
                         } else {
                           const element = document.getElementById("events");
                           if (element) element.scrollIntoView({ behavior: "smooth" });
+                        }
+                      } else if (link.path === "/post-donation") {
+                        if (location.pathname !== "/dashboard") {
+                          navigate("/dashboard");
+                          setTimeout(() => {
+                            const el = document.getElementById("postdonation");
+                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                          }, 100);
+                        } else {
+                          const el = document.getElementById("postdonation");
+                          if (el) el.scrollIntoView({ behavior: "smooth" });
+                        }
+                      } else if (link.path === "/my-donations") {
+                        if (location.pathname !== "/dashboard") {
+                          navigate("/dashboard");
+                          setTimeout(() => {
+                            const el = document.getElementById("mydonations");
+                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                          }, 100);
+                        } else {
+                          const el = document.getElementById("mydonations");
+                          if (el) el.scrollIntoView({ behavior: "smooth" });
+                        }
+                      } else if (link.path === "/browse-requests") {
+                        if (location.pathname !== "/dashboard") {
+                          navigate("/dashboard");
+                          setTimeout(() => {
+                            const el = document.getElementById("browserequests");
+                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                          }, 100);
+                        } else {
+                          const el = document.getElementById("browserequests");
+                          if (el) el.scrollIntoView({ behavior: "smooth" });
                         }
                       } else {
                         window.location.href = link.path;
@@ -290,6 +315,13 @@ const Navbar = () => {
                     <span>{link.label}</span>
                   </button>
                 ))}
+                <Link
+                  to="/about"
+                  className={`flex items-center space-x-1 px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-colors text-yellow-200 hover:text-yellow-400`}
+                >
+                  <Info className="h-4 w-4" />
+                  <span>About</span>
+                </Link>
               </>
             )}
 
@@ -309,9 +341,7 @@ const Navbar = () => {
                       </span>
                     )}
                   </div>
-                  <span className="text-sm font-medium text-white">
-                    {profile?.name || "User"}
-                  </span>
+                  <span className="text-sm font-medium text-white">{profile?.name || "User"}</span>
                   <ChevronDown
                     className={`h-4 w-4 text-yellow-400 transition-transform ${
                       isProfileMenuOpen ? "rotate-180" : ""
@@ -423,6 +453,7 @@ const Navbar = () => {
       <AnimatePresence>
         {shouldShowProfile && isSideMenuOpen && (
           <>
+            {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 0.5 }}
@@ -430,6 +461,7 @@ const Navbar = () => {
               className="fixed inset-0 bg-black z-40"
               onClick={() => setIsSideMenuOpen(false)}
             />
+            {/* Drawer */}
             <motion.div
               initial={{ x: -300 }}
               animate={{ x: 0 }}
@@ -473,6 +505,39 @@ const Navbar = () => {
                             const element = document.getElementById("events");
                             if (element) element.scrollIntoView({ behavior: "smooth" });
                           }
+                        } else if (link.path === "/post-donation") {
+                          if (location.pathname !== "/dashboard") {
+                            navigate("/dashboard");
+                            setTimeout(() => {
+                              const el = document.getElementById("postdonation");
+                              if (el) el.scrollIntoView({ behavior: "smooth" });
+                            }, 100);
+                          } else {
+                            const el = document.getElementById("postdonation");
+                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                          }
+                        } else if (link.path === "/my-donations") {
+                          if (location.pathname !== "/dashboard") {
+                            navigate("/dashboard");
+                            setTimeout(() => {
+                              const el = document.getElementById("mydonations");
+                              if (el) el.scrollIntoView({ behavior: "smooth" });
+                            }, 100);
+                          } else {
+                            const el = document.getElementById("mydonations");
+                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                          }
+                        } else if (link.path === "/browse-requests") {
+                          if (location.pathname !== "/dashboard") {
+                            navigate("/dashboard");
+                            setTimeout(() => {
+                              const el = document.getElementById("browserequests");
+                              if (el) el.scrollIntoView({ behavior: "smooth" });
+                            }, 100);
+                          } else {
+                            const el = document.getElementById("browserequests");
+                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                          }
                         } else {
                           window.location.href = link.path;
                         }
@@ -496,7 +561,7 @@ const Navbar = () => {
               {/* Public quick links */}
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold text-yellow-300 text-center mb-2">Public Links</h3>
-                {publicNavLinks.map((link) => (
+                {publicNavLinks.map((link) =>
                   link.scrollTo ? (
                     <button
                       key={link.path}
@@ -505,7 +570,7 @@ const Navbar = () => {
                         setIsSideMenuOpen(false);
                       }}
                       className={`block w-full text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                        location.pathname === link.path
+                        isLinkActive(link)
                           ? "text-yellow-400 bg-navy-800 border-yellow-400"
                           : "text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400"
                       }`}
@@ -526,7 +591,7 @@ const Navbar = () => {
                       {link.label}
                     </Link>
                   )
-                ))}
+                )}
               </div>
             </motion.div>
           </>
@@ -545,7 +610,7 @@ const Navbar = () => {
           >
             <div className="px-6 py-6 space-y-3 max-w-md mx-auto">
               {/* Public Navigation for Mobile */}
-              {publicNavLinks.map((link) => (
+              {publicNavLinks.map((link) =>
                 link.scrollTo ? (
                   <button
                     key={link.path}
@@ -575,7 +640,7 @@ const Navbar = () => {
                     {link.label}
                   </Link>
                 )
-              ))}
+              )}
 
               {/* Mobile Auth Section - Only for non-authenticated users */}
               {!isAuthenticated && (
