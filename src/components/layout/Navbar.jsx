@@ -155,7 +155,7 @@ const Navbar = () => {
       className="shadow-sm border-b border-navy-800 sticky top-0 z-40"
       style={{ backgroundColor: "#000f3d" }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="max-w-full xl:max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16">
           {/* Logo Container */}
           <div className="flex items-center relative">
@@ -187,14 +187,14 @@ const Navbar = () => {
           </div>
 
           {/* Desktop Navigation */}
-          <div className="hidden md:flex md:items-center md:space-x-8">
+          <div className="hidden md:flex md:items-center md:space-x-4 lg:space-x-8">
             {/* Role-based Public Navigation - show only for non-authenticated users */}
             {!isAuthenticated &&
               currentNavLinks.map((link) => (
                 <Link
                   key={link.path}
                   to={link.path}
-                  className={`px-3 py-2 text-sm font-medium transition-colors ${
+                  className={`px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-colors ${
                     location.pathname === link.path
                       ? "text-yellow-400 border-b-2 border-yellow-400"
                       : "text-yellow-200 hover:text-yellow-400"
@@ -427,7 +427,7 @@ const Navbar = () => {
                           window.location.href = link.path;
                         }
                       }}
-                      className={`flex items-center space-x-1 px-3 py-2 text-sm font-medium transition-colors ${
+                      className={`flex items-center space-x-1 px-2 lg:px-3 py-2 text-xs lg:text-sm font-medium transition-colors ${
                         location.pathname === link.path
                           ? "text-yellow-400"
                           : "text-yellow-200 hover:text-yellow-400"
@@ -548,16 +548,29 @@ const Navbar = () => {
             {shouldShowProfile ? (
               <button
                 onClick={() => setIsSideMenuOpen(true)}
-                className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800"
+                className="flex items-center gap-2 p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800"
                 aria-label="Open menu"
               >
-                <Menu className="h-6 w-6" />
+                <div className="h-6 w-6 bg-yellow-600 rounded-full overflow-hidden flex items-center justify-center">
+                  {profile?.profile_image_url ? (
+                    <img
+                      src={profile.profile_image_url}
+                      alt="Profile"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-white text-xs font-medium">
+                      {profile?.name?.charAt(0)?.toUpperCase() || "U"}
+                    </span>
+                  )}
+                </div>
+                <Menu className="h-5 w-5" />
               </button>
             ) : null}
 
             {/* Mobile Profile Dropdown - for authenticated users */}
             {shouldShowProfile ? (
-              <div className="relative" ref={mobileProfileMenuRef}>
+              <div className="hidden" ref={mobileProfileMenuRef}>
                 <button
                   onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
                   className="flex items-center space-x-1 p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800"

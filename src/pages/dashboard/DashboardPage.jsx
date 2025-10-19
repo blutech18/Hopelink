@@ -565,10 +565,10 @@ const DashboardPage = () => {
   // Handle case where user has unexpected role or no role-specific content
   if (!isDonor && !isRecipient && !isAdmin && profile) {
     return (
-      <div className="min-h-screen py-8" style={{ backgroundColor: "#00237d" }}>
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen py-6 sm:py-8 overflow-x-hidden" style={{ backgroundColor: "#00237d" }}>
+        <div className="max-w-full xl:max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
           <div className="text-center">
-            <h1 className="text-3xl font-bold text-white mb-4">
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-4">
               Welcome, {profile.name}!
             </h1>
             <p className="text-skyblue-300 mb-8">
@@ -590,8 +590,8 @@ const DashboardPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{ backgroundColor: "#00237d" }}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-6 sm:py-8 overflow-x-hidden" style={{ backgroundColor: "#00237d" }}>
+      <div className="max-w-full xl:max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           id="dashboard"
@@ -600,12 +600,12 @@ const DashboardPage = () => {
           transition={{ duration: 0.6 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:flex-wrap items-start sm:items-center justify-between gap-3">
             <div>
-              <h1 className="text-3xl font-bold text-white">
+              <h1 className="text-2xl sm:text-3xl font-bold text-white break-words">
                 Welcome back, {profile?.name}!
               </h1>
-              <p className="text-yellow-200 mt-2">
+              <p className="text-yellow-200 text-sm sm:text-base mt-2">
                 {isDonor && "Ready to make a difference with your donations?"}
                 {isRecipient && "Let's find the support you need."}
                 {isVolunteer && "Thank you for helping connect our community."}
@@ -635,23 +635,23 @@ const DashboardPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8"
+          className="grid grid-cols-3 gap-2 sm:gap-6 mb-8"
         >
           {statsCards.map((stat, index) => (
             <div
               key={index}
-              className="card p-6 border border-gray-600"
+              className="card p-4 sm:p-6 border border-gray-600"
               style={{ backgroundColor: "#001a5c" }}
             >
               <div className="flex items-center">
                 <div className="flex-shrink-0">
-                  <stat.icon className="h-8 w-8 text-yellow-300" />
+                  <stat.icon className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-300" />
                 </div>
                 <div className="ml-4">
-                  <p className="text-sm font-medium text-yellow-200">
+                  <p className="text-xs sm:text-sm font-medium text-yellow-200">
                     {stat.label}
                   </p>
-                  <p className="text-2xl font-bold text-white">{stat.value}</p>
+                  <p className="text-xl sm:text-2xl font-bold text-white">{stat.value}</p>
                 </div>
               </div>
             </div>
@@ -668,7 +668,7 @@ const DashboardPage = () => {
           <h2 className="text-xl font-semibold text-white mb-4">
             Quick Actions
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-6">
             {dashboardCards.map((card, index) => (
               <button
                 key={index}
@@ -701,20 +701,20 @@ const DashboardPage = () => {
                     window.location.href = card.link;
                   }
                 }}
-                className="card p-6 hover:shadow-lg transition-shadow group border border-gray-600"
+                className="card p-4 sm:p-6 hover:shadow-lg transition-shadow group border border-gray-600"
                 style={{ backgroundColor: "#001a5c" }}
               >
                 <div className="flex items-center">
                   <div
-                    className={`flex-shrink-0 p-3 rounded-lg ${card.color} text-white group-hover:scale-110 transition-transform`}
+                    className={`flex-shrink-0 p-2 sm:p-3 rounded-lg ${card.color} text-white group-hover:scale-110 transition-transform`}
                   >
-                    <card.icon className="h-6 w-6" />
+                    <card.icon className="h-5 w-5 sm:h-6 sm:w-6" />
                   </div>
-                  <div className="ml-4">
-                    <h3 className="text-lg font-medium text-white group-hover:text-yellow-300 transition-colors">
+                  <div className="ml-4 text-left">
+                    <h3 className="text-base sm:text-lg font-medium text-white group-hover:text-yellow-300 transition-colors">
                       {card.title}
                     </h3>
-                    <p className="text-sm text-yellow-200">
+                    <p className="text-xs sm:text-sm text-yellow-200">
                       {card.description}
                     </p>
                   </div>
@@ -729,7 +729,7 @@ const DashboardPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.3 }}
-          className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-12"
+          className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8 mb-12"
         >
           <div
             className="card p-6 border border-gray-600"
@@ -902,7 +902,7 @@ const DashboardPage = () => {
                     <Gift className="h-6 w-6 mr-2 text-yellow-300" />
                     My Donations
                   </h2>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-300" />
                       <input
@@ -1254,7 +1254,7 @@ const DashboardPage = () => {
                     <Heart className="h-6 w-6 mr-2 text-yellow-300" />
                     My Requests
                   </h2>
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-300" />
                       <input
@@ -1354,7 +1354,7 @@ const DashboardPage = () => {
                 <Calendar className="h-6 w-6 mr-2 text-yellow-300" />
                 Community Events
               </h2>
-              <div className="flex items-center space-x-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-300" />
                   <input
