@@ -25,6 +25,7 @@ const Navbar = () => {
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false)
+  const [activeSection, setActiveSection] = useState('home')
   const { isAuthenticated, profile, signOut } = useAuth()
   const { success, error } = useToast()
   const location = useLocation()
@@ -57,6 +58,38 @@ const Navbar = () => {
     setIsProfileMenuOpen(false)
     setIsMenuOpen(false)
   }, [isAuthenticated])
+
+  // Track scroll position to update active section
+  useEffect(() => {
+    const handleScroll = () => {
+      if (location.pathname !== '/') {
+        setActiveSection('home')
+        return
+      }
+
+      const sections = ['home', 'events', 'about']
+      const scrollPosition = window.scrollY + 100 // Offset for navbar height
+
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const section = sections[i]
+        const element = section === 'home' ? document.body : document.getElementById(section)
+        
+        if (element) {
+          const elementTop = section === 'home' ? 0 : element.offsetTop
+          if (scrollPosition >= elementTop) {
+            setActiveSection(section)
+            break
+          }
+        }
+      }
+    }
+
+    // Set initial active section
+    handleScroll()
+    
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [location.pathname])
 
   const handleSignOut = async () => {
     // Prevent double-clicking
@@ -91,12 +124,49 @@ const Navbar = () => {
     }
   }
 
+  const handleScrollNavigation = (scrollTo) => {
+    // If we're not on the home page, navigate there first
+    if (location.pathname !== '/') {
+      navigate('/')
+      // Wait for navigation to complete, then scroll
+      setTimeout(() => {
+        if (scrollTo === 'home') {
+          window.scrollTo({ top: 0, behavior: 'smooth' })
+        } else {
+          const element = document.getElementById(scrollTo)
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+          }
+        }
+      }, 100)
+    } else {
+      // We're already on home page, just scroll
+      if (scrollTo === 'home') {
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      } else {
+        const element = document.getElementById(scrollTo)
+        if (element) {
+          element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }
+      }
+    }
+  }
+
   // Public navigation links (shown only when not authenticated or when clicking logo)
   const publicNavLinks = [
-    { path: '/', label: 'Home' },
-    { path: '/events', label: 'Events' },
-    { path: '/about', label: 'About' },
+    { path: '/', label: 'Home', scrollTo: 'home' },
+    { path: '/events', label: 'Events', scrollTo: 'events' },
+    { path: '/about', label: 'About', scrollTo: 'about' },
   ]
+
+  // Helper function to determine if a link is active
+  const isLinkActive = (link) => {
+    if (link.scrollTo) {
+      // For scroll-based navigation, check if current section matches the link's scroll target
+      return location.pathname === '/' && activeSection === link.scrollTo
+    }
+    return location.pathname === link.path
+  }
 
   // Get navigation links based on user role
   const getNavLinksForRole = (role) => {
@@ -184,19 +254,39 @@ const Navbar = () => {
 
           {/* Desktop Navigation */}
           <div className="hidden md:flex md:items-center md:space-x-8">
-            {/* Role-based Public Navigation - show only for non-authenticated users */}
-            {!isAuthenticated && currentNavLinks.map((link) => (
-              <Link
-                key={link.path}
-                to={link.path}
-                className={`px-3 py-2 text-sm font-medium transition-colors ${
-                  location.pathname === link.path
-                    ? 'text-yellow-400 border-b-2 border-yellow-400'
-                    : 'text-yellow-200 hover:text-yellow-400'
-                }`}
-              >
-                {link.label}
-              </Link>
+            {/* Public Navigation - show for all users */}
+            {publicNavLinks.map((link) => (
+              link.scrollTo ? (
+                <button
+                  key={link.path}
+                  onClick={() => handleScrollNavigation(link.scrollTo)}
+                  className={`px-3 py-2 text-sm font-medium transition-all duration-300 ease-in-out relative ${
+                    isLinkActive(link)
+                      ? 'text-yellow-400'
+                      : 'text-yellow-200 hover:text-yellow-400'
+                  }`}
+                >
+                  {link.label}
+                  <div className={`absolute bottom-0 left-0 h-0.5 bg-yellow-400 transition-all duration-300 ease-in-out ${
+                    isLinkActive(link) ? 'w-full' : 'w-0'
+                  }`} />
+                </button>
+              ) : (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`px-3 py-2 text-sm font-medium transition-all duration-300 ease-in-out relative ${
+                    isLinkActive(link)
+                      ? 'text-yellow-400'
+                      : 'text-yellow-200 hover:text-yellow-400'
+                  }`}
+                >
+                  {link.label}
+                  <div className={`absolute bottom-0 left-0 h-0.5 bg-yellow-400 transition-all duration-300 ease-in-out ${
+                    isLinkActive(link) ? 'w-full' : 'w-0'
+                  }`} />
+                </Link>
+              )
             ))}
 
             {/* Role-based Navigation - show only for non-authenticated users */}
@@ -462,18 +552,35 @@ const Navbar = () => {
               <div className="space-y-2">
                 <h3 className="text-sm font-semibold text-yellow-300 text-center mb-2">Public Links</h3>
                 {publicNavLinks.map((link) => (
-                  <Link
-                    key={link.path}
-                    to={link.path}
-                    className={`block text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                      location.pathname === link.path
-                        ? 'text-yellow-400 bg-navy-800 border-yellow-400'
-                        : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
-                    }`}
-                    onClick={() => setIsSideMenuOpen(false)}
-                  >
-                    {link.label}
-                  </Link>
+                  link.scrollTo ? (
+                    <button
+                      key={link.path}
+                      onClick={() => {
+                        handleScrollNavigation(link.scrollTo)
+                        setIsSideMenuOpen(false)
+                      }}
+                      className={`block w-full text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
+                        location.pathname === link.path
+                          ? 'text-yellow-400 bg-navy-800 border-yellow-400'
+                          : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
+                      }`}
+                    >
+                      {link.label}
+                    </button>
+                  ) : (
+                    <Link
+                      key={link.path}
+                      to={link.path}
+                      className={`block text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
+                        location.pathname === link.path
+                          ? 'text-yellow-400 bg-navy-800 border-yellow-400'
+                          : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
+                      }`}
+                      onClick={() => setIsSideMenuOpen(false)}
+                    >
+                      {link.label}
+                    </Link>
+                  )
                 ))}
               </div>
             </motion.div>
@@ -481,9 +588,9 @@ const Navbar = () => {
         )}
       </AnimatePresence>
 
-      {/* Mobile Navigation Menu - Only for non-authenticated users */}
+      {/* Mobile Navigation Menu - Show for all users */}
       <AnimatePresence>
-        {isMenuOpen && !isAuthenticated && (
+        {isMenuOpen && (
           <motion.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: 'auto' }}
@@ -491,24 +598,42 @@ const Navbar = () => {
             className="md:hidden border-t border-navy-800 shadow-lg" style={{backgroundColor: '#000f3d'}}
           >
             <div className="px-6 py-6 space-y-3 max-w-md mx-auto">
-              {/* Role-based Public Navigation for Mobile */}
-              {currentNavLinks.map((link) => (
-                <Link
-                  key={link.path}
-                  to={link.path}
-                  className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 ${
-                    location.pathname === link.path
-                      ? 'text-white bg-navy-800 border border-yellow-400/50'
-                      : 'text-gray-200 hover:text-white hover:bg-navy-800/70 border border-navy-700'
-                  }`}
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  {link.label}
-                </Link>
+              {/* Public Navigation for Mobile */}
+              {publicNavLinks.map((link) => (
+                link.scrollTo ? (
+                  <button
+                    key={link.path}
+                    onClick={() => {
+                      handleScrollNavigation(link.scrollTo)
+                      setIsMenuOpen(false)
+                    }}
+                    className={`block w-full px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 ${
+                      isLinkActive(link)
+                        ? 'text-white bg-navy-800 border border-yellow-400/50'
+                        : 'text-gray-200 hover:text-white hover:bg-navy-800/70 border border-navy-700'
+                    }`}
+                  >
+                    {link.label}
+                  </button>
+                ) : (
+                  <Link
+                    key={link.path}
+                    to={link.path}
+                    className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 ${
+                      isLinkActive(link)
+                        ? 'text-white bg-navy-800 border border-yellow-400/50'
+                        : 'text-gray-200 hover:text-white hover:bg-navy-800/70 border border-navy-700'
+                    }`}
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                )
               ))}
 
-              {/* Mobile Auth Section */}
-              <div className="pt-4 space-y-3 border-t border-navy-700/50">
+              {/* Mobile Auth Section - Only for non-authenticated users */}
+              {!isAuthenticated && (
+                <div className="pt-4 space-y-3 border-t border-navy-700/50">
                 <Link
                   to="/login"
                   className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 border ${
@@ -531,7 +656,8 @@ const Navbar = () => {
                 >
                   Sign Up
                 </Link>
-              </div>
+                </div>
+              )}
             </div>
           </motion.div>
         )}

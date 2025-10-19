@@ -25,7 +25,8 @@ import {
   GraduationCap,
   Heart as HeartIcon,
   Edit,
-  Trash2
+  Trash2,
+  ArrowLeft
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -171,6 +172,17 @@ const EventsPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
+          {/* Back Button */}
+          <div className="mb-6">
+            <Link
+              to="/"
+              className="inline-flex items-center text-yellow-400 hover:text-yellow-300 transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5 mr-2" />
+              <span className="font-medium">Back to Home</span>
+            </Link>
+          </div>
+          
           <div className="flex items-center justify-between mb-6">
             <div className="text-center flex-1">
               <Calendar className="h-16 w-16 text-yellow-400 mx-auto mb-4" />

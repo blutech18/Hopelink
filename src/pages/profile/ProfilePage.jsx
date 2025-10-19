@@ -1145,7 +1145,7 @@ const ProfilePage = () => {
                     <button
                       type="button"
                       onClick={() => setShowLocationPicker(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors"
+                      className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-navy-950 rounded-lg transition-colors"
                     >
                       <Navigation className="h-4 w-4" />
                       Select on Map
@@ -1155,10 +1155,10 @@ const ProfilePage = () => {
 
                 {/* Matching Algorithm Info Banner */}
                 {(profile.role === 'donor' || profile.role === 'recipient' || profile.role === 'volunteer') && (
-                  <div className="mb-6 p-4 bg-gradient-to-r from-green-500/10 to-skyblue-500/10 border border-green-500/20 rounded-lg">
+                  <div className="mb-6 p-4 bg-gradient-to-r from-yellow-500/10 to-skyblue-500/10 border border-yellow-500/20 rounded-lg">
                     <div className="flex items-start gap-3">
-                      <div className="flex-shrink-0 w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
-                        <Globe className="h-5 w-5 text-green-400" />
+                      <div className="flex-shrink-0 w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
+                        <Globe className="h-5 w-5 text-yellow-400" />
                       </div>
                       <div className="flex-1">
                         <h3 className="text-sm font-semibold text-white mb-1">
@@ -1171,7 +1171,7 @@ const ProfilePage = () => {
                           {profile.role === 'volunteer' && 'donors and recipients'}
                           . This ensures faster deliveries and more efficient assistance. 
                           {selectedLocation && selectedLocation.lat && selectedLocation.lng && (
-                            <span className="text-green-400 font-medium ml-1">
+                            <span className="text-yellow-400 font-medium ml-1">
                               ✓ Location verified
                             </span>
                           )}
