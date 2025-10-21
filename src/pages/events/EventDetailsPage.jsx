@@ -25,12 +25,12 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
 import { FormSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 
 const EventDetailsPage = () => {
-  const { eventId } = useParams()
+  const { id: eventId } = useParams()
   const navigate = useNavigate()
   const { user } = useAuth()
   const { success, error } = useToast()
@@ -40,97 +40,64 @@ const EventDetailsPage = () => {
   const [joinLoading, setJoinLoading] = useState(false)
 
   useEffect(() => {
-    fetchEventDetails()
+    if (eventId) {
+      fetchEventDetails()
+    }
   }, [eventId])
 
   const fetchEventDetails = async () => {
     try {
       setLoading(true)
-      // For now, we'll create a mock event since we don't have the specific endpoint
-      // In a real app, this would be: const data = await db.getEvent(eventId)
-      const mockEvent = {
-        id: eventId,
-        name: "Community Food Distribution Drive",
-        description: "Join us for a large-scale food distribution event to help families in need across our community. We'll be distributing fresh produce, canned goods, and essential items to registered families. Volunteers will help with setup, distribution, and cleanup. This is a great opportunity to make a direct impact in our community.",
-        target_goal: "Food Distribution",
-        location: "Cagayan de Oro Community Center, J.R. Borja St, Cagayan de Oro",
-        start_date: "2024-02-15T08:00:00Z",
-        end_date: "2024-02-15T16:00:00Z",
-        max_participants: 50,
-        current_participants: 23,
-        status: "active",
-        created_by: {
-          name: "HopeLink Foundation",
-          email: "admin@hopelink.org"
-        },
-        requirements: [
-          "Must be able to lift up to 25 lbs",
-          "Comfortable working with diverse groups",
-          "Available for the full event duration",
-          "Follow health and safety protocols"
-        ],
-        what_to_bring: [
-          "Comfortable work clothes",
-          "Water bottle",
-          "Sun protection (hat, sunscreen)",
-          "Valid ID for registration"
-        ],
-        schedule: [
-          { time: "8:00 AM", activity: "Volunteer Registration & Orientation" },
-          { time: "9:00 AM", activity: "Setup & Preparation" },
-          { time: "10:00 AM", activity: "Distribution Begins" },
-          { time: "12:00 PM", activity: "Lunch Break (provided)" },
-          { time: "1:00 PM", activity: "Afternoon Distribution" },
-          { time: "3:30 PM", activity: "Cleanup & Closing" },
-          { time: "4:00 PM", activity: "Volunteer Appreciation" }
-        ],
-        contact_info: {
-          coordinator: "Maria Santos",
-          phone: "+63 88 123-4567",
-          email: "events@hopelink.org"
-        },
-        donation_items: [
-          {
-            id: 1,
-            name: "Rice Bags (10kg)",
-            category: "Food & Beverages",
-            quantity: 50,
-            collected_quantity: 23,
-            description: "High-quality rice for family distribution"
-          },
-          {
-            id: 2,
-            name: "Canned Goods",
-            category: "Food & Beverages", 
-            quantity: 100,
-            collected_quantity: 45,
-            description: "Assorted canned foods - vegetables, meat, fruits"
-          },
-          {
-            id: 3,
-            name: "Cooking Oil (1L)",
-            category: "Food & Beverages",
-            quantity: 30,
-            collected_quantity: 30,
-            description: "Vegetable cooking oil for families"
-          },
-          {
-            id: 4,
-            name: "Reusable Shopping Bags",
-            category: "Household Items",
-            quantity: 75,
-            collected_quantity: 12,
-            description: "Eco-friendly bags for distributing items"
-          }
-        ]
-      }
-      setEvent(mockEvent)
       
-      // Mock check if user is already a participant
-      setIsParticipant(Math.random() > 0.7) // 30% chance user is already participating
+      // Fetch event from database
+      const eventData = await db.getEvent(eventId)
+      
+      if (!eventData) {
+        setEvent(null)
+        return
+      }
+
+      // Transform the data to match the expected format
+      const transformedEvent = {
+        ...eventData,
+        created_by: eventData.creator || { name: 'Unknown', email: '' },
+        current_participants: eventData.participants?.[0]?.count || 0,
+        donation_items: eventData.event_items || [],
+        // Parse JSON fields if they exist
+        requirements: eventData.requirements || [],
+        what_to_bring: eventData.what_to_bring || [],
+        schedule: eventData.schedule || [],
+        contact_info: eventData.contact_info || {
+          coordinator: eventData.creator?.name || 'Event Coordinator',
+          phone: eventData.creator?.phone_number || 'N/A',
+          email: eventData.creator?.email || 'N/A'
+        }
+      }
+      
+      setEvent(transformedEvent)
+      
+      // Check if user is already a participant
+      if (user && supabase) {
+        try {
+          const { data: participation, error: participationError } = await supabase
+            .from('event_participants')
+            .select('id')
+            .eq('event_id', eventId)
+            .eq('user_id', user.id)
+            .maybeSingle()
+          
+          if (!participationError) {
+            setIsParticipant(!!participation)
+          }
+        } catch (participationErr) {
+          console.log('Could not check participation status:', participationErr)
+          setIsParticipant(false)
+        }
+      }
     } catch (err) {
       console.error('Error fetching event:', err)
       error('Failed to load event details')
+      setEvent(null)
     } finally {
       setLoading(false)
     }
@@ -188,7 +155,7 @@ const EventDetailsPage = () => {
   const getStatusColor = (status) => {
     const colors = {
       active: 'bg-success-900/20 text-success-300',
-      upcoming: 'bg-skyblue-900/20 text-skyblue-300',
+      upcoming: 'bg-yellow-900/20 text-yellow-300',
       completed: 'bg-gray-900/20 text-gray-300',
       cancelled: 'bg-danger-900/20 text-danger-300'
     }
@@ -225,7 +192,7 @@ const EventDetailsPage = () => {
           <div className="card p-12 text-center">
             <AlertCircle className="h-16 w-16 text-danger-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-white mb-2">Event Not Found</h2>
-            <p className="text-skyblue-300 mb-6">The event you're looking for doesn't exist or has been removed.</p>
+            <p className="text-yellow-300 mb-6">The event you're looking for doesn't exist or has been removed.</p>
             <Link to="/events" className="btn btn-primary">
               <ArrowLeft className="h-4 w-4 mr-2" />
               Back to Events
@@ -253,98 +220,160 @@ const EventDetailsPage = () => {
         >
           <button
             onClick={() => navigate('/events')}
-            className="flex items-center text-skyblue-400 hover:text-skyblue-300 transition-colors"
+            className="flex items-center text-white hover:text-yellow-300 transition-colors bg-navy-800/80 backdrop-blur-sm px-4 py-2 rounded-lg"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Events
           </button>
         </motion.div>
 
-        {/* Event Header - Full Width Row */}
+        {/* Hero Image Section */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="card p-6 mb-6"
+          className="mb-6"
         >
-          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-6">
-            <div className="flex items-start gap-4 flex-1">
-              <div className="bg-skyblue-600 p-3 rounded-lg flex-shrink-0">
-                <EventIcon className="h-8 w-8 text-white" />
+          <div className="w-full rounded-lg overflow-hidden">
+            {event.image_url ? (
+              <>
+                {/* Image - 100% Display */}
+                <div className="w-full relative">
+                  <img
+                    src={event.image_url}
+                    alt={event.name}
+                    className="w-full h-96 object-cover"
+                  />
+                  {/* Gradient Transition Overlay at Bottom of Image */}
+                  <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-b from-transparent to-[#00237d]"></div>
+                  
+                  {/* Share and Save Buttons - Top Right */}
+                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                    <button 
+                      className="p-2 bg-yellow-400 hover:bg-yellow-300 text-navy-900 rounded-lg transition-all shadow-lg"
+                      title="Share Event"
+                    >
+                      <Share2 className="h-5 w-5" />
+                    </button>
+                    <button 
+                      className="p-2 bg-yellow-400 hover:bg-yellow-300 text-navy-900 rounded-lg transition-all shadow-lg"
+                      title="Save Event"
+                    >
+                      <Heart className="h-5 w-5" />
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Dark Blue Gradient Section Below Image */}
+                <div className="w-full bg-gradient-to-b from-[#00237d] to-[#001a5c] p-8 pt-4">
+                  <h1 className="text-4xl lg:text-5xl font-bold text-white mb-3">
+                    {event.name}
+                  </h1>
+                  <p className="text-lg text-white/90 max-w-4xl">
+                    {event.description}
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="w-full h-96 bg-gradient-to-br from-[#00237d] to-[#001a5c] flex flex-col items-center justify-center p-8">
+                <EventIcon className="h-32 w-32 text-yellow-400 mb-6" />
+                <h1 className="text-4xl lg:text-5xl font-bold text-white mb-3 text-center">
+                  {event.name}
+                </h1>
+                <p className="text-lg text-white/90 max-w-4xl text-center">
+                  {event.description}
+                </p>
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Event Details Card */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="card p-6 mb-6 border-2 border-yellow-400/20"
+        >
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+            <div className="flex items-start gap-4 bg-navy-700/30 p-4 rounded-lg border border-yellow-400/10">
+              <div className="p-2 bg-yellow-400/20 rounded-lg">
+                <Calendar className="h-6 w-6 text-yellow-400 flex-shrink-0" />
               </div>
               <div className="min-w-0 flex-1">
-                <h1 className="text-2xl lg:text-3xl font-bold text-white mb-3 break-words">{event.name}</h1>
-                <div className="flex flex-wrap items-center gap-3 text-sm mb-4">
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full font-medium ${getStatusColor(event.status)}`}>
-                    {event.status === 'active' ? 'Active' : 
-                     event.status === 'upcoming' ? 'Upcoming' : 
-                     event.status === 'completed' ? 'Completed' : 'Cancelled'}
-                  </span>
-                  <span className="text-skyblue-400">{event.target_goal}</span>
-                </div>
-                <p className="text-skyblue-200 leading-relaxed">{event.description}</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <button 
-                className="p-2 text-skyblue-400 hover:text-skyblue-300 hover:bg-navy-700 rounded-lg transition-all flex items-center justify-center"
-                title="Share Event"
-              >
-                <Share2 className="h-5 w-5" />
-              </button>
-              <button 
-                className="p-2 text-skyblue-400 hover:text-skyblue-300 hover:bg-navy-700 rounded-lg transition-all flex items-center justify-center"
-                title="Save Event"
-              >
-                <Heart className="h-5 w-5" />
-              </button>
-            </div>
-          </div>
-
-          {/* Key Details - Responsive Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6 pt-6 border-t border-navy-700">
-            <div className="flex items-start gap-3">
-              <Calendar className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="font-medium text-white text-sm">Event Date</div>
-                <div className="text-xs text-skyblue-400">{formatDate(event.start_date)}</div>
-                <div className="text-xs text-skyblue-400">
+                <div className="font-semibold text-white text-sm mb-1">Event Date</div>
+                <div className="text-sm text-yellow-300 font-medium">{formatDate(event.start_date)}</div>
+                <div className="text-xs text-yellow-200 mt-1">
                   {formatTime(event.start_date)} - {formatTime(event.end_date)}
                 </div>
               </div>
             </div>
             
-            <div className="flex items-start gap-3">
-              <MapPin className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="font-medium text-white text-sm">Location</div>
-                <div className="text-xs text-skyblue-400 break-words">{event.location}</div>
+            <div className="flex items-start gap-4 bg-navy-700/30 p-4 rounded-lg border border-yellow-400/10">
+              <div className="p-2 bg-yellow-400/20 rounded-lg">
+                <MapPin className="h-6 w-6 text-yellow-400 flex-shrink-0" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-white text-sm mb-1">Location</div>
+                <div className="text-sm text-yellow-300 font-medium break-words">{event.location}</div>
               </div>
             </div>
 
-            <div className="flex items-start gap-3">
-              <Users className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
-              <div className="min-w-0">
-                <div className="font-medium text-white text-sm">Participants</div>
-                <div className="text-xs text-skyblue-400">
+            <div className="flex items-start gap-4 bg-navy-700/30 p-4 rounded-lg border border-yellow-400/10">
+              <div className="p-2 bg-yellow-400/20 rounded-lg">
+                <Users className="h-6 w-6 text-yellow-400 flex-shrink-0" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="font-semibold text-white text-sm mb-1">Participants</div>
+                <div className="text-sm text-yellow-300 font-medium">
                   {event.current_participants} / {event.max_participants} joined
                 </div>
               </div>
             </div>
-            
-            <div className="flex items-start gap-3">
-              <div className="h-5 w-5 flex-shrink-0 mt-0.5">
-                <div className="w-full bg-navy-700 rounded-full h-2">
-                  <div 
-                    className="bg-skyblue-500 h-2 rounded-full transition-all"
-                    style={{ width: `${participationPercentage}%` }}
-                  />
+          </div>
+
+          {/* Enhanced Participation Bar - 3x Height */}
+          <div className="bg-gradient-to-r from-yellow-900/20 to-orange-900/20 p-5 rounded-lg border border-yellow-400/30">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-yellow-400 rounded-lg">
+                  <Users className="h-5 w-5 text-navy-900" />
+                </div>
+                <div>
+                  <div className="font-bold text-white text-base">Event Participation</div>
+                  <div className="text-xs text-yellow-300">
+                    {event.current_participants} out of {event.max_participants} spots filled
+                  </div>
                 </div>
               </div>
-              <div className="min-w-0">
-                <div className="font-medium text-white text-sm">Participation</div>
-                <div className="text-xs text-skyblue-400">{Math.round(participationPercentage)}%</div>
+              <div className="text-right">
+                <div className="text-3xl font-bold text-yellow-300">{Math.round(participationPercentage)}%</div>
+                <div className="text-xs text-yellow-200">Capacity</div>
               </div>
+            </div>
+            
+            {/* 3x Height Progress Bar */}
+            <div className="w-full bg-navy-700 rounded-full h-6 overflow-hidden shadow-inner">
+              <div 
+                className="bg-gradient-to-r from-yellow-400 to-orange-400 h-6 rounded-full transition-all duration-500 flex items-center justify-end pr-3"
+                style={{ width: `${participationPercentage}%` }}
+              >
+                {participationPercentage > 15 && (
+                  <span className="text-xs font-bold text-navy-900">{Math.round(participationPercentage)}%</span>
+                )}
+              </div>
+            </div>
+            
+            {/* Status Message */}
+            <div className="mt-3 text-center">
+              {participationPercentage >= 100 ? (
+                <span className="text-sm font-semibold text-red-400">⚠️ Event is Full</span>
+              ) : participationPercentage >= 80 ? (
+                <span className="text-sm font-semibold text-orange-400">🔥 Almost Full - Only {event.max_participants - event.current_participants} spots left!</span>
+              ) : participationPercentage >= 50 ? (
+                <span className="text-sm font-semibold text-yellow-300">✨ Filling Up Fast - {event.max_participants - event.current_participants} spots remaining</span>
+              ) : (
+                <span className="text-sm font-semibold text-green-400">✓ Plenty of Spots Available - {event.max_participants - event.current_participants} spots remaining</span>
+              )}
             </div>
           </div>
         </motion.div>
@@ -379,7 +408,7 @@ const EventDetailsPage = () => {
                         <h3 className="text-white font-semibold text-sm truncate">{item.name}</h3>
                         <p className="text-yellow-300 text-xs font-medium">{item.category}</p>
                         {item.description && (
-                          <p className="text-skyblue-300 text-xs mt-1 line-clamp-2">{item.description}</p>
+                          <p className="text-yellow-200 text-xs mt-1 line-clamp-2">{item.description}</p>
                         )}
                       </div>
                       <div className="text-right ml-2 flex-shrink-0">
@@ -445,10 +474,10 @@ const EventDetailsPage = () => {
               <div className="space-y-3">
                 {event.schedule.map((item, index) => (
                   <div key={index} className="flex items-center gap-3">
-                    <div className="bg-skyblue-600 w-2 h-2 rounded-full flex-shrink-0" />
+                    <div className="bg-yellow-400 w-2 h-2 rounded-full flex-shrink-0" />
                     <div className="flex-1 flex justify-between items-center min-w-0">
-                      <span className="text-skyblue-200 truncate">{item.activity}</span>
-                      <span className="text-skyblue-400 text-sm font-medium ml-2 flex-shrink-0">{item.time}</span>
+                      <span className="text-yellow-200 truncate">{item.activity}</span>
+                      <span className="text-yellow-300 text-sm font-medium ml-2 flex-shrink-0">{item.time}</span>
                     </div>
                   </div>
                 ))}
@@ -465,16 +494,16 @@ const EventDetailsPage = () => {
               <h3 className="text-lg font-semibold text-white mb-4">Contact Information</h3>
               <div className="space-y-3 text-sm">
                 <div>
-                  <span className="text-skyblue-400">Coordinator:</span>
-                  <div className="text-skyblue-200">{event.contact_info.coordinator}</div>
+                  <span className="text-yellow-400">Coordinator:</span>
+                  <div className="text-yellow-200">{event.contact_info.coordinator}</div>
                 </div>
                 <div>
-                  <span className="text-skyblue-400">Phone:</span>
-                  <div className="text-skyblue-200">{event.contact_info.phone}</div>
+                  <span className="text-yellow-400">Phone:</span>
+                  <div className="text-yellow-200">{event.contact_info.phone}</div>
                 </div>
                 <div>
-                  <span className="text-skyblue-400">Email:</span>
-                  <div className="text-skyblue-200">{event.contact_info.email}</div>
+                  <span className="text-yellow-400">Email:</span>
+                  <div className="text-yellow-200">{event.contact_info.email}</div>
                 </div>
               </div>
               <button className="btn btn-secondary w-full mt-4 flex items-center justify-center">
@@ -496,7 +525,7 @@ const EventDetailsPage = () => {
               <h3 className="text-lg font-semibold text-white mb-4">Requirements</h3>
               <ul className="space-y-2">
                 {event.requirements.map((req, index) => (
-                  <li key={index} className="flex items-start text-skyblue-200 text-sm">
+                  <li key={index} className="flex items-start text-yellow-200 text-sm">
                     <CheckCircle className="h-4 w-4 mr-2 text-success-400 mt-0.5 flex-shrink-0" />
                     {req}
                   </li>
@@ -514,8 +543,8 @@ const EventDetailsPage = () => {
               <h3 className="text-lg font-semibold text-white mb-4">What to Bring</h3>
               <ul className="space-y-2">
                 {event.what_to_bring.map((item, index) => (
-                  <li key={index} className="flex items-start text-skyblue-200 text-sm">
-                    <Info className="h-4 w-4 mr-2 text-skyblue-400 mt-0.5 flex-shrink-0" />
+                  <li key={index} className="flex items-start text-yellow-200 text-sm">
+                    <Info className="h-4 w-4 mr-2 text-yellow-400 mt-0.5 flex-shrink-0" />
                     {item}
                   </li>
                 ))}
@@ -533,7 +562,7 @@ const EventDetailsPage = () => {
               
               {!user ? (
                 <div className="text-center">
-                  <p className="text-skyblue-300 text-sm mb-4">Please log in to join this event</p>
+                  <p className="text-yellow-300 text-sm mb-4">Please log in to join this event</p>
                   <Link to="/login" className="btn btn-primary w-full flex items-center justify-center">
                     <UserPlus className="h-4 w-4 mr-2" />
                     Log In to Join
@@ -589,7 +618,7 @@ const EventDetailsPage = () => {
                       </>
                     )}
                   </button>
-                  <p className="text-skyblue-400 text-xs">
+                  <p className="text-yellow-300 text-xs">
                     {event.max_participants - event.current_participants} spots remaining
                   </p>
                 </div>
@@ -605,14 +634,14 @@ const EventDetailsPage = () => {
             >
               <h3 className="text-lg font-semibold text-white mb-4">Organized by</h3>
               <div className="flex items-center">
-                <div className="w-12 h-12 bg-skyblue-600 rounded-full flex items-center justify-center mr-3">
+                <div className="w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center mr-3">
                   <span className="text-white font-semibold">
                     {event.created_by.name.split(' ').map(n => n[0]).join('')}
                   </span>
                 </div>
                 <div>
                   <div className="text-white font-medium">{event.created_by.name}</div>
-                  <div className="text-sm text-skyblue-400">{event.created_by.email}</div>
+                  <div className="text-sm text-yellow-300">{event.created_by.email}</div>
                 </div>
               </div>
             </motion.div>

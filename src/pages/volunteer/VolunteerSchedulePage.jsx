@@ -198,42 +198,49 @@ const VolunteerSchedulePage = () => {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="mb-6 sm:mb-8"
+          className="mb-8"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white mb-2">
-                Volunteer Dashboard
-              </h1>
-              <p className="text-navy-200">
-                Manage your availability and delivery assignments
-              </p>
-            </div>
-            
-            {/* Tab Navigation */}
-            <div className="flex bg-navy-800 rounded-lg p-1">
-              <button
-                onClick={() => setActiveTab('schedule')}
-                className={`px-4 py-2 rounded-md transition-colors flex items-center space-x-2 ${
-                  activeTab === 'schedule'
-                    ? 'bg-skyblue-600 text-white'
-                    : 'text-navy-200 hover:text-white hover:bg-navy-700'
-                }`}
-              >
-                <Calendar className="w-4 h-4" />
-                <span>Schedule</span>
-              </button>
-              <button
-                onClick={() => setActiveTab('deliveries')}
-                className={`px-4 py-2 rounded-md transition-colors flex items-center space-x-2 ${
-                  activeTab === 'deliveries'
-                    ? 'bg-skyblue-600 text-white'
-                    : 'text-navy-200 hover:text-white hover:bg-navy-700'
-                }`}
-              >
-                <Package className="w-4 h-4" />
-                <span>Deliveries</span>
-              </button>
+          <div className="card p-6">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg">
+                  <Calendar className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold text-white mb-1">
+                    Volunteer Dashboard
+                  </h1>
+                  <p className="text-gray-300 text-sm">
+                    Manage your availability and track your delivery assignments
+                  </p>
+                </div>
+              </div>
+              
+              {/* Tab Navigation */}
+              <div className="flex bg-navy-800 rounded-lg p-1.5 border-2 border-yellow-500/20 shadow-lg">
+                <button
+                  onClick={() => setActiveTab('schedule')}
+                  className={`px-5 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 font-semibold ${
+                    activeTab === 'schedule'
+                      ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-white shadow-lg transform scale-105'
+                      : 'text-yellow-300 hover:text-white hover:bg-navy-700'
+                  }`}
+                >
+                  <Calendar className="w-5 h-5" />
+                  <span>My Schedule</span>
+                </button>
+                <button
+                  onClick={() => setActiveTab('deliveries')}
+                  className={`px-5 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 font-semibold ${
+                    activeTab === 'deliveries'
+                      ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-white shadow-lg transform scale-105'
+                      : 'text-yellow-300 hover:text-white hover:bg-navy-700'
+                  }`}
+                >
+                  <Package className="w-5 h-5" />
+                  <span>My Deliveries</span>
+                </button>
+              </div>
             </div>
           </div>
         </motion.div>
@@ -245,47 +252,44 @@ const VolunteerSchedulePage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="space-y-6 sm:space-y-8"
+            className="space-y-6"
           >
-            <div className="flex-1">
-              <h1 className="text-2xl sm:text-3xl font-bold text-white">Volunteer Schedule</h1>
-              <p className="text-skyblue-300 mt-1 sm:mt-2 text-sm sm:text-base">
-                Manage your availability and delivery preferences
-              </p>
+            {/* Action Bar */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-white">Availability Schedule</h2>
+                <p className="text-gray-400 text-sm mt-1">
+                  {editingAvailability ? 'Update your availability settings' : 'Your current availability preferences'}
+                </p>
+              </div>
+              <button
+                onClick={editingAvailability ? cancelEditing : startEditing}
+                className={`px-5 py-3 rounded-lg font-bold transition-all duration-200 flex items-center gap-2 shadow-lg transform hover:scale-105 ${
+                  editingAvailability 
+                    ? hasUnsavedChanges 
+                      ? 'bg-red-600 hover:bg-red-700 text-white' 
+                      : 'bg-gray-600 hover:bg-gray-700 text-white'
+                    : 'bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white'
+                }`}
+              >
+                {editingAvailability ? (
+                  <>
+                    <X className="h-5 w-5" />
+                    <span>{hasUnsavedChanges ? 'Cancel Changes' : 'Cancel'}</span>
+                    {hasUnsavedChanges && (
+                      <span className="ml-1 text-xs bg-white text-red-600 px-2 py-0.5 rounded-full font-semibold">
+                        Unsaved
+                      </span>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Settings className="h-5 w-5" />
+                    <span>Edit Schedule</span>
+                  </>
+                )}
+              </button>
             </div>
-            <button
-              onClick={editingAvailability ? cancelEditing : startEditing}
-              className={`btn w-full sm:w-auto flex items-center justify-center gap-2 ${
-                editingAvailability 
-                  ? hasUnsavedChanges 
-                    ? 'btn-danger' 
-                    : 'btn-secondary'
-                  : 'btn-primary'
-              }`}
-            >
-              {editingAvailability ? (
-                <>
-                  <X className="h-4 w-4" />
-                  <span className="hidden sm:inline">
-                    {hasUnsavedChanges ? 'Cancel Changes' : 'Cancel'}
-                  </span>
-                  <span className="sm:hidden">
-                    {hasUnsavedChanges ? 'Cancel' : 'Cancel'}
-                  </span>
-                  {hasUnsavedChanges && (
-                    <span className="ml-1 text-xs bg-red-500 text-white px-1.5 py-0.5 rounded-full">
-                      Unsaved
-                    </span>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Settings className="h-4 w-4" />
-                  <span className="hidden sm:inline">Edit Schedule</span>
-                  <span className="sm:hidden">Edit</span>
-                </>
-              )}
-            </button>
 
           {/* Weekly Calendar View */}
           <motion.div
@@ -296,7 +300,7 @@ const VolunteerSchedulePage = () => {
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-4 sm:mb-6 gap-4">
             <h2 className="text-lg sm:text-xl font-semibold text-white flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-skyblue-500" />
+              <Calendar className="h-5 w-5 text-yellow-500" />
               Weekly Schedule
             </h2>
             <div className="flex items-center justify-center sm:justify-end gap-2">
@@ -307,7 +311,7 @@ const VolunteerSchedulePage = () => {
               >
                 ← Previous
               </button>
-              <span className="text-skyblue-300 text-sm px-2 py-1 bg-navy-800 rounded">
+              <span className="text-yellow-300 text-sm px-2 py-1 bg-navy-800 rounded">
                 {isCurrentWeek ? 'This Week' : `Week of ${weekDates[0].toLocaleDateString()}`}
               </span>
               <button
@@ -334,7 +338,7 @@ const VolunteerSchedulePage = () => {
                     isAvailable 
                       ? 'border-green-500 bg-green-500/10 hover:bg-green-500/20' 
                       : 'border-navy-600 bg-navy-800 hover:bg-navy-700'
-                  } ${isToday ? 'ring-2 ring-skyblue-500 shadow-lg' : ''}`}
+                  } ${isToday ? 'ring-2 ring-yellow-500 shadow-lg' : ''}`}
                   onClick={() => editingAvailability && handleDayToggle(dayName)}
                   role={editingAvailability ? "button" : undefined}
                   tabIndex={editingAvailability ? 0 : undefined}
@@ -347,10 +351,10 @@ const VolunteerSchedulePage = () => {
                   aria-label={`${dayName}, ${date.toLocaleDateString()} - ${isAvailable ? 'Available' : 'Unavailable'}`}
                 >
                   <div className="text-center">
-                    <div className="text-xs sm:text-sm text-skyblue-300 mb-1 font-medium">
+                    <div className="text-xs sm:text-sm text-yellow-300 mb-1 font-medium">
                       {dayName.slice(0, 3)}
                     </div>
-                    <div className={`text-base sm:text-lg font-semibold ${isToday ? 'text-skyblue-400' : 'text-white'}`}>
+                    <div className={`text-base sm:text-lg font-semibold ${isToday ? 'text-yellow-400' : 'text-white'}`}>
                       {date.getDate()}
                     </div>
                     <div className="text-xs mt-2">
@@ -375,8 +379,8 @@ const VolunteerSchedulePage = () => {
           </div>
           
           {editingAvailability && (
-            <div className="mt-4 p-3 bg-skyblue-500/10 border border-skyblue-500/20 rounded-lg">
-              <p className="text-sm text-skyblue-300 text-center">
+            <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <p className="text-sm text-yellow-300 text-center">
                 💡 Click on any day to toggle availability
                 {hasUnsavedChanges && (
                   <span className="block mt-1 text-orange-400 font-medium">
@@ -397,7 +401,7 @@ const VolunteerSchedulePage = () => {
             className="card p-4 sm:p-6"
           >
             <h3 className="text-lg font-semibold text-white mb-4 sm:mb-6 flex items-center gap-2">
-              <Clock className="h-5 w-5 text-skyblue-500" />
+              <Clock className="h-5 w-5 text-yellow-500" />
               Availability Settings
             </h3>
 
@@ -405,18 +409,18 @@ const VolunteerSchedulePage = () => {
               <div className="space-y-6">
                 {/* Available Days */}
                 <div>
-                  <label className="block text-sm font-medium text-skyblue-300 mb-3">Available Days</label>
+                  <label className="block text-sm font-medium text-yellow-300 mb-3">Available Days</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {daysOfWeek.map(day => (
-                      <label key={day} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-skyblue-500/50 transition-colors cursor-pointer group">
+                      <label key={day} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group">
                         <input
                           type="checkbox"
                           checked={scheduleData.availability_days.includes(day)}
                           onChange={() => handleDayToggle(day)}
-                          className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500 focus:ring-2 w-4 h-4"
+                          className="rounded border-navy-600 bg-navy-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2 w-4 h-4"
                           aria-describedby={`day-${day}-description`}
                         />
-                        <span className="text-white text-sm font-medium group-hover:text-skyblue-300 transition-colors">{day}</span>
+                        <span className="text-white text-sm font-medium group-hover:text-yellow-300 transition-colors">{day}</span>
                         <span id={`day-${day}-description`} className="sr-only">
                           Toggle availability for {day}
                         </span>
@@ -427,20 +431,20 @@ const VolunteerSchedulePage = () => {
 
                 {/* Time Slots */}
                 <div>
-                  <label className="block text-sm font-medium text-skyblue-300 mb-3">Available Time Slots</label>
+                  <label className="block text-sm font-medium text-yellow-300 mb-3">Available Time Slots</label>
                   <div className="space-y-3">
                     {timeSlots.map(slot => (
-                      <label key={slot.value} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-skyblue-500/50 transition-colors cursor-pointer group">
+                      <label key={slot.value} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group">
                         <input
                           type="checkbox"
                           checked={scheduleData.availability_times.includes(slot.value)}
                           onChange={() => handleTimeSlotToggle(slot.value)}
-                          className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500 focus:ring-2 w-4 h-4"
+                          className="rounded border-navy-600 bg-navy-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2 w-4 h-4"
                           aria-describedby={`time-${slot.value}-description`}
                         />
                         <div className="flex-1">
-                          <span className="text-white text-sm font-medium group-hover:text-skyblue-300 transition-colors">{slot.label}</span>
-                          <span className="text-skyblue-400 text-xs ml-2">({slot.time})</span>
+                          <span className="text-white text-sm font-medium group-hover:text-yellow-300 transition-colors">{slot.label}</span>
+                          <span className="text-yellow-400 text-xs ml-2">({slot.time})</span>
                         </div>
                         <span id={`time-${slot.value}-description`} className="sr-only">
                           Toggle availability for {slot.label} time slot
@@ -452,8 +456,8 @@ const VolunteerSchedulePage = () => {
 
                 {/* Max Distance */}
                 <div>
-                  <label className="block text-sm font-medium text-skyblue-300 mb-3">
-                    Maximum Delivery Distance: <span className="text-skyblue-400 font-semibold">{scheduleData.max_delivery_distance} km</span>
+                  <label className="block text-sm font-medium text-yellow-300 mb-3">
+                    Maximum Delivery Distance: <span className="text-yellow-400 font-semibold">{scheduleData.max_delivery_distance} km</span>
                   </label>
                   <div className="px-3 py-2 bg-navy-800 rounded-lg">
                     <input
@@ -466,7 +470,7 @@ const VolunteerSchedulePage = () => {
                       className="w-full h-2 bg-navy-700 rounded-lg appearance-none cursor-pointer slider"
                       aria-label="Maximum delivery distance in kilometers"
                     />
-                    <div className="flex justify-between text-xs text-skyblue-400 mt-2">
+                    <div className="flex justify-between text-xs text-yellow-400 mt-2">
                       <span>5km</span>
                       <span>100km</span>
                     </div>
@@ -496,7 +500,7 @@ const VolunteerSchedulePage = () => {
               <div className="space-y-6">
                 {/* Current Availability Display */}
                 <div>
-                  <label className="block text-sm font-medium text-skyblue-300 mb-3">Available Days</label>
+                  <label className="block text-sm font-medium text-yellow-300 mb-3">Available Days</label>
                   <div className="flex flex-wrap gap-2">
                     {scheduleData.availability_days.length > 0 ? (
                       scheduleData.availability_days.map(day => (
@@ -506,7 +510,7 @@ const VolunteerSchedulePage = () => {
                         </span>
                       ))
                     ) : (
-                      <div className="flex items-center gap-2 text-skyblue-400 text-sm p-3 bg-navy-800 rounded-lg border border-navy-700">
+                      <div className="flex items-center gap-2 text-yellow-400 text-sm p-3 bg-navy-800 rounded-lg border border-navy-700">
                         <AlertCircle className="h-4 w-4" />
                         No days selected
                       </div>
@@ -515,7 +519,7 @@ const VolunteerSchedulePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-skyblue-300 mb-3">Available Time Slots</label>
+                  <label className="block text-sm font-medium text-yellow-300 mb-3">Available Time Slots</label>
                   <div className="space-y-2">
                     {scheduleData.availability_times.length > 0 ? (
                       scheduleData.availability_times.map(timeValue => {
@@ -525,13 +529,13 @@ const VolunteerSchedulePage = () => {
                             <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
                             <div className="flex-1">
                               <span className="text-white text-sm font-medium">{slot.label}</span>
-                              <span className="text-skyblue-400 text-xs ml-2">({slot.time})</span>
+                              <span className="text-yellow-400 text-xs ml-2">({slot.time})</span>
                             </div>
                           </div>
                         ) : null
                       })
                     ) : (
-                      <div className="flex items-center gap-2 text-skyblue-400 text-sm p-3 bg-navy-800 rounded-lg border border-navy-700">
+                      <div className="flex items-center gap-2 text-yellow-400 text-sm p-3 bg-navy-800 rounded-lg border border-navy-700">
                         <AlertCircle className="h-4 w-4" />
                         No time slots selected
                       </div>
@@ -540,9 +544,9 @@ const VolunteerSchedulePage = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-skyblue-300 mb-2">Maximum Delivery Distance</label>
+                  <label className="block text-sm font-medium text-yellow-300 mb-2">Maximum Delivery Distance</label>
                   <div className="flex items-center gap-3 p-3 bg-navy-800 rounded-lg border border-navy-700">
-                    <MapPin className="h-4 w-4 text-skyblue-500 flex-shrink-0" />
+                    <MapPin className="h-4 w-4 text-yellow-500 flex-shrink-0" />
                     <span className="text-white font-medium">{scheduleData.max_delivery_distance} km</span>
                   </div>
                 </div>
@@ -558,26 +562,26 @@ const VolunteerSchedulePage = () => {
             className="card p-4 sm:p-6"
           >
             <h3 className="text-lg font-semibold text-white mb-4 sm:mb-6 flex items-center gap-2">
-              <User className="h-5 w-5 text-skyblue-500" />
+              <User className="h-5 w-5 text-yellow-500" />
               Delivery Preferences
             </h3>
 
             {editingAvailability ? (
               <div>
-                <label className="block text-sm font-medium text-skyblue-300 mb-3">
+                <label className="block text-sm font-medium text-yellow-300 mb-3">
                   Preferred Delivery Types (Optional)
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {deliveryPreferences.map(pref => (
-                    <label key={pref} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-skyblue-500/50 transition-colors cursor-pointer group">
+                    <label key={pref} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group">
                       <input
                         type="checkbox"
                         checked={scheduleData.delivery_preferences.includes(pref)}
                         onChange={() => handlePreferenceToggle(pref)}
-                        className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500 focus:ring-2 w-4 h-4"
+                        className="rounded border-navy-600 bg-navy-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2 w-4 h-4"
                         aria-describedby={`pref-${pref}-description`}
                       />
-                      <span className="text-white text-sm font-medium group-hover:text-skyblue-300 transition-colors">{pref}</span>
+                      <span className="text-white text-sm font-medium group-hover:text-yellow-300 transition-colors">{pref}</span>
                       <span id={`pref-${pref}-description`} className="sr-only">
                         Toggle preference for {pref} deliveries
                       </span>
@@ -587,7 +591,7 @@ const VolunteerSchedulePage = () => {
               </div>
             ) : (
               <div>
-                <label className="block text-sm font-medium text-skyblue-300 mb-3">Preferred Delivery Types</label>
+                <label className="block text-sm font-medium text-yellow-300 mb-3">Preferred Delivery Types</label>
                 <div className="space-y-2">
                   {scheduleData.delivery_preferences.length > 0 ? (
                     scheduleData.delivery_preferences.map(pref => (
@@ -597,7 +601,7 @@ const VolunteerSchedulePage = () => {
                       </div>
                     ))
                   ) : (
-                    <div className="flex items-center gap-2 text-skyblue-400 text-sm p-3 bg-navy-800 rounded-lg border border-navy-700">
+                    <div className="flex items-center gap-2 text-yellow-400 text-sm p-3 bg-navy-800 rounded-lg border border-navy-700">
                       <AlertCircle className="h-4 w-4" />
                       No preferences specified
                     </div>
@@ -609,10 +613,10 @@ const VolunteerSchedulePage = () => {
             {!editingAvailability && (
               <div className="mt-6 p-4 bg-navy-800 rounded-lg border border-navy-700">
                 <div className="flex items-start gap-3">
-                  <AlertCircle className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
+                  <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5 flex-shrink-0" />
                   <div>
                     <h4 className="text-white font-medium mb-2">Schedule Tips</h4>
-                    <ul className="text-sm text-skyblue-300 space-y-1">
+                    <ul className="text-sm text-yellow-300 space-y-1">
                       <li>• Keep your schedule updated for better task matching</li>
                       <li>• Set realistic time slots based on your actual availability</li>
                       <li>• Consider traffic and distance when setting delivery radius</li>
@@ -632,28 +636,28 @@ const VolunteerSchedulePage = () => {
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mt-6 sm:mt-8"
         >
           <div className="card p-4 sm:p-6 text-center hover:bg-navy-800 transition-colors">
-            <div className="text-2xl sm:text-3xl font-bold text-skyblue-400 mb-2">
+            <div className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-2">
               {scheduleData.availability_days.length}
             </div>
-            <div className="text-sm text-skyblue-300">
+            <div className="text-sm text-yellow-300">
               Available Days per Week
             </div>
           </div>
           
           <div className="card p-4 sm:p-6 text-center hover:bg-navy-800 transition-colors">
-            <div className="text-2xl sm:text-3xl font-bold text-skyblue-400 mb-2">
+            <div className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-2">
               {scheduleData.availability_times.length}
             </div>
-            <div className="text-sm text-skyblue-300">
+            <div className="text-sm text-yellow-300">
               Time Slots Available
             </div>
           </div>
           
           <div className="card p-4 sm:p-6 text-center hover:bg-navy-800 transition-colors sm:col-span-2 lg:col-span-1">
-            <div className="text-2xl sm:text-3xl font-bold text-skyblue-400 mb-2">
+            <div className="text-2xl sm:text-3xl font-bold text-yellow-400 mb-2">
               {scheduleData.max_delivery_distance}km
             </div>
-            <div className="text-sm text-skyblue-300">
+            <div className="text-sm text-yellow-300">
               Maximum Delivery Range
             </div>
           </div>

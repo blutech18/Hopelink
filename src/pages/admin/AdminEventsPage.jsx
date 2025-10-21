@@ -19,7 +19,8 @@ import {
   Gift,
   Utensils,
   GraduationCap,
-  Heart
+  Heart,
+  FileText
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -65,10 +66,10 @@ const AdminEventsPage = () => {
   }
 
   const filteredEvents = events.filter(event => {
-    const matchesSearch = event.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = event.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          event.description?.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || event.status === statusFilter
-    const matchesCategory = categoryFilter === 'all' || event.category === categoryFilter
+    const matchesCategory = categoryFilter === 'all' || event.target_goal === categoryFilter
     
     return matchesSearch && matchesStatus && matchesCategory
   })
@@ -95,11 +96,12 @@ const AdminEventsPage = () => {
 
   const getCategoryIcon = (category) => {
     switch (category) {
-      case 'fundraising': return Gift
-      case 'food_drive': return Utensils
-      case 'education': return GraduationCap
-      case 'community': return Heart
-      case 'celebration': return PartyPopper
+      case 'Fundraising': return Gift
+      case 'Food Distribution': return Utensils
+      case 'Educational Program': return GraduationCap
+      case 'Community Cleanup': return Heart
+      case 'Clothing Drive': return Gift
+      case 'Medical Mission': return Heart
       default: return Calendar
     }
   }
@@ -128,13 +130,13 @@ const AdminEventsPage = () => {
     if (!eventToCancel) return
     
     try {
-      await db.updateEvent(eventToCancel, { status: 'cancelled' })
+      await db.updateEvent(eventToCancel, { status: 'cancelled' }, [])
       await loadEvents()
       setShowCancelConfirmation(false)
       setEventToCancel(null)
       success('Event cancelled successfully')
-    } catch (error) {
-      console.error('Error cancelling event:', error)
+    } catch (err) {
+      console.error('Error cancelling event:', err)
       error('Failed to cancel event')
     }
   }
@@ -238,10 +240,15 @@ const AdminEventsPage = () => {
                 className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
               >
                 <option value="all">All Categories</option>
-                <option value="fundraising">Fundraising</option>
-                <option value="food_drive">Food Drive</option>
-                <option value="education">Education</option>
-                <option value="community">Community</option>
+                <option value="Food Distribution">Food Distribution</option>
+                <option value="Clothing Drive">Clothing Drive</option>
+                <option value="Medical Mission">Medical Mission</option>
+                <option value="Educational Program">Educational Program</option>
+                <option value="Community Cleanup">Community Cleanup</option>
+                <option value="Fundraising">Fundraising</option>
+                <option value="Volunteer Training">Volunteer Training</option>
+                <option value="Awareness Campaign">Awareness Campaign</option>
+                <option value="Emergency Relief">Emergency Relief</option>
                 <option value="celebration">Celebration</option>
               </select>
             </div>
@@ -343,7 +350,7 @@ const AdminEventsPage = () => {
               <tbody className="divide-y divide-navy-700">
                 {filteredEvents.map((event, index) => {
                   const StatusIcon = getStatusIcon(event.status)
-                  const CategoryIcon = getCategoryIcon(event.category)
+                  const CategoryIcon = getCategoryIcon(event.target_goal)
                   
                   return (
                     <tr key={event.id} className="hover:bg-navy-800/50 transition-colors">
@@ -355,7 +362,7 @@ const AdminEventsPage = () => {
                             </div>
                           </div>
                           <div className="ml-4">
-                            <div className="text-sm font-medium text-white">{event.title}</div>
+                            <div className="text-sm font-medium text-white">{event.name}</div>
                             <div className="text-sm text-skyblue-300 truncate max-w-xs">
                               {event.description}
                             </div>
@@ -364,11 +371,11 @@ const AdminEventsPage = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-navy-800 text-yellow-300">
-                          {event.category?.replace('_', ' ') || 'General'}
+                          {event.target_goal || 'General'}
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                        {new Date(event.event_date).toLocaleDateString()}
+                        {new Date(event.start_date).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(event.status)}`}>
@@ -482,7 +489,7 @@ const AdminEventsPage = () => {
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.9 }}
-              className="bg-navy-800 rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+              className="bg-navy-800 rounded-lg shadow-xl border border-navy-700 max-w-4xl w-full max-h-[90vh] overflow-y-auto"
             >
               <div className="p-6">
                 {/* Modal Header */}
@@ -509,108 +516,137 @@ const AdminEventsPage = () => {
 
                 {/* Event Content */}
                 <div className="space-y-6">
-                  {/* Event Header */}
-                  <div className="flex items-start space-x-4">
-                    <div className="w-20 h-20 rounded-lg overflow-hidden flex-shrink-0">
-                      {selectedEvent.image_url ? (
-                        <img
-                          src={selectedEvent.image_url}
-                          alt={selectedEvent.title}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-r from-skyblue-600 to-skyblue-500 flex items-center justify-center">
-                          <Calendar className="h-8 w-8 text-white" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-2xl font-bold text-white mb-2">{selectedEvent.title}</h3>
-                      <div className="flex items-center space-x-4 mb-3">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedEvent.status)}`}>
-                          <CheckCircle className="h-4 w-4 mr-1" />
-                          {selectedEvent.status}
-                        </span>
-                        {selectedEvent.category && (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-navy-700 text-yellow-300">
-                            {selectedEvent.category.replace('_', ' ')}
-                          </span>
-                        )}
+                  {/* Event Image - Full Width */}
+                  <div className="w-full rounded-lg overflow-hidden border-2 border-navy-700">
+                    {selectedEvent.image_url ? (
+                      <img
+                        src={selectedEvent.image_url}
+                        alt={selectedEvent.name}
+                        className="w-full h-64 object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-64 bg-gradient-to-br from-navy-700 via-navy-600 to-navy-700 flex flex-col items-center justify-center">
+                        <Calendar className="h-20 w-20 text-yellow-300 mb-4" />
+                        <p className="text-skyblue-300 text-lg font-medium">No Image Available</p>
+                        <p className="text-skyblue-400 text-sm mt-1">Event image not uploaded</p>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Event Header */}
+                  <div className="bg-navy-700/50 rounded-lg p-4 border border-navy-600">
+                    <h3 className="text-2xl font-bold text-white mb-3">{selectedEvent.name}</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(selectedEvent.status)}`}>
+                        <CheckCircle className="h-4 w-4 mr-1" />
+                        {selectedEvent.status}
+                      </span>
+                      {selectedEvent.target_goal && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-yellow-500/20 text-yellow-300 border border-yellow-500/30">
+                          <Gift className="h-4 w-4 mr-1" />
+                          {selectedEvent.target_goal}
+                        </span>
+                      )}
+                      {selectedEvent.max_participants && (
+                        <span className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                          <Users className="h-4 w-4 mr-1" />
+                          Max: {selectedEvent.max_participants}
+                        </span>
+                      )}
                     </div>
                   </div>
 
                   {/* Event Description */}
-                  <div>
-                    <h4 className="text-lg font-semibold text-white mb-2">Description</h4>
+                  <div className="bg-navy-700/30 rounded-lg p-4 border border-navy-600">
+                    <h4 className="text-lg font-semibold text-white mb-3 flex items-center">
+                      <FileText className="h-5 w-5 mr-2 text-yellow-300" />
+                      Description
+                    </h4>
                     <p className="text-skyblue-300 leading-relaxed">
                       {selectedEvent.description || 'No description available'}
                     </p>
                   </div>
 
                   {/* Event Details Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="space-y-4">
-                      <div className="flex items-center space-x-3">
-                        <Calendar className="h-5 w-5 text-yellow-300" />
-                        <div>
-                          <p className="text-sm text-skyblue-300">Event Date</p>
-                          <p className="text-white font-medium">
-                            {new Date(selectedEvent.event_date).toLocaleDateString('en-US', {
-                              weekday: 'long',
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
-                          </p>
-                        </div>
-                      </div>
-
-                      {selectedEvent.location && (
-                        <div className="flex items-center space-x-3">
-                          <MapPin className="h-5 w-5 text-yellow-300" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Date & Time Card */}
+                    <div className="bg-navy-700/30 rounded-lg p-4 border border-navy-600">
+                      <h4 className="text-sm font-semibold text-yellow-300 mb-3 uppercase tracking-wide">Date & Time</h4>
+                      <div className="space-y-3">
+                        <div className="flex items-start space-x-3">
+                          <Calendar className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
                           <div>
-                            <p className="text-sm text-skyblue-300">Location</p>
-                            <p className="text-white font-medium">{selectedEvent.location}</p>
+                            <p className="text-xs text-skyblue-400">Start Date</p>
+                            <p className="text-white font-medium">
+                              {new Date(selectedEvent.start_date).toLocaleDateString('en-US', {
+                                weekday: 'short',
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })}
+                            </p>
+                            <p className="text-skyblue-300 text-sm">
+                              {new Date(selectedEvent.start_date).toLocaleTimeString('en-US', {
+                                hour: 'numeric',
+                                minute: '2-digit',
+                                hour12: true
+                              })}
+                            </p>
                           </div>
                         </div>
-                      )}
-
-                      <div className="flex items-center space-x-3">
-                        <Clock className="h-5 w-5 text-yellow-300" />
-                        <div>
-                          <p className="text-sm text-skyblue-300">Created</p>
-                          <p className="text-white font-medium">
-                            {new Date(selectedEvent.created_at).toLocaleDateString('en-US', {
-                              year: 'numeric',
-                              month: 'long',
-                              day: 'numeric'
-                            })}
-                          </p>
-                        </div>
+                        {selectedEvent.end_date && (
+                          <div className="flex items-start space-x-3">
+                            <Clock className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-skyblue-400">End Date</p>
+                              <p className="text-white font-medium">
+                                {new Date(selectedEvent.end_date).toLocaleDateString('en-US', {
+                                  weekday: 'short',
+                                  year: 'numeric',
+                                  month: 'short',
+                                  day: 'numeric'
+                                })}
+                              </p>
+                              <p className="text-skyblue-300 text-sm">
+                                {new Date(selectedEvent.end_date).toLocaleTimeString('en-US', {
+                                  hour: 'numeric',
+                                  minute: '2-digit',
+                                  hour12: true
+                                })}
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
 
-                    <div className="space-y-4">
-                      {selectedEvent.max_participants && (
-                        <div className="flex items-center space-x-3">
-                          <Users className="h-5 w-5 text-yellow-300" />
+                    {/* Location & Info Card */}
+                    <div className="bg-navy-700/30 rounded-lg p-4 border border-navy-600">
+                      <h4 className="text-sm font-semibold text-yellow-300 mb-3 uppercase tracking-wide">Location & Info</h4>
+                      <div className="space-y-3">
+                        {selectedEvent.location && (
+                          <div className="flex items-start space-x-3">
+                            <MapPin className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
+                            <div>
+                              <p className="text-xs text-skyblue-400">Location</p>
+                              <p className="text-white font-medium">{selectedEvent.location}</p>
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex items-start space-x-3">
+                          <Calendar className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
                           <div>
-                            <p className="text-sm text-skyblue-300">Max Participants</p>
-                            <p className="text-white font-medium">{selectedEvent.max_participants}</p>
+                            <p className="text-xs text-skyblue-400">Created On</p>
+                            <p className="text-white font-medium">
+                              {new Date(selectedEvent.created_at).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })}
+                            </p>
                           </div>
                         </div>
-                      )}
-
-                      {selectedEvent.event_type && (
-                        <div className="flex items-center space-x-3">
-                          <Gift className="h-5 w-5 text-yellow-300" />
-                          <div>
-                            <p className="text-sm text-skyblue-300">Event Type</p>
-                            <p className="text-white font-medium">{selectedEvent.event_type}</p>
-                          </div>
-                        </div>
-                      )}
+                      </div>
                     </div>
                   </div>
 

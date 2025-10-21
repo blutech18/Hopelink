@@ -33,12 +33,12 @@ const VolunteerDeliveryDashboard = () => {
       setIsLoading(true)
       const volunteerDeliveries = await db.getDeliveries({
         volunteer_id: user.id,
-        status: ['assigned', 'in_transit', 'arrived']
+        status: ['assigned', 'accepted', 'picked_up', 'in_transit']
       })
       setDeliveries(volunteerDeliveries)
-    } catch (error) {
-      console.error('Error loading deliveries:', error)
-      error('Error loading deliveries')
+    } catch (err) {
+      console.error('Error loading deliveries:', err)
+      error('Failed to load deliveries')
     } finally {
       setIsLoading(false)
     }
@@ -48,8 +48,8 @@ const VolunteerDeliveryDashboard = () => {
     try {
       const volunteerStats = await db.getVolunteerStats(user.id)
       setStats(volunteerStats)
-    } catch (error) {
-      console.error('Error loading stats:', error)
+    } catch (err) {
+      console.error('Error loading stats:', err)
     }
   }
 

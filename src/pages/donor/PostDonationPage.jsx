@@ -161,7 +161,7 @@ const PostDonationPage = () => {
         quantity: parseInt(data.quantity),
         expiry_date: data.expiry_date || null,
         tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [],
-        images: uploadedImages.map(img => img.preview), // Store base64 images for now
+        image_url: uploadedImages.length > 0 ? uploadedImages[0].preview : null, // Save first image as base64
         created_at: new Date().toISOString()
       }
 
@@ -193,9 +193,9 @@ const PostDonationPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="text-center mb-8"
         >
-          <Gift className="h-16 w-16 text-skyblue-500 mx-auto mb-4" />
+          <Gift className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
           <h1 className="text-3xl font-bold text-white mb-2">Post a Donation</h1>
-          <p className="text-skyblue-300">Share your generosity with those in need</p>
+          <p className="text-yellow-300">Share your generosity with those in need</p>
         </motion.div>
 
         {/* Progress Steps */}
@@ -213,8 +213,8 @@ const PostDonationPage = () => {
                   <div
                     className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
                       currentStep >= step.number
-                        ? 'bg-skyblue-600 border-skyblue-600 text-white'
-                        : 'bg-navy-800 border-navy-600 text-skyblue-400'
+                        ? 'bg-yellow-600 border-yellow-600 text-white'
+                        : 'bg-navy-800 border-navy-600 text-yellow-400'
                     }`}
                   >
                     <StepIcon className="h-5 w-5" />
@@ -222,7 +222,7 @@ const PostDonationPage = () => {
                   {index < steps.length - 1 && (
                     <div
                       className={`w-16 h-1 mx-2 transition-all ${
-                        currentStep > step.number ? 'bg-skyblue-600' : 'bg-navy-700'
+                        currentStep > step.number ? 'bg-yellow-600' : 'bg-navy-700'
                       }`}
                     />
                   )}
@@ -231,7 +231,7 @@ const PostDonationPage = () => {
             })}
           </div>
           <div className="flex justify-center mt-4">
-            <span className="text-sm text-skyblue-300">
+            <span className="text-sm text-yellow-300">
               Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
             </span>
           </div>
@@ -294,7 +294,7 @@ const PostDonationPage = () => {
                     {errors.description && (
                       <p className="mt-1 text-sm text-danger-600">{errors.description.message}</p>
                     )}
-                    <div className="mt-1 text-xs text-skyblue-400 text-right">
+                    <div className="mt-1 text-xs text-yellow-400 text-right">
                       {watch('description')?.length || 0}/1000 characters
                     </div>
                   </div>
@@ -352,7 +352,7 @@ const PostDonationPage = () => {
                       className="input"
                       placeholder="urgent, winter, children (separate with commas)"
                     />
-                    <p className="mt-1 text-xs text-skyblue-400">
+                    <p className="mt-1 text-xs text-yellow-400">
                       Add tags to help recipients find your donation more easily
                     </p>
                   </div>
@@ -378,7 +378,7 @@ const PostDonationPage = () => {
                           key={condition.value}
                           className={`cursor-pointer p-4 rounded-lg border transition-all ${
                             watchedCondition === condition.value
-                              ? 'border-skyblue-500 bg-skyblue-900/20'
+                              ? 'border-yellow-500 bg-yellow-900/20'
                               : 'border-navy-700 bg-navy-800 hover:border-navy-600'
                           }`}
                         >
@@ -392,7 +392,7 @@ const PostDonationPage = () => {
                           />
                           <div>
                             <h3 className="font-medium text-white">{condition.label}</h3>
-                            <p className="text-sm text-skyblue-300 mt-1">{condition.description}</p>
+                            <p className="text-sm text-yellow-300 mt-1">{condition.description}</p>
                           </div>
                         </label>
                       ))}
@@ -420,7 +420,7 @@ const PostDonationPage = () => {
                         <button
                           type="button"
                           onClick={() => setShowLocationPicker(true)}
-                          className="px-4 py-2 bg-skyblue-600 hover:bg-skyblue-700 text-white rounded-lg transition-colors flex items-center space-x-2"
+                          className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center space-x-2"
                         >
                           <MapPin className="w-4 h-4" />
                           <span>Map</span>
@@ -458,7 +458,7 @@ const PostDonationPage = () => {
                     {errors.delivery_mode && (
                       <p className="mt-1 text-sm text-danger-600">{errors.delivery_mode.message}</p>
                     )}
-                    <p className="mt-1 text-xs text-skyblue-400">
+                    <p className="mt-1 text-xs text-yellow-400">
                       Choose how recipients can receive this donation
                     </p>
                   </div>
@@ -502,11 +502,11 @@ const PostDonationPage = () => {
                       <input
                         {...register('is_urgent')}
                         type="checkbox"
-                        className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mt-1"
+                        className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-navy-600 rounded bg-navy-800 mt-1"
                       />
                       <div className="ml-3">
                         <span className="text-sm font-medium text-white">Mark as urgent</span>
-                        <p className="text-xs text-skyblue-400">
+                        <p className="text-xs text-yellow-400">
                           This donation needs to be claimed quickly (e.g., perishable items)
                         </p>
                       </div>
@@ -518,7 +518,7 @@ const PostDonationPage = () => {
                     <label className="block text-sm font-medium text-white mb-3">
                       Donation Photos
                     </label>
-                    <p className="text-xs text-skyblue-400 mb-4">
+                    <p className="text-xs text-yellow-400 mb-4">
                       Upload photos of your donation to help recipients see what you're offering. (Max 5 images, 5MB each)
                     </p>
                     
@@ -536,10 +536,10 @@ const PostDonationPage = () => {
                         <div className={`border-2 border-dashed rounded-lg p-6 text-center transition-all ${
                           uploadedImages.length >= 5 
                             ? 'border-navy-700 bg-navy-800/50 cursor-not-allowed' 
-                            : 'border-navy-600 bg-navy-800 hover:border-skyblue-500 hover:bg-navy-700 cursor-pointer'
+                            : 'border-navy-600 bg-navy-800 hover:border-yellow-500 hover:bg-navy-700 cursor-pointer'
                         }`}>
                           <Upload className={`h-8 w-8 mx-auto mb-2 ${
-                            uploadedImages.length >= 5 ? 'text-gray-500' : 'text-skyblue-400'
+                            uploadedImages.length >= 5 ? 'text-gray-500' : 'text-yellow-400'
                           }`} />
                           <p className={`text-sm ${
                             uploadedImages.length >= 5 ? 'text-gray-500' : 'text-white'
@@ -549,7 +549,7 @@ const PostDonationPage = () => {
                               : 'Click to upload images or drag and drop'}
                           </p>
                           <p className={`text-xs mt-1 ${
-                            uploadedImages.length >= 5 ? 'text-gray-500' : 'text-skyblue-400'
+                            uploadedImages.length >= 5 ? 'text-gray-500' : 'text-yellow-400'
                           }`}>
                             PNG, JPG, JPEG up to 5MB each
                           </p>
@@ -575,7 +575,7 @@ const PostDonationPage = () => {
                               >
                                 <X className="h-3 w-3" />
                               </button>
-                              <p className="text-xs text-skyblue-400 mt-1 truncate" title={image.name}>
+                              <p className="text-xs text-yellow-400 mt-1 truncate" title={image.name}>
                                 {image.name}
                               </p>
                             </div>
@@ -593,7 +593,7 @@ const PostDonationPage = () => {
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <h4 className="font-medium text-white">{watch('title') || 'Donation Title'}</h4>
-                          <p className="text-sm text-skyblue-300 mt-1">
+                          <p className="text-sm text-yellow-300 mt-1">
                             {watch('category') || 'Category'} • Quantity: {watch('quantity') || 1}
                           </p>
                           {watchedIsUrgent && (
@@ -606,7 +606,7 @@ const PostDonationPage = () => {
                         <div className="text-right">
                           <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
                             watchedCondition === 'new' ? 'bg-success-900/20 text-success-300' :
-                            watchedCondition === 'like_new' ? 'bg-skyblue-900/20 text-skyblue-300' :
+                            watchedCondition === 'like_new' ? 'bg-yellow-900/20 text-yellow-300' :
                             watchedCondition === 'good' ? 'bg-amber-900/20 text-amber-300' :
                             'bg-orange-900/20 text-orange-300'
                           }`}>
@@ -615,14 +615,14 @@ const PostDonationPage = () => {
                         </div>
                       </div>
                       
-                      <div className="text-sm text-skyblue-200">
+                      <div className="text-sm text-yellow-200">
                         <p className="mb-2">{watch('description') || 'Description will appear here...'}</p>
-                        <div className="flex items-center text-skyblue-400 mb-2">
+                        <div className="flex items-center text-yellow-400 mb-2">
                           <MapPin className="h-4 w-4 mr-1" />
                           {watch('pickup_location') || 'Pickup location'}
                         </div>
                         {uploadedImages.length > 0 && (
-                          <div className="flex items-center text-skyblue-400">
+                          <div className="flex items-center text-yellow-400">
                             <ImageIcon className="h-4 w-4 mr-1" />
                             {uploadedImages.length} photo(s) uploaded
                           </div>

@@ -574,9 +574,21 @@ export const db = {
     let query = supabase
       .from('events')
       .select(`
-        *,
+        id,
+        name,
+        description,
+        location,
+        start_date,
+        end_date,
+        max_participants,
+        target_goal,
+        status,
+        image_url,
+        created_at,
+        updated_at,
+        created_by,
         creator:users!events_created_by_fkey(name, email),
-        event_items(*),
+        event_items(id, name, category, quantity, collected_quantity),
         participants:event_participants(count)
       `)
       .order('created_at', { ascending: false })
@@ -586,6 +598,26 @@ export const db = {
     }
 
     const { data, error } = await query
+    if (error) throw error
+    return data
+  },
+
+  async getEvent(eventId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    const { data, error } = await supabase
+      .from('events')
+      .select(`
+        *,
+        creator:users!events_created_by_fkey(name, email, phone_number),
+        event_items(*),
+        participants:event_participants(count)
+      `)
+      .eq('id', eventId)
+      .single()
+
     if (error) throw error
     return data
   },
@@ -715,6 +747,43 @@ export const db = {
     return fullEvent
   },
 
+  async deleteEvent(eventId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+      throw new Error('User not authenticated')
+    }
+
+    // Delete event items first (foreign key constraint)
+    const { error: itemsError } = await supabase
+      .from('event_items')
+      .delete()
+      .eq('event_id', eventId)
+
+    if (itemsError) throw itemsError
+
+    // Delete event participants
+    const { error: participantsError } = await supabase
+      .from('event_participants')
+      .delete()
+      .eq('event_id', eventId)
+
+    if (participantsError) throw participantsError
+
+    // Delete the event
+    const { error: eventError } = await supabase
+      .from('events')
+      .delete()
+      .eq('id', eventId)
+
+    if (eventError) throw eventError
+
+    return true
+  },
+
   // Deliveries
   async getDeliveries(filters = {}) {
     if (!supabase) {
@@ -743,7 +812,12 @@ export const db = {
     }
 
     if (filters.status) {
-      query = query.eq('status', filters.status)
+      // Handle both single status and array of statuses
+      if (Array.isArray(filters.status)) {
+        query = query.in('status', filters.status)
+      } else {
+        query = query.eq('status', filters.status)
+      }
     }
 
     const { data, error } = await query
@@ -1860,7 +1934,7 @@ export const db = {
 
     let query = supabase
       .from('users')
-      .select('id, name, email, phone_number, city, province, role, is_active, is_verified, created_at, volunteer_rating, total_deliveries, completed_deliveries')
+      .select('id, name, email, phone_number, city, province, role, is_active, is_verified, created_at')
       .eq('role', 'volunteer')
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -3003,6 +3077,97 @@ export const db = {
       }
     } catch (error) {
       console.error('Error creating smart match:', error)
+      throw error
+    }
+  },
+
+  // Admin Settings
+  async getSettings() {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('admin_settings')
+        .select('*')
+        .single()
+
+      if (error && error.code !== 'PGRST116') {
+        throw error
+      }
+
+      // Return default settings if none exist
+      if (!data) {
+        return {
+          platformName: 'HopeLink',
+          platformDescription: 'Community-driven donation management platform',
+          maintenanceMode: false,
+          registrationEnabled: true,
+          emailVerificationRequired: true,
+          supportEmail: 'support@hopelink.org',
+          requireIdVerification: true,
+          passwordMinLength: 8,
+          maxLoginAttempts: 5,
+          requireTwoFactor: false,
+          enableSystemLogs: true,
+          logRetentionDays: 30,
+          enablePerformanceMonitoring: true,
+          emailNotifications: true,
+          systemAlerts: true,
+          securityAlerts: true
+        }
+      }
+
+      return data
+    } catch (error) {
+      console.error('Error fetching settings:', error)
+      throw error
+    }
+  },
+
+  async updateSettings(settings) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      // Check if settings exist
+      const { data: existing } = await supabase
+        .from('admin_settings')
+        .select('id')
+        .maybeSingle()
+
+      let result
+      if (existing) {
+        // Update existing settings
+        result = await supabase
+          .from('admin_settings')
+          .update({
+            ...settings,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existing.id)
+          .select()
+          .single()
+      } else {
+        // Insert new settings
+        result = await supabase
+          .from('admin_settings')
+          .insert({
+            ...settings,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .select()
+          .single()
+      }
+
+      if (result.error) throw result.error
+
+      return result.data
+    } catch (error) {
+      console.error('Error updating settings:', error)
       throw error
     }
   }

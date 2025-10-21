@@ -28,7 +28,8 @@ import {
   Truck,
   Award,
   Heart,
-  RefreshCw
+  RefreshCw,
+  Upload
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -76,6 +77,10 @@ const MyDonationsPage = () => {
   const [directDeliveryNotifications, setDirectDeliveryNotifications] = useState([])
   const [directDeliveryConfirmationNotifications, setDirectDeliveryConfirmationNotifications] = useState([])
   const [confirmingDirectDeliveryId, setConfirmingDirectDeliveryId] = useState(null)
+
+  // Image upload state
+  const [uploadedImage, setUploadedImage] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
 
   const statusOptions = [
     { value: 'all', label: 'All Status' },
@@ -128,7 +133,7 @@ const MyDonationsPage = () => {
     register,
     handleSubmit,
     reset,
-    formState: { errors }
+    formState: { errors, isDirty }
   } = useForm()
 
   const fetchDonations = useCallback(async () => {
@@ -251,6 +256,28 @@ const MyDonationsPage = () => {
     setShowViewModal(true)
   }
 
+  const handleImageUpload = (event) => {
+    const file = event.target.files[0]
+    if (!file) return
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      error('Image must be less than 5MB')
+      return
+    }
+
+    const reader = new FileReader()
+    reader.onload = (e) => {
+      setImagePreview(e.target.result)
+      setUploadedImage(file)
+    }
+    reader.readAsDataURL(file)
+  }
+
+  const removeUploadedImage = () => {
+    setImagePreview(null)
+    setUploadedImage(null)
+  }
+
   const handleEditDonation = (donation) => {
     if (donation.status !== 'available') {
       error('Only available donations can be edited')
@@ -258,6 +285,9 @@ const MyDonationsPage = () => {
     }
     
     setSelectedDonation(donation)
+    setImagePreview(donation.images && donation.images.length > 0 ? donation.images[0] : null)
+    setUploadedImage(null)
+    
     // Populate form with existing donation data
     reset({
       title: donation.title,
@@ -288,10 +318,20 @@ const MyDonationsPage = () => {
         tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : []
       }
 
+      // Add image if uploaded or changed
+      if (uploadedImage) {
+        updateData.images = [imagePreview]
+      } else if (imagePreview === null && selectedDonation.images && selectedDonation.images.length > 0) {
+        // Image was removed
+        updateData.images = []
+      }
+
       await db.updateDonation(selectedDonation.id, updateData, user.id)
       success('Donation updated successfully!')
       setShowEditModal(false)
       setSelectedDonation(null)
+      setImagePreview(null)
+      setUploadedImage(null)
       await fetchDonations() // Refresh the list
     } catch (err) {
       console.error('Error updating donation:', err)
@@ -640,7 +680,7 @@ const MyDonationsPage = () => {
   const getStatusColor = (status) => {
     const colors = {
       available: 'bg-success-900/20 text-success-300',
-      matched: 'bg-skyblue-900/20 text-skyblue-300',
+      matched: 'bg-yellow-900/20 text-yellow-300',
       claimed: 'bg-amber-900/20 text-amber-300',
       in_transit: 'bg-purple-900/20 text-purple-300',
       delivered: 'bg-emerald-900/20 text-emerald-300',
@@ -687,7 +727,7 @@ const MyDonationsPage = () => {
           className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8"
         >
             <div className="flex items-center mb-4 sm:mb-0">
-            <Package className="h-8 w-8 text-skyblue-500 mr-3" />
+            <Package className="h-8 w-8 text-yellow-500 mr-3" />
             <div>
               <h1 className="text-3xl font-bold text-white">My Donations</h1>
                 <p className="text-yellow-200">Manage and track your donations</p>
@@ -723,17 +763,17 @@ const MyDonationsPage = () => {
           <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-skyblue-400">Total Donations</p>
+                <p className="text-sm text-yellow-400">Total Donations</p>
                 <p className="text-2xl font-bold text-white">{stats.total}</p>
               </div>
-              <Gift className="h-8 w-8 text-skyblue-500" />
+              <Gift className="h-8 w-8 text-yellow-500" />
             </div>
           </div>
           
           <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-skyblue-400">Available</p>
+                <p className="text-sm text-yellow-400">Available</p>
                 <p className="text-2xl font-bold text-white">{stats.available}</p>
               </div>
               <CheckCircle className="h-8 w-8 text-success-500" />
@@ -743,7 +783,7 @@ const MyDonationsPage = () => {
           <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-skyblue-400">In Progress</p>
+                <p className="text-sm text-yellow-400">In Progress</p>
                 <p className="text-2xl font-bold text-white">{stats.claimed}</p>
               </div>
               <Activity className="h-8 w-8 text-amber-500" />
@@ -753,7 +793,7 @@ const MyDonationsPage = () => {
           <div className="card p-6 relative overflow-hidden">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-skyblue-400">Completed</p>
+                <p className="text-sm text-yellow-400">Completed</p>
                 <p className="text-2xl font-bold text-white">{stats.completed}</p>
                 {stats.completed > 0 && (
                   <p className="text-xs text-green-400 mt-1">🎉 Impact achieved!</p>
@@ -783,7 +823,7 @@ const MyDonationsPage = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Complete Transactions</h3>
-                  <p className="text-skyblue-300 text-sm">Recipients have confirmed receipt - mark as complete</p>
+                  <p className="text-yellow-300 text-sm">Recipients have confirmed receipt - mark as complete</p>
                 </div>
               </div>
               <span className="bg-emerald-500/20 text-emerald-400 px-3 py-1 rounded-full text-sm font-medium">
@@ -801,8 +841,8 @@ const MyDonationsPage = () => {
                     <CheckCircle className="h-5 w-5 text-emerald-500" />
                     <div>
                       <p className="text-white font-medium">{notification.title}</p>
-                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                      <p className="text-skyblue-400 text-xs mt-1">
+                      <p className="text-yellow-300 text-sm">{notification.message}</p>
+                      <p className="text-yellow-400 text-xs mt-1">
                         Recipient has confirmed receipt
                       </p>
                     </div>
@@ -843,7 +883,7 @@ const MyDonationsPage = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Pickup Notifications</h3>
-                  <p className="text-skyblue-300 text-sm">Self-pickup donation updates</p>
+                  <p className="text-yellow-300 text-sm">Self-pickup donation updates</p>
                 </div>
               </div>
               <span className="bg-blue-500/20 text-blue-400 px-3 py-1 rounded-full text-sm font-medium">
@@ -861,8 +901,8 @@ const MyDonationsPage = () => {
                     <MapPin className="h-5 w-5 text-blue-500" />
                     <div>
                       <p className="text-white font-medium">{notification.title}</p>
-                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                      <p className="text-skyblue-400 text-xs mt-1">
+                      <p className="text-yellow-300 text-sm">{notification.message}</p>
+                      <p className="text-yellow-400 text-xs mt-1">
                         {notification.data?.pickup_location && `Location: ${notification.data.pickup_location}`}
                       </p>
                     </div>
@@ -898,7 +938,7 @@ const MyDonationsPage = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Confirm Pickup Completions</h3>
-                  <p className="text-skyblue-300 text-sm">Self-pickup donations ready for final confirmation</p>
+                  <p className="text-yellow-300 text-sm">Self-pickup donations ready for final confirmation</p>
                 </div>
               </div>
               <span className="bg-purple-500/20 text-purple-400 px-3 py-1 rounded-full text-sm font-medium">
@@ -916,8 +956,8 @@ const MyDonationsPage = () => {
                     <CheckCircle className="h-5 w-5 text-purple-500" />
                     <div>
                       <p className="text-white font-medium">{notification.title}</p>
-                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                      <p className="text-skyblue-400 text-xs mt-1">
+                      <p className="text-yellow-300 text-sm">{notification.message}</p>
+                      <p className="text-yellow-400 text-xs mt-1">
                         Completed by: {notification.data?.completed_by_name}
                       </p>
                     </div>
@@ -958,7 +998,7 @@ const MyDonationsPage = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Direct Delivery Updates</h3>
-                  <p className="text-skyblue-300 text-sm">Direct delivery coordination and updates</p>
+                  <p className="text-yellow-300 text-sm">Direct delivery coordination and updates</p>
                 </div>
               </div>
               <span className="bg-orange-500/20 text-orange-400 px-3 py-1 rounded-full text-sm font-medium">
@@ -976,8 +1016,8 @@ const MyDonationsPage = () => {
                     <Truck className="h-5 w-5 text-orange-500" />
                     <div>
                       <p className="text-white font-medium">{notification.title}</p>
-                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                      <p className="text-skyblue-400 text-xs mt-1">
+                      <p className="text-yellow-300 text-sm">{notification.message}</p>
+                      <p className="text-yellow-400 text-xs mt-1">
                         {notification.data?.delivery_address && `Address: ${notification.data.delivery_address}`}
                       </p>
                     </div>
@@ -1013,7 +1053,7 @@ const MyDonationsPage = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Confirm Direct Delivery Completions</h3>
-                  <p className="text-skyblue-300 text-sm">Direct deliveries ready for final confirmation</p>
+                  <p className="text-yellow-300 text-sm">Direct deliveries ready for final confirmation</p>
                 </div>
               </div>
               <span className="bg-indigo-500/20 text-indigo-400 px-3 py-1 rounded-full text-sm font-medium">
@@ -1031,8 +1071,8 @@ const MyDonationsPage = () => {
                     <CheckCircle className="h-5 w-5 text-indigo-500" />
                     <div>
                       <p className="text-white font-medium">{notification.title}</p>
-                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                      <p className="text-skyblue-400 text-xs mt-1">
+                      <p className="text-yellow-300 text-sm">{notification.message}</p>
+                      <p className="text-yellow-400 text-xs mt-1">
                         Delivered to recipient
                       </p>
                     </div>
@@ -1064,41 +1104,47 @@ const MyDonationsPage = () => {
           transition={{ delay: 0.2 }}
           className="card p-6 mb-8"
         >
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-skyblue-400" />
+          <div className="flex flex-wrap gap-4">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
               <input
                 type="text"
                 placeholder="Search donations..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pl-10"
+                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
               />
             </div>
             
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="input"
-            >
-              {statusOptions.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <div className="relative min-w-[180px]">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+              >
+                {statusOptions.map(option => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
+            </div>
             
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="input"
-            >
-              {categories.map(category => (
-                <option key={category} value={category}>
-                  {category}
-                </option>
-              ))}
-            </select>
+            <div className="relative min-w-[180px]">
+              <select
+                value={categoryFilter}
+                onChange={(e) => setCategoryFilter(e.target.value)}
+                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+              >
+                {categories.map(category => (
+                  <option key={category} value={category}>
+                    {category}
+                  </option>
+                ))}
+              </select>
+              <Package className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
+            </div>
             
             <button
               onClick={() => {
@@ -1106,9 +1152,14 @@ const MyDonationsPage = () => {
                 setStatusFilter('all')
                 setCategoryFilter('all')
               }}
-              className="btn btn-secondary"
+              className={`w-[110px] px-4 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 whitespace-nowrap border-2 ${
+                searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
+                  ? 'bg-yellow-600 hover:bg-yellow-700 text-white border-yellow-600 hover:border-yellow-700'
+                  : 'bg-navy-800 hover:bg-navy-700 text-gray-400 border-navy-700'
+              }`}
             >
-              Clear Filters
+              <X className="h-4 w-4" />
+              Clear
             </button>
           </div>
         </motion.div>
@@ -1121,9 +1172,9 @@ const MyDonationsPage = () => {
         >
           {filteredDonations.length === 0 ? (
             <div className="card p-12 text-center">
-              <Package className="h-16 w-16 text-skyblue-600 mx-auto mb-4" />
+              <Package className="h-16 w-16 text-yellow-600 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-white mb-2">No donations found</h3>
-              <p className="text-skyblue-300 mb-6">
+              <p className="text-yellow-300 mb-6">
                 {donations.length === 0 
                   ? "You haven't posted any donations yet. Start sharing your generosity!"
                   : "No donations match your current filters."
@@ -1143,150 +1194,183 @@ const MyDonationsPage = () => {
                   key={donation.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  className="card p-6 hover:bg-navy-800/50 transition-all"
+                  transition={{ delay: index * 0.05 }}
+                  className="card hover:shadow-xl transition-all duration-300 overflow-hidden border-l-4"
+                  style={{
+                    borderLeftColor: donation.status === 'completed' ? '#4ade80' : 
+                                    donation.status === 'delivered' ? '#10b981' : 
+                                    donation.status === 'in_transit' ? '#fb923c' : 
+                                    donation.status === 'claimed' ? '#a78bfa' : 
+                                    donation.status === 'matched' ? '#fbbf24' : '#60a5fa'
+                  }}
                 >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-start justify-between mb-3">
-                        <div>
-                          <div className="flex items-center gap-3 mb-2">
-                            <h3 className="text-lg font-semibold text-white">{donation.title}</h3>
-                            {donation.is_urgent && (
-                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-danger-900/20 text-danger-300">
-                                <AlertCircle className="h-3 w-3 mr-1" />
-                                Urgent
+                  <div className="p-6">
+                    <div className="flex flex-col md:flex-row gap-6">
+                      {/* Donation Image */}
+                      <div className="flex-shrink-0">
+                        {donation.images && donation.images.length > 0 ? (
+                          <div className="relative w-full md:w-56 h-48 rounded-lg overflow-hidden border-2 border-yellow-500/30 shadow-lg">
+                            <img 
+                              src={donation.images[0]} 
+                              alt={donation.title}
+                              className="w-full h-full object-cover"
+                            />
+                            {/* Status Badge on Image */}
+                            <div className="absolute top-2 right-2">
+                              <span className={`px-2 py-1 rounded-md text-xs font-semibold backdrop-blur-sm border ${getStatusColor(donation.status)}`}>
+                                {donation.status.replace('_', ' ').toUpperCase()}
                               </span>
-                            )}
+                            </div>
                           </div>
-                          <p className="text-skyblue-300 text-sm mb-2">{donation.category}</p>
-                          <p className="text-skyblue-200 text-sm leading-relaxed">
-                            {donation.description?.length > 150 
-                              ? `${donation.description.substring(0, 150)}...` 
-                              : donation.description
-                            }
-                          </p>
+                        ) : (
+                          <div className="w-full md:w-56 h-48 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600 shadow-lg">
+                            <Gift className="h-16 w-16 text-yellow-400 mb-2" />
+                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
+                            <span className={`mt-2 px-2 py-1 rounded-md text-xs font-semibold ${getStatusColor(donation.status)}`}>
+                              {donation.status.replace('_', ' ').toUpperCase()}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Donation Details */}
+                      <div className="flex-1 space-y-3">
+                        {/* Header with Actions */}
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex-1">
+                            <div className="flex flex-wrap items-center gap-2 mb-2">
+                              <h3 className="text-xl font-bold text-white">{donation.title}</h3>
+                              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
+                                {donation.category}
+                              </span>
+                              {donation.is_urgent && (
+                                <span className="px-3 py-1 rounded-full text-xs font-semibold text-red-400 bg-red-500/20 border border-red-500/30 uppercase">
+                                  ⚡ URGENT
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-gray-300 text-sm line-clamp-2">
+                              {donation.description || 'No description available'}
+                            </p>
+                          </div>
+                          
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-2">
+                            {/* Request Indicators */}
+                            {donationRequests[donation.id] && donationRequests[donation.id].length > 0 && (
+                              <button
+                                onClick={() => handleViewRequests(donation)}
+                                className="relative p-2 text-amber-400 hover:text-amber-300 hover:bg-navy-700 rounded-lg transition-all"
+                                title={`${donationRequests[donation.id].length} pending donation request(s)`}
+                              >
+                                <Bell className="h-4 w-4" />
+                                <span className="absolute -top-1 -right-1 bg-danger-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                  {donationRequests[donation.id].length}
+                                </span>
+                              </button>
+                            )}
+                            
+                            {/* Volunteer Request Indicator */}
+                            {volunteerRequests[donation.id] && volunteerRequests[donation.id].length > 0 && (
+                              <button
+                                onClick={() => handleViewRequests(donation)}
+                                className="relative p-2 text-purple-400 hover:text-purple-300 hover:bg-navy-700 rounded-lg transition-all"
+                                title={`${volunteerRequests[donation.id].length} pending volunteer request(s)`}
+                              >
+                                <Truck className="h-4 w-4" />
+                                <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                                  {volunteerRequests[donation.id].length}
+                                </span>
+                              </button>
+                            )}
+                            
+                            <button 
+                              onClick={() => handleViewDonation(donation)}
+                              className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all"
+                              title="View Details"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleEditDonation(donation)}
+                              className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all"
+                              title="Edit Donation"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteDonation(donation.id)}
+                              disabled={deletingId === donation.id}
+                              className="p-2 text-yellow-400 hover:text-danger-300 hover:bg-navy-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                              title="Delete Donation"
+                            >
+                              {deletingId === donation.id ? (
+                                <LoadingSpinner size="sm" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </button>
+                          </div>
                         </div>
-                        
-                        <div className="flex items-center gap-2 ml-4">
-                          <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(donation.status)}`}>
-                            {getStatusIcon(donation.status)}
-                            <span className="ml-1 capitalize">{donation.status.replace('_', ' ')}</span>
-                          </span>
+
+                        {/* Compact Details */}
+                        <div className="flex flex-wrap items-center gap-4 text-sm text-yellow-300">
+                          <div className="flex items-center gap-1.5">
+                            <Package className="h-4 w-4 text-blue-400" />
+                            <span className="font-medium">Qty:</span>
+                            <span className="text-white">{donation.quantity}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5">
+                            <MapPin className="h-4 w-4 text-green-400" />
+                            <span className="font-medium">Location:</span>
+                            <span className="text-white">{donation.pickup_location}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="h-4 w-4 text-purple-400" />
+                            <span className="font-medium">Posted:</span>
+                            <span className="text-white">{new Date(donation.created_at).toLocaleDateString()}</span>
+                          </div>
+                          
+                          {donation.expiry_date && (
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="h-4 w-4 text-orange-400" />
+                              <span className="font-medium">Expires:</span>
+                              <span className="text-white">{new Date(donation.expiry_date).toLocaleDateString()}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Tags */}
+                        {donation.tags && donation.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {donation.tags.map((tag, tagIndex) => (
+                              <span
+                                key={tagIndex}
+                                className="inline-flex items-center px-2 py-1 rounded text-xs bg-navy-700 text-yellow-300 border border-navy-600"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Status Badge and Impact */}
+                        <div className="flex items-center gap-2">
                           {donation.status === 'completed' && (
                             <motion.div
                               initial={{ opacity: 0, scale: 0 }}
                               animate={{ opacity: 1, scale: 1 }}
                               transition={{ delay: 0.3, type: "spring", stiffness: 200 }}
-                              className="flex items-center gap-1 px-2 py-1 bg-green-500/20 rounded-full"
+                              className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 rounded-full border border-green-500/30"
                             >
-                              <Heart className="h-3 w-3 text-green-400" />
-                              <span className="text-xs text-green-400 font-medium">Impact Made!</span>
+                              <Heart className="h-4 w-4 text-green-400" />
+                              <span className="text-sm text-green-400 font-medium">Impact Made!</span>
                             </motion.div>
                           )}
                         </div>
                       </div>
-                      
-                      <div className="flex flex-wrap items-center gap-4 text-sm text-skyblue-400">
-                        <div className="flex items-center">
-                          <Package className="h-4 w-4 mr-1" />
-                          Quantity: {donation.quantity}
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <MapPin className="h-4 w-4 mr-1" />
-                          {donation.pickup_location}
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <Calendar className="h-4 w-4 mr-1" />
-                          {new Date(donation.created_at).toLocaleDateString()}
-                        </div>
-                        
-                        {donation.estimated_value && (
-                          <div className="flex items-center">
-                            <span className="mr-1">₱</span>
-                            {donation.estimated_value.toLocaleString()}
-                          </div>
-                        )}
-                        
-                        {donation.expiry_date && (
-                          <div className="flex items-center">
-                            <Clock className="h-4 w-4 mr-1" />
-                            Expires: {new Date(donation.expiry_date).toLocaleDateString()}
-                          </div>
-                        )}
-                      </div>
-                      
-                      {donation.tags && donation.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-3">
-                          {donation.tags.map((tag, tagIndex) => (
-                            <span
-                              key={tagIndex}
-                              className="inline-flex items-center px-2 py-1 rounded text-xs bg-navy-700 text-skyblue-300"
-                            >
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                    
-                    <div className="flex items-center gap-2 ml-6">
-                      {/* Request Indicators */}
-                      {donationRequests[donation.id] && donationRequests[donation.id].length > 0 && (
-                        <button
-                          onClick={() => handleViewRequests(donation)}
-                          className="relative p-2 text-amber-400 hover:text-amber-300 hover:bg-navy-700 rounded-lg transition-all"
-                          title={`${donationRequests[donation.id].length} pending donation request(s)`}
-                        >
-                          <Bell className="h-4 w-4" />
-                          <span className="absolute -top-1 -right-1 bg-danger-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                            {donationRequests[donation.id].length}
-                          </span>
-                        </button>
-                      )}
-                      
-                      {/* Volunteer Request Indicator */}
-                      {volunteerRequests[donation.id] && volunteerRequests[donation.id].length > 0 && (
-                        <button
-                          onClick={() => handleViewRequests(donation)}
-                          className="relative p-2 text-purple-400 hover:text-purple-300 hover:bg-navy-700 rounded-lg transition-all"
-                          title={`${volunteerRequests[donation.id].length} pending volunteer request(s)`}
-                        >
-                          <Truck className="h-4 w-4" />
-                          <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                            {volunteerRequests[donation.id].length}
-                          </span>
-                        </button>
-                      )}
-                      
-                      <button 
-                        onClick={() => handleViewDonation(donation)}
-                        className="p-2 text-skyblue-400 hover:text-skyblue-300 hover:bg-navy-700 rounded-lg transition-all"
-                        title="View Details"
-                      >
-                        <Eye className="h-4 w-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleEditDonation(donation)}
-                        className="p-2 text-skyblue-400 hover:text-skyblue-300 hover:bg-navy-700 rounded-lg transition-all"
-                        title="Edit Donation"
-                      >
-                        <Edit className="h-4 w-4" />
-                      </button>
-                      <button 
-                        onClick={() => handleDeleteDonation(donation.id)}
-                        disabled={deletingId === donation.id}
-                        className="p-2 text-skyblue-400 hover:text-danger-300 hover:bg-navy-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                        title="Delete Donation"
-                      >
-                        {deletingId === donation.id ? (
-                          <LoadingSpinner size="sm" />
-                        ) : (
-                          <Trash2 className="h-4 w-4" />
-                        )}
-                      </button>
                     </div>
                   </div>
                 </motion.div>
@@ -1297,130 +1381,169 @@ const MyDonationsPage = () => {
 
         {/* View Donation Modal */}
         {showViewModal && selectedDonation && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2 }}
-              className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-hidden"
+              className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
             >
               {/* Header */}
-              <div className="flex items-center justify-between mb-6 border-b border-navy-700 pb-4">
-                <div className="flex items-center">
-                  <Gift className="h-6 w-6 text-skyblue-500 mr-3" />
-                  <h3 className="text-xl font-semibold text-white">Donation Details</h3>
+              <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-yellow-500/10 rounded-lg">
+                    <Gift className="h-6 w-6 text-yellow-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Donation Details</h3>
+                    <p className="text-xs text-yellow-300">Complete information</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => setShowViewModal(false)}
-                  className="text-skyblue-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                  className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Content with Custom Scrollbar */}
-              <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
-                <div className="space-y-4">
-                <div>
-                  <h4 className="text-lg font-semibold text-white mb-2">{selectedDonation.title}</h4>
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedDonation.status)}`}>
-                    {getStatusIcon(selectedDonation.status)}
-                    <span className="ml-1 capitalize">{selectedDonation.status.replace('_', ' ')}</span>
-                  </span>
-                  {selectedDonation.is_urgent && (
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-danger-900/20 text-danger-300 ml-2">
-                      <AlertCircle className="h-3 w-3 mr-1" />
-                      Urgent
-                    </span>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-skyblue-400 mb-2">Category</label>
-                  <p className="text-white">{selectedDonation.category}</p>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-skyblue-400 mb-2">Description</label>
-                  <p className="text-white">{selectedDonation.description}</p>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-skyblue-400 mb-2">Quantity</label>
-                    <p className="text-white">{selectedDonation.quantity}</p>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-skyblue-400 mb-2">Condition</label>
-                    <p className="text-white capitalize">{selectedDonation.condition?.replace('_', ' ')}</p>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-skyblue-400 mb-2">Pickup Location</label>
-                  <p className="text-white">{selectedDonation.pickup_location}</p>
-                </div>
-
-                {selectedDonation.pickup_instructions && (
-                  <div>
-                    <label className="block text-sm font-medium text-skyblue-400 mb-2">Pickup Instructions</label>
-                    <p className="text-white">{selectedDonation.pickup_instructions}</p>
-                  </div>
-                )}
-
-                {selectedDonation.expiry_date && (
-                  <div>
-                    <label className="block text-sm font-medium text-skyblue-400 mb-2">Expiry Date</label>
-                    <p className="text-white">{new Date(selectedDonation.expiry_date).toLocaleDateString()}</p>
-                  </div>
-                )}
-
-                {selectedDonation.tags && selectedDonation.tags.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-skyblue-400 mb-2">Tags</label>
-                    <div className="flex flex-wrap gap-1">
-                      {selectedDonation.tags.map((tag, tagIndex) => (
-                        <span
-                          key={tagIndex}
-                          className="inline-flex items-center px-2 py-1 rounded text-xs bg-navy-700 text-skyblue-300"
-                        >
-                          #{tag}
+              <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+                <div className="space-y-6">
+                  {/* Image Section */}
+                  {selectedDonation.images && selectedDonation.images.length > 0 && (
+                    <div className="relative rounded-lg overflow-hidden border-2 border-yellow-500/30">
+                      <img 
+                        src={selectedDonation.images[0]} 
+                        alt={selectedDonation.title}
+                        className="w-full h-64 object-cover"
+                      />
+                      <div className="absolute top-3 right-3">
+                        <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md border-2 ${getStatusColor(selectedDonation.status)}`}>
+                          {selectedDonation.status.replace('_', ' ').toUpperCase()}
                         </span>
-                      ))}
+                      </div>
+                      {selectedDonation.is_urgent && (
+                        <div className="absolute top-3 left-3">
+                          <span className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-400 bg-red-500/80 backdrop-blur-md border-2 border-red-500/50 uppercase">
+                            ⚡ URGENT
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Title and Status */}
+                  <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-start justify-between gap-4 mb-3">
+                      <h4 className="text-2xl font-bold text-white">{selectedDonation.title}</h4>
+                      <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                        {selectedDonation.category}
+                      </span>
+                    </div>
+                    {(!selectedDonation.images || selectedDonation.images.length === 0) && (
+                      <div className="flex items-center gap-2 mb-3">
+                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedDonation.status)}`}>
+                          {getStatusIcon(selectedDonation.status)}
+                          <span className="ml-1 capitalize">{selectedDonation.status.replace('_', ' ')}</span>
+                        </span>
+                        {selectedDonation.is_urgent && (
+                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-danger-900/20 text-danger-300 border border-danger-500/30">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            URGENT
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    <p className="text-gray-300 leading-relaxed">{selectedDonation.description}</p>
+                  </div>
+
+                  {/* Details Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Package className="h-4 w-4 text-blue-400" />
+                        <label className="text-sm font-semibold text-yellow-300">Quantity</label>
+                      </div>
+                      <p className="text-white text-lg font-medium">{selectedDonation.quantity}</p>
+                    </div>
+                    
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="h-4 w-4 text-green-400" />
+                        <label className="text-sm font-semibold text-yellow-300">Condition</label>
+                      </div>
+                      <p className="text-white text-lg font-medium capitalize">{selectedDonation.condition?.replace('_', ' ')}</p>
                     </div>
                   </div>
-                )}
 
-                <div>
-                  <label className="block text-sm font-medium text-skyblue-400 mb-2">Posted Date</label>
-                  <p className="text-white">{new Date(selectedDonation.created_at).toLocaleDateString()}</p>
-                </div>
+                  {/* Location */}
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <MapPin className="h-4 w-4 text-green-400" />
+                      <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                    </div>
+                    <p className="text-white">{selectedDonation.pickup_location}</p>
+                  </div>
+
+                  {selectedDonation.pickup_instructions && (
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertCircle className="h-4 w-4 text-orange-400" />
+                        <label className="text-sm font-semibold text-yellow-300">Pickup Instructions</label>
+                      </div>
+                      <p className="text-white">{selectedDonation.pickup_instructions}</p>
+                    </div>
+                  )}
+
+                  {/* Additional Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {selectedDonation.expiry_date && (
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Clock className="h-4 w-4 text-orange-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Expiry Date</label>
+                        </div>
+                        <p className="text-white">{new Date(selectedDonation.expiry_date).toLocaleDateString()}</p>
+                      </div>
+                    )}
+
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Calendar className="h-4 w-4 text-purple-400" />
+                        <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                      </div>
+                      <p className="text-white">{new Date(selectedDonation.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+
+                  {/* Tags */}
+                  {selectedDonation.tags && selectedDonation.tags.length > 0 && (
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <label className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</label>
+                      <div className="flex flex-wrap gap-2">
+                        {selectedDonation.tags.map((tag, tagIndex) => (
+                          <span
+                            key={tagIndex}
+                            className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-navy-700 text-yellow-300 border border-yellow-500/30"
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
               {/* Footer */}
-              <div className="mt-6 pt-4 border-t border-navy-700 flex justify-end gap-3">
+              <div className="p-6 pt-4 border-t-2 border-yellow-500/20 flex justify-end flex-shrink-0">
                 <button
                   onClick={() => setShowViewModal(false)}
-                  className="btn border border-gray-600 text-gray-400 bg-navy-800 hover:bg-navy-700"
+                  className="px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
                 >
                   Close
-                </button>
-                <button
-                  onClick={() => {
-                    setShowViewModal(false)
-                    handleEditDonation(selectedDonation)
-                  }}
-                  disabled={selectedDonation?.status !== 'available'}
-                  className={`btn flex items-center ${
-                    selectedDonation?.status === 'available' 
-                      ? 'btn-primary hover:bg-skyblue-700' 
-                      : 'bg-gray-600 text-gray-400 cursor-not-allowed'
-                  }`}
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  {selectedDonation?.status === 'available' ? 'Edit Donation' : 'Cannot Edit'}
                 </button>
               </div>
             </motion.div>
@@ -1429,34 +1552,75 @@ const MyDonationsPage = () => {
 
         {/* Edit Donation Modal */}
         {showEditModal && selectedDonation && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2 }}
-              className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-3xl w-full max-h-[90vh] overflow-hidden"
+              className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
             >
               {/* Header */}
-              <div className="flex items-center justify-between mb-6 border-b border-navy-700 pb-4">
-                <div className="flex items-center">
-                  <Edit className="h-6 w-6 text-skyblue-500 mr-3" />
-                  <h3 className="text-xl font-semibold text-white">Edit Donation</h3>
+              <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-yellow-500/10 rounded-lg">
+                    <Edit className="h-6 w-6 text-yellow-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Edit Donation</h3>
+                    <p className="text-xs text-yellow-300">Update donation information</p>
+                  </div>
                 </div>
                 <button
                   onClick={() => {
                     setShowEditModal(false)
                     setSelectedDonation(null)
                   }}
-                  className="text-skyblue-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                  className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
 
               {/* Content with Custom Scrollbar */}
-              <div className="max-h-96 overflow-y-auto pr-2 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
                 <form onSubmit={handleSubmit(handleEditSubmit)} className="space-y-6">
+                  {/* Image Upload Section */}
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <label className="block text-sm font-semibold text-yellow-300 mb-3">Donation Image</label>
+                    
+                    {imagePreview ? (
+                      <div className="relative">
+                        <img 
+                          src={imagePreview} 
+                          alt="Preview" 
+                          className="w-full h-48 object-cover rounded-lg border-2 border-yellow-500/30"
+                        />
+                        <button
+                          type="button"
+                          onClick={removeUploadedImage}
+                          className="absolute top-2 right-2 p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={handleImageUpload}
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                        />
+                        <div className="border-2 border-dashed border-navy-600 rounded-lg p-8 text-center hover:border-yellow-500 hover:bg-navy-700 transition-all cursor-pointer">
+                          <Upload className="h-10 w-10 text-yellow-400 mx-auto mb-3" />
+                          <p className="text-white text-sm mb-1">Click to upload image</p>
+                          <p className="text-yellow-400 text-xs">PNG, JPG up to 5MB</p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {/* Basic Information */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="md:col-span-2">
@@ -1606,7 +1770,7 @@ const MyDonationsPage = () => {
                       {errors.delivery_mode && (
                         <p className="mt-1 text-sm text-danger-400">{errors.delivery_mode.message}</p>
                       )}
-                      <p className="mt-1 text-xs text-skyblue-400">
+                      <p className="mt-1 text-xs text-yellow-400">
                         Choose how recipients can receive this donation
                       </p>
                     </div>
@@ -1620,7 +1784,7 @@ const MyDonationsPage = () => {
                         className="input"
                         placeholder="Separate tags with commas (e.g., children, winter, clothing)"
                       />
-                      <p className="mt-1 text-xs text-skyblue-400">
+                      <p className="mt-1 text-xs text-yellow-400">
                         Add relevant tags to help people find your donation
                       </p>
                     </div>
@@ -1630,7 +1794,7 @@ const MyDonationsPage = () => {
                         <input
                           {...register('is_urgent')}
                           type="checkbox"
-                          className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mr-3"
+                          className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-navy-600 rounded bg-navy-800 mr-3"
                         />
                         <span className="text-sm text-white">
                           Mark as urgent (recipients will see this donation prioritized)
@@ -1642,34 +1806,50 @@ const MyDonationsPage = () => {
               </div>
 
               {/* Footer */}
-              <div className="mt-6 pt-4 border-t border-navy-700 flex justify-end gap-3">
-                <button
-                  onClick={() => {
-                    setShowEditModal(false)
-                    setSelectedDonation(null)
-                  }}
-                  className="btn border border-gray-600 text-gray-400 bg-navy-800 hover:bg-navy-700"
-                  disabled={editingId}
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleSubmit(handleEditSubmit)}
-                  disabled={editingId}
-                  className="btn btn-primary hover:bg-skyblue-700 flex items-center"
-                >
-                  {editingId ? (
-                    <>
-                      <LoadingSpinner size="sm" className="mr-2" />
-                      Updating...
-                    </>
+              <div className="p-6 pt-4 border-t-2 border-yellow-500/20 flex justify-between items-center flex-shrink-0">
+                <div className="text-sm text-yellow-300">
+                  {isDirty ? (
+                    <span className="flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4" />
+                      You have unsaved changes
+                    </span>
                   ) : (
-                    <>
-                      <Edit className="h-4 w-4 mr-2" />
-                      Update Donation
-                    </>
+                    <span className="text-gray-500">No changes made</span>
                   )}
-                </button>
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowEditModal(false)
+                      setSelectedDonation(null)
+                    }}
+                    className="px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
+                    disabled={editingId}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleSubmit(handleEditSubmit)}
+                    disabled={editingId || !isDirty}
+                    className={`px-6 py-2.5 rounded-lg font-medium transition-colors flex items-center gap-2 ${
+                      isDirty && !editingId
+                        ? 'bg-yellow-600 hover:bg-yellow-700 text-white'
+                        : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                    }`}
+                  >
+                    {editingId ? (
+                      <>
+                        <LoadingSpinner size="sm" />
+                        Updating...
+                      </>
+                    ) : (
+                      <>
+                        <Edit className="h-4 w-4" />
+                        Update Donation
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -1688,15 +1868,15 @@ const MyDonationsPage = () => {
               {/* Header */}
               <div className="flex items-center justify-between mb-6 border-b border-navy-700 pb-4">
                 <div className="flex items-center">
-                  <Users className="h-6 w-6 text-skyblue-500 mr-3" />
+                  <Users className="h-6 w-6 text-yellow-500 mr-3" />
                   <div>
                     <h3 className="text-xl font-semibold text-white">Requests Management</h3>
-                    <p className="text-sm text-skyblue-300">For: {selectedDonation.title}</p>
+                    <p className="text-sm text-yellow-300">For: {selectedDonation.title}</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowRequestsModal(false)}
-                  className="text-skyblue-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                  className="text-yellow-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
                 >
                   <X className="h-5 w-5" />
                 </button>
@@ -1738,11 +1918,9 @@ const MyDonationsPage = () => {
                               </div>
 
                               {request.data?.delivery_mode === 'volunteer' && (
-                                <div className="bg-green-900/20 border border-green-500/20 rounded-lg p-2 mb-3">
-                                  <div className="flex items-center text-green-400 text-sm">
-                                    <AlertCircle className="h-4 w-4 mr-2" />
-                                    <span>Volunteer delivery requested</span>
-                                  </div>
+                                <div className="inline-flex items-center bg-green-900/20 border border-green-500/20 rounded-lg px-3 py-2 mb-3">
+                                  <AlertCircle className="h-4 w-4 mr-2 text-green-400 flex-shrink-0" />
+                                  <span className="text-green-400 text-sm whitespace-nowrap">Volunteer delivery requested</span>
                                 </div>
                               )}
                             </div>
@@ -1849,8 +2027,8 @@ const MyDonationsPage = () => {
                 {/* No Requests Message */}
                 {selectedDonationRequests.length === 0 && selectedVolunteerRequests.length === 0 && (
                   <div className="text-center py-8">
-                    <Users className="h-12 w-12 text-skyblue-400 mx-auto mb-4" />
-                    <p className="text-skyblue-300">No pending requests for this donation.</p>
+                    <Users className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+                    <p className="text-yellow-300">No pending requests for this donation.</p>
                   </div>
                 )}
               </div>

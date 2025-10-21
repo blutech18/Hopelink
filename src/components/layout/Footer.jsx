@@ -25,7 +25,7 @@ const Footer = ({ userRole = null }) => {
         { name: 'Browse Donations', href: '/browse-donations' },
         { name: 'Create Request', href: '/create-request' },
         { name: 'My Requests', href: '/my-requests' },
-        { name: 'My Approved Items', href: '/my-approved-donations' },
+        { name: 'My Approved Requests', href: '/my-approved-requests' },
       ],
       secondaryLinks: [
         { name: 'Eligibility Guide', href: '/eligibility' },

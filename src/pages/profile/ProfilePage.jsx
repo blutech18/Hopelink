@@ -750,7 +750,7 @@ const ProfilePage = () => {
       case 'recipient': return 'text-green-400'
       case 'volunteer': return 'text-purple-400'
       case 'admin': return 'text-amber-400'
-      default: return 'text-skyblue-400'
+      default: return 'text-yellow-400'
     }
   }
 
@@ -844,17 +844,17 @@ const ProfilePage = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">Profile Settings</h1>
-              <p className="text-skyblue-300">Manage your account information and preferences</p>
+              <p className="text-yellow-300">Manage your account information and preferences</p>
             </div>
             <div className="flex items-center space-x-4">
               {/* Profile completion only shown for non-admin users */}
               {profile.role !== 'admin' && (
                 <div className="text-right">
-                  <div className="text-sm text-skyblue-300">Profile Completion</div>
+                  <div className="text-sm text-yellow-300">Profile Completion</div>
                   <div className="flex items-center space-x-2">
                     <div className="w-20 bg-navy-800 rounded-full h-2">
                       <div
-                        className="bg-gradient-to-r from-skyblue-500 to-blue-500 h-2 rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full transition-all duration-300"
                         style={{ width: `${completionPercentage}%` }}
                       />
                     </div>
@@ -882,7 +882,7 @@ const ProfilePage = () => {
             </div>
             {profile.account_type === 'business' && (
               <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
-                <Building2 className="h-4 w-4 text-skyblue-400" />
+                <Building2 className="h-4 w-4 text-yellow-400" />
                 <span className="text-sm font-medium text-white">Business Account</span>
               </div>
             )}
@@ -911,7 +911,7 @@ const ProfilePage = () => {
           className="card p-6 mb-8"
         >
           <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-            <Camera className="h-5 w-5 text-skyblue-400 mr-2" />
+            <Camera className="h-5 w-5 text-yellow-400 mr-2" />
             Profile Picture
           </h2>
 
@@ -926,7 +926,7 @@ const ProfilePage = () => {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <User className="h-16 w-16 text-skyblue-400" />
+                  <User className="h-16 w-16 text-yellow-400" />
                 )}
               </div>
               
@@ -949,7 +949,7 @@ const ProfilePage = () => {
             <div className="flex-1">
               <div className="mb-4">
                 <p className="text-white font-medium mb-2">Upload a profile picture</p>
-                <p className="text-skyblue-400 text-sm mb-4">
+                <p className="text-yellow-300 text-sm mb-4">
                   Choose a clear photo that represents you. Accepted formats: JPG, PNG, GIF. Max size: 5MB.
                 </p>
               </div>
@@ -1023,7 +1023,7 @@ const ProfilePage = () => {
                 className="card p-6"
               >
                 <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                  <User className="h-5 w-5 text-skyblue-400 mr-2" />
+                  <User className="h-5 w-5 text-yellow-400 mr-2" />
                   Basic Information
                 </h2>
 
@@ -1048,8 +1048,10 @@ const ProfilePage = () => {
                         placeholder="Enter your full name"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.name || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.name ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.name || 'Not provided'}
+                        </span>
                       </div>
                     )}
                     {errors.name && (
@@ -1061,11 +1063,11 @@ const ProfilePage = () => {
                     <label className="block text-sm font-medium text-white mb-2">
                       Email Address
                     </label>
-                    <div className="input bg-navy-800 text-skyblue-200 flex items-center">
-                      <Mail className="h-4 w-4 text-skyblue-400 mr-2" />
+                    <div className="input bg-navy-800 text-yellow-200 flex items-center">
+                      <Mail className="h-4 w-4 text-yellow-400 mr-2" />
                       {profile.email}
                     </div>
-                    <p className="mt-1 text-xs text-skyblue-400">Email cannot be changed</p>
+                    <p className="mt-1 text-xs text-yellow-400">Email cannot be changed</p>
                   </div>
 
                   <div>
@@ -1095,9 +1097,11 @@ const ProfilePage = () => {
                         maxLength="11"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200 flex items-center">
-                        <Phone className="h-4 w-4 text-skyblue-400 mr-2" />
-                        {profile.phone_number || 'Not provided'}
+                      <div className="input bg-navy-800 flex items-center">
+                        <Phone className="h-4 w-4 text-yellow-400 mr-2" />
+                        <span className={profile.phone_number ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.phone_number || 'Not provided'}
+                        </span>
                       </div>
                     )}
                     {errors.phone_number && (
@@ -1119,9 +1123,11 @@ const ProfilePage = () => {
                           <option value="business">Business/Organization</option>
                         </select>
                       ) : (
-                        <div className="input bg-navy-800 text-skyblue-200 flex items-center">
-                          <Building2 className="h-4 w-4 text-skyblue-400 mr-2" />
-                          {profile.account_type === 'business' ? 'Business/Organization' : 'Individual'}
+                        <div className="input bg-navy-800 flex items-center">
+                          <Building2 className="h-4 w-4 text-yellow-400 mr-2" />
+                          <span className="text-yellow-200">
+                            {profile.account_type === 'business' ? 'Business/Organization' : 'Individual'}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -1138,7 +1144,7 @@ const ProfilePage = () => {
               >
                 <div className="flex items-center justify-between mb-6">
                   <h2 className="text-xl font-semibold text-white flex items-center">
-                    <MapPin className="h-5 w-5 text-skyblue-400 mr-2" />
+                    <MapPin className="h-5 w-5 text-yellow-400 mr-2" />
                     Address Information
                   </h2>
                   {isEditing && (
@@ -1155,7 +1161,7 @@ const ProfilePage = () => {
 
                 {/* Matching Algorithm Info Banner */}
                 {(profile.role === 'donor' || profile.role === 'recipient' || profile.role === 'volunteer') && (
-                  <div className="mb-6 p-4 bg-gradient-to-r from-yellow-500/10 to-skyblue-500/10 border border-yellow-500/20 rounded-lg">
+                  <div className="mb-6 p-4 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg">
                     <div className="flex items-start gap-3">
                       <div className="flex-shrink-0 w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
                         <Globe className="h-5 w-5 text-yellow-400" />
@@ -1164,7 +1170,7 @@ const ProfilePage = () => {
                         <h3 className="text-sm font-semibold text-white mb-1">
                           Smart Location Matching
                         </h3>
-                        <p className="text-xs text-skyblue-200 leading-relaxed">
+                        <p className="text-xs text-yellow-200 leading-relaxed">
                           Your location helps our intelligent matching algorithm connect you with nearby{' '}
                           {profile.role === 'donor' && 'recipients and volunteers'}
                           {profile.role === 'recipient' && 'donors and volunteers'}
@@ -1203,8 +1209,10 @@ const ProfilePage = () => {
                         placeholder="e.g., Cagayan de Oro"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.city || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.city ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.city || 'Not provided'}
+                        </span>
                       </div>
                     )}
                     {errors.city && (
@@ -1228,8 +1236,10 @@ const ProfilePage = () => {
                         <option value="Lanao del Norte">Lanao del Norte</option>
                       </select>
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.province || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.province ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.province || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1246,8 +1256,10 @@ const ProfilePage = () => {
                         placeholder="e.g., Brgy. 28 or Gusa"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.address_barangay || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.address_barangay ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.address_barangay || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1264,8 +1276,10 @@ const ProfilePage = () => {
                         placeholder="e.g., J. Ramirez St."
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.address_street || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.address_street ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.address_street || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1282,8 +1296,10 @@ const ProfilePage = () => {
                         placeholder="e.g., Unit 3B or #12"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.address_house || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.address_house ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.address_house || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1300,8 +1316,10 @@ const ProfilePage = () => {
                         placeholder="e.g., Villa Ernesto Phase 2 or Limketkai Center"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.address_subdivision || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.address_subdivision ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.address_subdivision || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1318,8 +1336,10 @@ const ProfilePage = () => {
                         placeholder="e.g., 9000"
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.zip_code || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.zip_code ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.zip_code || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1338,8 +1358,10 @@ const ProfilePage = () => {
                         placeholder="Near church, beside pharmacy, etc."
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200">
-                        {profile.address_landmark || 'Not provided'}
+                      <div className="input bg-navy-800">
+                        <span className={profile.address_landmark ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.address_landmark || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1356,8 +1378,10 @@ const ProfilePage = () => {
                         placeholder="Gate code, contact person, best time to deliver, etc."
                       />
                     ) : (
-                      <div className="input bg-navy-800 text-skyblue-200 min-h-[48px] flex items-center">
-                        {profile.delivery_instructions || 'Not provided'}
+                      <div className="input bg-navy-800 min-h-[48px] flex items-center">
+                        <span className={profile.delivery_instructions ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.delivery_instructions || 'Not provided'}
+                        </span>
                       </div>
                     )}
                   </div>
@@ -1509,7 +1533,7 @@ const ProfilePage = () => {
                       {/* Role-specific ID requirements info */}
                       <div className="bg-navy-800/50 border border-skyblue-500/20 rounded-lg p-4">
                         <div className="flex items-start space-x-3">
-                          <AlertCircle className="h-5 w-5 text-skyblue-400 mt-0.5 flex-shrink-0" />
+                          <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5 flex-shrink-0" />
                           <div>
                             <h4 className="text-sm font-medium text-white mb-2">
                               {profile.role === 'donor' && 'Donor ID Requirements'}
@@ -1517,7 +1541,7 @@ const ProfilePage = () => {
                               {profile.role === 'volunteer' && 'Volunteer ID Requirements'}
                               {profile.role === 'admin' && 'Admin ID Requirements'}
                             </h4>
-                            <p className="text-xs text-skyblue-300">
+                            <p className="text-xs text-yellow-300">
                               {profile.role === 'donor' && (
                                 (isEditing ? watchedAccountType : profile.account_type) === 'business' || 
                                 (isEditing ? watchedAccountType : profile.account_type) === 'organization'
@@ -1541,7 +1565,7 @@ const ProfilePage = () => {
                         <div className="flex items-center justify-between">
                           <div>
                             <h4 className="text-sm font-medium text-white mb-1">Verification Status</h4>
-                            <p className="text-xs text-skyblue-300">
+                            <p className="text-xs text-yellow-300">
                               {(() => {
                                 const hasIdUploaded = profile.primary_id_type && profile.primary_id_number
                                 const idStatus = profile.id_verification_status
@@ -1652,11 +1676,13 @@ const ProfilePage = () => {
                                 ))}
                               </select>
                             ) : (
-                              <div className="input bg-navy-800 text-skyblue-200">
-                                {profile.primary_id_type ? 
-                                  idOptions.primary.find(opt => opt.value === profile.primary_id_type)?.label || profile.primary_id_type
-                                  : 'Not provided'
-                                }
+                              <div className="input bg-navy-800">
+                                <span className={profile.primary_id_type ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                  {profile.primary_id_type ? 
+                                    idOptions.primary.find(opt => opt.value === profile.primary_id_type)?.label || profile.primary_id_type
+                                    : 'Not provided'
+                                  }
+                                </span>
                               </div>
                             )}
                             {errors.primary_id_type && (
@@ -1689,8 +1715,10 @@ const ProfilePage = () => {
                                 placeholder="Enter ID number"
                               />
                             ) : (
-                              <div className="input bg-navy-800 text-skyblue-200">
-                                {profile.primary_id_number || 'Not provided'}
+                              <div className="input bg-navy-800">
+                                <span className={profile.primary_id_number ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                  {profile.primary_id_number || 'Not provided'}
+                                </span>
                               </div>
                             )}
                             {errors.primary_id_number && (
@@ -1710,11 +1738,13 @@ const ProfilePage = () => {
                               className="input max-w-xs"
                             />
                           ) : (
-                            <div className="input bg-navy-800 text-skyblue-200 max-w-xs">
-                              {profile.primary_id_expiry ? 
-                                new Date(profile.primary_id_expiry).toLocaleDateString() : 
-                                'Not provided'
-                              }
+                            <div className="input bg-navy-800 max-w-xs">
+                              <span className={profile.primary_id_expiry ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                {profile.primary_id_expiry ? 
+                                  new Date(profile.primary_id_expiry).toLocaleDateString() : 
+                                  'Not provided'
+                                }
+                              </span>
                             </div>
                           )}
                         </div>
@@ -1752,8 +1782,10 @@ const ProfilePage = () => {
                                     placeholder="Full name of authorized representative"
                                   />
                                 ) : (
-                                  <div className="input bg-navy-800 text-skyblue-200">
-                                    {profile.organization_representative_name || 'Not provided'}
+                                  <div className="input bg-navy-800">
+                                    <span className={profile.organization_representative_name ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                      {profile.organization_representative_name || 'Not provided'}
+                                    </span>
                                   </div>
                                 )}
                                 {errors.organization_representative_name && (
@@ -1773,8 +1805,10 @@ const ProfilePage = () => {
                                     placeholder="Position/Title in organization"
                                   />
                                 ) : (
-                                  <div className="input bg-navy-800 text-skyblue-200">
-                                    {profile.organization_representative_position || 'Not provided'}
+                                  <div className="input bg-navy-800">
+                                    <span className={profile.organization_representative_position ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                      {profile.organization_representative_position || 'Not provided'}
+                                    </span>
                                   </div>
                                 )}
                               </div>
@@ -1810,11 +1844,13 @@ const ProfilePage = () => {
                                   ))}
                                 </select>
                               ) : (
-                                <div className="input bg-navy-800 text-skyblue-200">
-                                  {profile.secondary_id_type ? 
-                                    idOptions.secondary?.find(opt => opt.value === profile.secondary_id_type)?.label || profile.secondary_id_type
-                                    : 'Not provided'
-                                  }
+                                <div className="input bg-navy-800">
+                                  <span className={profile.secondary_id_type ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                    {profile.secondary_id_type ? 
+                                      idOptions.secondary?.find(opt => opt.value === profile.secondary_id_type)?.label || profile.secondary_id_type
+                                      : 'Not provided'
+                                    }
+                                  </span>
                                 </div>
                               )}
                               {errors.secondary_id_type && (
@@ -1848,8 +1884,10 @@ const ProfilePage = () => {
                                   placeholder="Enter ID number"
                                 />
                               ) : (
-                                <div className="input bg-navy-800 text-skyblue-200">
-                                  {profile.secondary_id_number || 'Not provided'}
+                                <div className="input bg-navy-800">
+                                  <span className={profile.secondary_id_number ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                    {profile.secondary_id_number || 'Not provided'}
+                                  </span>
                                 </div>
                               )}
                               {errors.secondary_id_number && (
@@ -1896,7 +1934,7 @@ const ProfilePage = () => {
                                 <div className="border-2 border-dashed border-navy-600 rounded-lg p-8 text-center">
                                   <Camera className="h-12 w-12 text-skyblue-500 mx-auto mb-4" />
                                   <p className="text-white mb-2">Upload ID Image</p>
-                                  <p className="text-sm text-skyblue-300 mb-4">
+                                  <p className="text-sm text-yellow-300 mb-4">
                                     Take a clear photo of your ID document
                                   </p>
                                   <input
@@ -1924,7 +1962,7 @@ const ProfilePage = () => {
                                   </label>
                                 </div>
                               )}
-                              <p className="text-xs text-skyblue-400">
+                              <p className="text-xs text-yellow-400">
                                 Maximum file size: 5MB. Supported formats: JPG, PNG, GIF
                               </p>
                               {errors.primary_id_image_url && (
@@ -1940,7 +1978,7 @@ const ProfilePage = () => {
                                   className="w-full max-w-md h-48 object-cover rounded-lg border-2 border-navy-600"
                                 />
                               ) : (
-                                <div className="input bg-navy-800 text-skyblue-400 text-center py-8">
+                                <div className="input bg-navy-800 text-yellow-400 text-center py-8">
                                   <Camera className="h-8 w-8 mx-auto mb-2 opacity-50" />
                                   No ID image uploaded
                                 </div>
@@ -1987,7 +2025,7 @@ const ProfilePage = () => {
                                   <div className="border-2 border-dashed border-navy-600 rounded-lg p-8 text-center">
                                     <Camera className="h-12 w-12 text-skyblue-500 mx-auto mb-4" />
                                     <p className="text-white mb-2">Upload Representative ID</p>
-                                    <p className="text-sm text-skyblue-300 mb-4">
+                                    <p className="text-sm text-yellow-300 mb-4">
                                       Clear photo of the authorized representative's ID
                                     </p>
                                     <input
@@ -2015,7 +2053,7 @@ const ProfilePage = () => {
                                     </label>
                                   </div>
                                 )}
-                                <p className="text-xs text-skyblue-400">
+                                <p className="text-xs text-yellow-400">
                                   Maximum file size: 5MB. Supported formats: JPG, PNG, GIF
                                 </p>
                                 {errors.secondary_id_image_url && (
@@ -2031,7 +2069,7 @@ const ProfilePage = () => {
                                     className="w-full max-w-md h-48 object-cover rounded-lg border-2 border-navy-600"
                                   />
                                 ) : (
-                                  <div className="input bg-navy-800 text-skyblue-400 text-center py-8">
+                                  <div className="input bg-navy-800 text-yellow-400 text-center py-8">
                                     <Camera className="h-8 w-8 mx-auto mb-2 opacity-50" />
                                     No representative ID image uploaded
                                   </div>
@@ -2090,8 +2128,10 @@ const ProfilePage = () => {
                                   placeholder="Enter organization name"
                                 />
                               ) : (
-                                <div className="input bg-navy-800 text-skyblue-200">
-                                  {profile.organization_name || 'Not provided'}
+                                <div className="input bg-navy-800">
+                                  <span className={profile.organization_name ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                    {profile.organization_name || 'Not provided'}
+                                  </span>
                                 </div>
                               )}
                               {errors.organization_name && (
@@ -2116,21 +2156,21 @@ const ProfilePage = () => {
                                   type="url"
                                 />
                               ) : (
-                                <div className="input bg-navy-800 text-skyblue-200 flex items-center">
+                                <div className="input bg-navy-800 flex items-center">
                                   {profile.website_link ? (
                                     <>
-                                      <Globe className="h-4 w-4 text-skyblue-400 mr-2" />
+                                      <Globe className="h-4 w-4 text-yellow-400 mr-2" />
                                       <a 
                                         href={profile.website_link} 
                                         target="_blank" 
                                         rel="noopener noreferrer"
-                                        className="text-skyblue-400 hover:text-skyblue-300 truncate"
+                                        className="text-yellow-400 hover:text-yellow-300 truncate"
                                       >
                                         {profile.website_link}
                                       </a>
                                     </>
                                   ) : (
-                                    'Not provided'
+                                    <span className="text-gray-400 italic">Not provided</span>
                                   )}
                                 </div>
                               )}
@@ -2145,7 +2185,7 @@ const ProfilePage = () => {
                       <div>
                         <label className="block text-sm font-medium text-white mb-2">
                           Bio/Description
-                          <span className="text-xs text-skyblue-400 ml-1">(Optional - Tell others about yourself and your motivation to donate)</span>
+                          <span className="text-xs text-yellow-400 ml-1">(Optional - Tell others about yourself and your motivation to donate)</span>
                         </label>
                         {isEditing ? (
                           <textarea
@@ -2167,8 +2207,8 @@ const ProfilePage = () => {
                             placeholder="Share your story, motivation, and what drives you to help others through donations... (Optional)"
                           />
                         ) : (
-                          <div className="input bg-navy-800 text-skyblue-200 h-32 overflow-y-auto custom-scrollbar">
-                            {profile.bio || 'Not provided'}
+                          <div className="input bg-navy-800 h-32 overflow-y-auto custom-scrollbar">
+                            {profile.bio || <span className="text-gray-400 italic">Not provided</span>}
                           </div>
                         )}
                         {isEditing && (
@@ -2176,7 +2216,7 @@ const ProfilePage = () => {
                             {errors.bio ? (
                               <p className="text-sm text-danger-600">{errors.bio.message}</p>
                             ) : (
-                              <span className="text-xs text-skyblue-400">
+                              <span className="text-xs text-yellow-400">
                                 {watch('bio')?.length || 0}/1000 characters
                               </span>
                             )}
@@ -2187,7 +2227,7 @@ const ProfilePage = () => {
                       <div>
                         <label className="block text-sm font-medium text-white mb-3">
                           Donation Types You Can Provide *
-                          <span className="text-xs text-skyblue-400 ml-1">(Select all that apply)</span>
+                          <span className="text-xs text-yellow-400 ml-1">(Select all that apply)</span>
                         </label>
                         {isEditing ? (
                           <Controller
@@ -2240,7 +2280,7 @@ const ProfilePage = () => {
                                 <span key={index} className="badge badge-primary">{type}</span>
                               ))
                             ) : (
-                              <span className="text-skyblue-400 text-sm">None specified</span>
+                              <span className="text-gray-400 italic">None specified</span>
                             )}
                           </div>
                         )}
@@ -2270,10 +2310,12 @@ const ProfilePage = () => {
                                 <option value="flexible">Flexible</option>
                               </select>
                             ) : (
-                              <div className="input bg-navy-800 text-skyblue-200">
-                                {profile.preferred_pickup_location ? 
-                                  profile.preferred_pickup_location.charAt(0).toUpperCase() + profile.preferred_pickup_location.slice(1) 
-                                  : 'Not specified'}
+                              <div className="input bg-navy-800">
+                                <span className={profile.preferred_pickup_location ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                  {profile.preferred_pickup_location ? 
+                                    profile.preferred_pickup_location.charAt(0).toUpperCase() + profile.preferred_pickup_location.slice(1) 
+                                    : 'Not specified'}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -2295,10 +2337,12 @@ const ProfilePage = () => {
                                 <option value="regular">Regular basis</option>
                               </select>
                             ) : (
-                              <div className="input bg-navy-800 text-skyblue-200">
-                                {profile.donation_frequency ? 
-                                  profile.donation_frequency.charAt(0).toUpperCase() + profile.donation_frequency.slice(1) 
-                                  : 'Not specified'}
+                              <div className="input bg-navy-800">
+                                <span className={profile.donation_frequency ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                  {profile.donation_frequency ? 
+                                    profile.donation_frequency.charAt(0).toUpperCase() + profile.donation_frequency.slice(1) 
+                                    : 'Not specified'}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -2327,8 +2371,10 @@ const ProfilePage = () => {
                                 step="1"
                               />
                             ) : (
-                              <div className="input bg-navy-800 text-skyblue-200">
-                                {profile.max_donation_value ? `₱${parseInt(profile.max_donation_value).toLocaleString()}` : 'Not specified'}
+                              <div className="input bg-navy-800">
+                                <span className={profile.max_donation_value ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                  {profile.max_donation_value ? `₱${parseInt(profile.max_donation_value).toLocaleString()}` : 'Not specified'}
+                                </span>
                               </div>
                             )}
                             {errors.max_donation_value && (
@@ -2352,10 +2398,12 @@ const ProfilePage = () => {
                                 <option value="app">In-app messaging</option>
                               </select>
                             ) : (
-                              <div className="input bg-navy-800 text-skyblue-200">
-                                {profile.preferred_contact_method ? 
-                                  profile.preferred_contact_method.charAt(0).toUpperCase() + profile.preferred_contact_method.slice(1) 
-                                  : 'Not specified'}
+                              <div className="input bg-navy-800">
+                                <span className={profile.preferred_contact_method ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                  {profile.preferred_contact_method ? 
+                                    profile.preferred_contact_method.charAt(0).toUpperCase() + profile.preferred_contact_method.slice(1) 
+                                    : 'Not specified'}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -2404,7 +2452,7 @@ const ProfilePage = () => {
                                     <span key={index} className="badge badge-primary">{day}</span>
                                   ))
                                 ) : (
-                                  <span className="text-skyblue-400 text-sm">Not specified</span>
+                                  <span className="text-yellow-400 text-sm">Not specified</span>
                                 )}
                               </div>
                             )}
@@ -2447,7 +2495,7 @@ const ProfilePage = () => {
                                     <span key={index} className="badge badge-primary">{time}</span>
                                   ))
                                 ) : (
-                                  <span className="text-skyblue-400 text-sm">Not specified</span>
+                                  <span className="text-yellow-400 text-sm">Not specified</span>
                                 )}
                               </div>
                             )}
@@ -2475,7 +2523,7 @@ const ProfilePage = () => {
                                     />
                                     <div className="ml-3">
                                       <span className="text-sm font-medium text-white">Make my profile public</span>
-                                      <p className="text-xs text-skyblue-400">Allow other users to see your profile and donation history</p>
+                                      <p className="text-xs text-yellow-400">Allow other users to see your profile and donation history</p>
                                     </div>
                                   </label>
                                 )}
@@ -2494,7 +2542,7 @@ const ProfilePage = () => {
                                     />
                                     <div className="ml-3">
                                       <span className="text-sm font-medium text-white">Receive donation match notifications</span>
-                                      <p className="text-xs text-skyblue-400">Get notified when your donations match with requests</p>
+                                      <p className="text-xs text-yellow-400">Get notified when your donations match with requests</p>
                                     </div>
                                   </label>
                                 )}
@@ -2513,7 +2561,7 @@ const ProfilePage = () => {
                                     />
                                     <div className="ml-3">
                                       <span className="text-sm font-medium text-white">Allow sharing contact information</span>
-                                      <p className="text-xs text-skyblue-400">Allow verified recipients to see your contact information for coordination</p>
+                                      <p className="text-xs text-yellow-400">Allow verified recipients to see your contact information for coordination</p>
                                     </div>
                                   </label>
                                 )}
@@ -2574,9 +2622,11 @@ const ProfilePage = () => {
                             <option value="organization">Organization/Institution</option>
                           </select>
                         ) : (
-                          <div className="input bg-navy-800 text-skyblue-200 flex items-center">
-                            <Building2 className="h-4 w-4 text-skyblue-400 mr-2" />
-                            {profile.account_type === 'organization' ? 'Organization/Institution' : 'Individual'}
+                          <div className="input bg-navy-800 flex items-center">
+                            <Building2 className="h-4 w-4 text-yellow-400 mr-2" />
+                            <span className="text-yellow-200">
+                              {profile.account_type === 'organization' ? 'Organization/Institution' : 'Individual'}
+                            </span>
                           </div>
                         )}
                       </div>
@@ -2609,8 +2659,10 @@ const ProfilePage = () => {
                               placeholder="Enter organization/institution name"
                             />
                           ) : (
-                            <div className="input bg-navy-800 text-skyblue-200">
-                              {profile.organization_name || 'Not provided'}
+                            <div className="input bg-navy-800">
+                              <span className={profile.organization_name ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                                {profile.organization_name || 'Not provided'}
+                              </span>
                             </div>
                           )}
                           {errors.organization_name && (
@@ -2651,8 +2703,10 @@ const ProfilePage = () => {
                             min="1"
                           />
                         ) : (
-                          <div className="input bg-navy-800 text-skyblue-200">
-                            {profile.household_size || 'Not provided'}
+                          <div className="input bg-navy-800">
+                            <span className={profile.household_size ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                              {profile.household_size || 'Not provided'}
+                            </span>
                           </div>
                         )}
                         {errors.household_size && (
@@ -2685,8 +2739,10 @@ const ProfilePage = () => {
                             placeholder="Enter emergency contact name"
                           />
                         ) : (
-                          <div className="input bg-navy-800 text-skyblue-200">
-                            {profile.emergency_contact_name || 'Not provided'}
+                          <div className="input bg-navy-800">
+                            <span className={profile.emergency_contact_name ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                              {profile.emergency_contact_name || 'Not provided'}
+                            </span>
                           </div>
                         )}
                         {errors.emergency_contact_name && (
@@ -2715,8 +2771,10 @@ const ProfilePage = () => {
                             maxLength="13"
                           />
                         ) : (
-                          <div className="input bg-navy-800 text-skyblue-200">
-                            {profile.emergency_contact_phone || 'Not provided'}
+                          <div className="input bg-navy-800">
+                            <span className={profile.emergency_contact_phone ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                              {profile.emergency_contact_phone || 'Not provided'}
+                            </span>
                           </div>
                         )}
                         {errors.emergency_contact_phone && (
@@ -2777,7 +2835,7 @@ const ProfilePage = () => {
                                 <span key={index} className="badge badge-success">{need}</span>
                               ))
                             ) : (
-                              <span className="text-skyblue-400 text-sm">None specified</span>
+                              <span className="text-yellow-400 text-sm">None specified</span>
                             )}
                           </div>
                         )}
@@ -2790,7 +2848,7 @@ const ProfilePage = () => {
                       <div className="md:col-span-2">
                         <label className="block text-sm font-medium text-white mb-2">
                           Bio/Description
-                          <span className="text-xs text-skyblue-400 ml-1">(Optional - Tell others about your situation and needs)</span>
+                          <span className="text-xs text-yellow-400 ml-1">(Optional - Tell others about your situation and needs)</span>
                         </label>
                         {isEditing ? (
                           <textarea
@@ -2812,8 +2870,10 @@ const ProfilePage = () => {
                             placeholder="Share your story, current situation, and specific needs... (Optional)"
                           />
                         ) : (
-                          <div className="input bg-navy-800 text-skyblue-200 h-32 overflow-y-auto custom-scrollbar">
-                            {profile.bio || 'Not provided'}
+                          <div className="input bg-navy-800 h-32 overflow-y-auto custom-scrollbar">
+                            <span className={profile.bio ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                              {profile.bio || 'Not provided'}
+                            </span>
                           </div>
                         )}
                         {isEditing && (
@@ -2821,7 +2881,7 @@ const ProfilePage = () => {
                             {errors.bio ? (
                               <p className="text-sm text-danger-600">{errors.bio.message}</p>
                             ) : (
-                              <span className="text-xs text-skyblue-400">
+                              <span className="text-xs text-yellow-400">
                                 {watch('bio')?.length || 0}/1000 characters
                               </span>
                             )}
@@ -2849,7 +2909,7 @@ const ProfilePage = () => {
                                     />
                                     <div className="ml-3">
                                       <span className="text-sm font-medium text-white">Make my profile visible to donors</span>
-                                      <p className="text-xs text-skyblue-400">Allow donors to see your profile and assistance needs</p>
+                                      <p className="text-xs text-yellow-400">Allow donors to see your profile and assistance needs</p>
                                     </div>
                                   </label>
                                 )}
@@ -2868,7 +2928,7 @@ const ProfilePage = () => {
                                     />
                                     <div className="ml-3">
                                       <span className="text-sm font-medium text-white">Receive donation availability notifications</span>
-                                      <p className="text-xs text-skyblue-400">Get notified when donations matching your needs become available</p>
+                                      <p className="text-xs text-yellow-400">Get notified when donations matching your needs become available</p>
                                     </div>
                                   </label>
                                 )}
@@ -2887,7 +2947,7 @@ const ProfilePage = () => {
                                     />
                                     <div className="ml-3">
                                       <span className="text-sm font-medium text-white">Allow donors to contact me directly</span>
-                                      <p className="text-xs text-skyblue-400">Let verified donors see your contact information for coordination</p>
+                                      <p className="text-xs text-yellow-400">Let verified donors see your contact information for coordination</p>
                                     </div>
                                   </label>
                                 )}
@@ -2985,7 +3045,7 @@ const ProfilePage = () => {
                 className="card p-6"
               >
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                  <Shield className="h-5 w-5 text-skyblue-400 mr-2" />
+                  <Shield className="h-5 w-5 text-yellow-400 mr-2" />
                   Account Security
                 </h3>
 
@@ -2993,11 +3053,11 @@ const ProfilePage = () => {
                   <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
                     <div>
                       <p className="text-sm font-medium text-white">Password</p>
-                      <p className="text-xs text-skyblue-400">Last updated: Never</p>
+                      <p className="text-xs text-yellow-400">Last updated: Never</p>
                     </div>
                     <button
                       onClick={() => setShowPasswordSection(!showPasswordSection)}
-                      className="text-skyblue-400 hover:text-skyblue-300 text-sm"
+                      className="text-yellow-400 hover:text-yellow-300 text-sm"
                     >
                       {showPasswordSection ? 'Cancel' : 'Change'}
                     </button>
@@ -3075,7 +3135,7 @@ const ProfilePage = () => {
                   <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
                     <div>
                       <p className="text-sm font-medium text-white">Two-Factor Authentication</p>
-                      <p className="text-xs text-skyblue-400">Coming soon</p>
+                      <p className="text-xs text-yellow-400">Coming soon</p>
                     </div>
                     <span className="text-xs text-amber-400 bg-amber-900/20 px-2 py-1 rounded">
                       Soon
@@ -3104,7 +3164,7 @@ const ProfilePage = () => {
                     
                     <div className="w-full bg-navy-800 rounded-full h-2">
                       <div
-                        className="bg-gradient-to-r from-skyblue-500 to-blue-500 h-2 rounded-full transition-all duration-300"
+                        className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full transition-all duration-300"
                         style={{ width: `${completionPercentage}%` }}
                       />
                     </div>
@@ -3145,14 +3205,14 @@ const ProfilePage = () => {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <User className="h-6 w-6 text-skyblue-400" />
+                      <User className="h-6 w-6 text-yellow-400" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-white truncate">
                       {profile.name || 'Name not set'}
                     </p>
-                    <p className="text-xs text-skyblue-400 truncate">
+                    <p className="text-xs text-yellow-400 truncate">
                       {profile.email}
                     </p>
                   </div>
@@ -3160,19 +3220,19 @@ const ProfilePage = () => {
 
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-skyblue-300">Member Since</span>
+                    <span className="text-sm text-yellow-300">Member Since</span>
                     <span className="text-sm text-white">
                       {profile.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
                     </span>
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-skyblue-300">Account Type</span>
+                    <span className="text-sm text-yellow-300">Account Type</span>
                     <span className="text-sm text-white capitalize">{profile.role}</span>
                   </div>
 
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-skyblue-300">Status</span>
+                    <span className="text-sm text-yellow-300">Status</span>
                     <span className="text-sm text-green-400">Active</span>
                   </div>
                 </div>

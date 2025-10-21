@@ -149,11 +149,13 @@ const AdminDashboard = () => {
       // Create recent activity from latest data
       const recentActivity = [
         ...donations.slice(0, 3).map(d => ({
+          id: `donation-${d.id}`,
           type: 'donation_created',
           message: `New donation: ${d.title}`,
           timestamp: new Date(d.created_at).toLocaleDateString()
         })),
         ...requests.slice(0, 2).map(r => ({
+          id: `request-${r.id}`,
           type: 'request_created', 
           message: `New request: ${r.title}`,
           timestamp: new Date(r.created_at).toLocaleDateString()

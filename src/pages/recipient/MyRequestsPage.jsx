@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useForm } from 'react-hook-form'
 import { 
   Plus, 
   Search, 
@@ -26,6 +27,247 @@ import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import DeliveryConfirmationModal from '../../components/ui/DeliveryConfirmationModal'
 import { db } from '../../lib/supabase'
+
+// Edit Request Modal Component
+const EditRequestModal = ({ request, onClose, onSuccess }) => {
+  const { success, error } = useToast()
+  const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm({
+    defaultValues: {
+      title: request.title || '',
+      description: request.description || '',
+      category: request.category || '',
+      quantity_needed: request.quantity_needed || 1,
+      urgency: request.urgency || 'medium',
+      needed_by: request.needed_by || '',
+      location: request.location || '',
+      delivery_mode: request.delivery_mode || ''
+    }
+  })
+
+  const categories = [
+    'Food', 'Clothing', 'Medical Supplies', 'Educational Materials', 
+    'Household Items', 'Electronics', 'Toys & Games', 'Books', 
+    'Furniture', 'Financial Assistance', 'Transportation', 'Other'
+  ]
+
+  const urgencyLevels = [
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+    { value: 'critical', label: 'Critical' }
+  ]
+
+  const onSubmit = async (data) => {
+    try {
+      await db.updateDonationRequest(request.id, data)
+      success('Request updated successfully!')
+      onSuccess()
+      onClose()
+    } catch (err) {
+      console.error('Error updating request:', err)
+      error('Failed to update request. Please try again.')
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 20 }}
+        transition={{ duration: 0.2 }}
+        className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-yellow-500/10 rounded-lg">
+              <Edit3 className="h-6 w-6 text-yellow-400" />
+            </div>
+            <div>
+              <h3 className="text-xl font-bold text-white">Edit Request</h3>
+              <p className="text-xs text-yellow-300">Update request information</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Content with Custom Scrollbar */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+          <form onSubmit={handleSubmit(onSubmit)} id="edit-request-form" className="space-y-6">
+            {/* Basic Information */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-white mb-2">
+                  Request Title *
+                </label>
+                <input
+                  {...register('title', {
+                    required: 'Title is required',
+                    minLength: { value: 5, message: 'Title must be at least 5 characters' }
+                  })}
+                  className="input"
+                  placeholder="e.g., Need Winter Clothes for Children"
+                />
+                {errors.title && (
+                  <p className="mt-1 text-sm text-red-400">{errors.title.message}</p>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-white mb-2">
+                  Description
+                </label>
+                <textarea
+                  {...register('description', {
+                    maxLength: { value: 1000, message: 'Description must be less than 1000 characters' }
+                  })}
+                  className="input h-24 resize-none"
+                  placeholder="Describe what you need and why..."
+                />
+                {errors.description && (
+                  <p className="mt-1 text-sm text-red-400">{errors.description.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">
+                  Category *
+                </label>
+                <select
+                  {...register('category', { required: 'Category is required' })}
+                  className="input"
+                >
+                  <option value="">Select a category</option>
+                  {categories.map(category => (
+                    <option key={category} value={category}>
+                      {category}
+                    </option>
+                  ))}
+                </select>
+                {errors.category && (
+                  <p className="mt-1 text-sm text-red-400">{errors.category.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">
+                  Quantity *
+                </label>
+                <input
+                  {...register('quantity_needed', {
+                    required: 'Quantity is required',
+                    min: { value: 1, message: 'Quantity must be at least 1' }
+                  })}
+                  type="number"
+                  className="input"
+                  placeholder="1"
+                  min="1"
+                />
+                {errors.quantity_needed && (
+                  <p className="mt-1 text-sm text-red-400">{errors.quantity_needed.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">
+                  Urgency Level *
+                </label>
+                <select
+                  {...register('urgency', { required: 'Urgency is required' })}
+                  className="input"
+                >
+                  {urgencyLevels.map(level => (
+                    <option key={level.value} value={level.value}>
+                      {level.label}
+                    </option>
+                  ))}
+                </select>
+                {errors.urgency && (
+                  <p className="mt-1 text-sm text-red-400">{errors.urgency.message}</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-white mb-2">
+                  Needed By (Optional)
+                </label>
+                <input
+                  {...register('needed_by')}
+                  type="date"
+                  className="input"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-white mb-2">
+                  Location *
+                </label>
+                <input
+                  {...register('location', { required: 'Location is required' })}
+                  className="input"
+                  placeholder="Enter your address"
+                />
+                {errors.location && (
+                  <p className="mt-1 text-sm text-red-400">{errors.location.message}</p>
+                )}
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-white mb-2">
+                  Delivery Mode *
+                </label>
+                <select
+                  {...register('delivery_mode', { required: 'Delivery mode is required' })}
+                  className="input"
+                >
+                  <option value="">Select delivery mode</option>
+                  <option value="pickup">Self Pickup</option>
+                  <option value="volunteer">Volunteer Delivery</option>
+                  <option value="direct">Direct Delivery (by donor)</option>
+                </select>
+                {errors.delivery_mode && (
+                  <p className="mt-1 text-sm text-red-400">{errors.delivery_mode.message}</p>
+                )}
+              </div>
+            </div>
+          </form>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-6 border-t-2 border-yellow-500/20 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-5 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors font-medium border border-navy-600"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            form="edit-request-form"
+            disabled={isSubmitting}
+            className="px-5 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center gap-2 font-medium disabled:opacity-50"
+          >
+            {isSubmitting ? (
+              <LoadingSpinner size="sm" />
+            ) : (
+              <>
+                <Edit3 className="h-4 w-4" />
+                Update Request
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
 
 const MyRequestsPage = () => {
   const { user, profile } = useAuth()
@@ -214,7 +456,7 @@ const MyRequestsPage = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">My Requests</h1>
-              <p className="text-skyblue-300">Manage your donation requests and track their status</p>
+              <p className="text-yellow-300">Manage your donation requests and track their status</p>
             </div>
             <button
               onClick={() => navigate('/create-request')}
@@ -231,25 +473,25 @@ const MyRequestsPage = () => {
               <div className="text-2xl font-bold text-white">
                 {requests.filter(r => r.status === 'open').length}
               </div>
-              <div className="text-sm text-skyblue-400">Open Requests</div>
+              <div className="text-sm text-yellow-400">Open Requests</div>
             </div>
             <div className="card p-4">
               <div className="text-2xl font-bold text-yellow-400">
                 {requests.filter(r => r.status === 'claimed').length}
               </div>
-              <div className="text-sm text-skyblue-400">Claimed</div>
+              <div className="text-sm text-yellow-400">Claimed</div>
             </div>
             <div className="card p-4">
               <div className="text-2xl font-bold text-green-400">
                 {requests.filter(r => r.status === 'fulfilled').length}
               </div>
-              <div className="text-sm text-skyblue-400">Fulfilled</div>
+              <div className="text-sm text-yellow-400">Fulfilled</div>
             </div>
             <div className="card p-4">
-              <div className="text-2xl font-bold text-skyblue-400">
+              <div className="text-2xl font-bold text-yellow-400">
                 {requests.length}
               </div>
-              <div className="text-sm text-skyblue-400">Total Requests</div>
+              <div className="text-sm text-yellow-400">Total Requests</div>
             </div>
           </div>
         </motion.div>
@@ -269,7 +511,7 @@ const MyRequestsPage = () => {
                 </div>
                 <div>
                   <h3 className="text-lg font-semibold text-white">Delivery Confirmations Needed</h3>
-                  <p className="text-skyblue-300 text-sm">Please confirm these completed deliveries</p>
+                  <p className="text-yellow-300 text-sm">Please confirm these completed deliveries</p>
                 </div>
               </div>
               <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-sm font-medium">
@@ -287,8 +529,8 @@ const MyRequestsPage = () => {
                     <CheckCircle className="h-5 w-5 text-amber-500" />
                     <div>
                       <p className="text-white font-medium">{notification.title}</p>
-                      <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                      <p className="text-skyblue-400 text-xs mt-1">
+                      <p className="text-yellow-300 text-sm">{notification.message}</p>
+                      <p className="text-yellow-400 text-xs mt-1">
                         Volunteer: {notification.data?.volunteer_name}
                       </p>
                     </div>
@@ -310,57 +552,49 @@ const MyRequestsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="card p-6 mb-8"
+          className="mb-8"
         >
-          <div className="flex items-center space-x-4 mb-4">
-            <Filter className="h-5 w-5 text-skyblue-400" />
-            <h2 className="text-lg font-semibold text-white">Filters</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="flex flex-wrap gap-4">
             {/* Search */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Search</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="input pl-10"
-                  placeholder="Search requests..."
-                />
-              </div>
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
+                placeholder="Search requests..."
+              />
             </div>
 
             {/* Status */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Status</label>
+            <div className="relative min-w-[180px]">
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="input"
+                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
               >
                 <option value="">All Statuses</option>
                 {statusOptions.map(status => (
                   <option key={status.value} value={status.value}>{status.label}</option>
                 ))}
               </select>
+              <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
             </div>
 
             {/* Category */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Category</label>
+            <div className="relative min-w-[180px]">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="input"
+                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
               >
                 <option value="">All Categories</option>
                 {categories.map(category => (
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
+              <Package className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
             </div>
           </div>
         </motion.div>
@@ -372,11 +606,11 @@ const MyRequestsPage = () => {
             animate={{ opacity: 1 }}
             className="text-center py-12"
           >
-            <Package className="h-16 w-16 text-skyblue-400 mx-auto mb-4" />
+            <Package className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-white mb-2">
               {requests.length === 0 ? 'No requests yet' : 'No matching requests'}
             </h3>
-            <p className="text-skyblue-400 mb-6">
+            <p className="text-yellow-400 mb-6">
               {requests.length === 0 
                 ? 'Create your first request to get started receiving donations.' 
                 : 'Try adjusting your filters to see more results.'}
@@ -392,7 +626,7 @@ const MyRequestsPage = () => {
             )}
           </motion.div>
         ) : (
-          <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             <AnimatePresence>
               {filteredRequests.map((request, index) => {
                 const statusInfo = getStatusInfo(request.status)
@@ -405,126 +639,113 @@ const MyRequestsPage = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    transition={{ delay: index * 0.1 }}
-                    className="card p-6 hover:shadow-lg transition-shadow"
+                    transition={{ delay: index * 0.05 }}
+                    className="card overflow-hidden hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 group"
                   >
-                    {/* Header Section */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex items-start space-x-3 flex-1">
-                        <StatusIcon className={`h-6 w-6 mt-1 flex-shrink-0 ${statusInfo.color.split(' ')[0]}`} />
+                    {/* Status Bar */}
+                    <div className={`h-1.5 ${statusInfo.color.includes('bg-') ? statusInfo.color : 'bg-navy-700'}`} />
+                    
+                    {/* Card Content */}
+                    <div className="p-5">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-4">
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-xl font-semibold text-white mb-2 truncate">
-                            {request.title}
-                          </h3>
-                          <div className="flex flex-wrap gap-2 mb-3">
-                            <span className={`badge ${statusInfo.color}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <StatusIcon className={`h-5 w-5 flex-shrink-0 ${statusInfo.color.split(' ')[0]}`} />
+                            <h3 className="text-lg font-bold text-white truncate group-hover:text-yellow-300 transition-colors">
+                              {request.title}
+                            </h3>
+                          </div>
+                          
+                          {/* Badges */}
+                          <div className="flex flex-wrap gap-2">
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusInfo.color}`}>
                               {statusInfo.label}
                             </span>
-                            <span className={`badge ${urgencyInfo.color}`}>
-                              {urgencyInfo.label} Priority
+                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${urgencyInfo.color}`}>
+                              <AlertCircle className="h-3 w-3 mr-1" />
+                              {urgencyInfo.label}
                             </span>
-                            <span className="badge badge-primary">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-600/30">
+                              <Package className="h-3 w-3 mr-1" />
                               {request.category}
-                            </span>
-                            <span className="badge badge-secondary">
-                              Qty: {request.quantity_needed}
                             </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Actions */}
-                      <div className="flex items-center space-x-2 flex-shrink-0 ml-4">
-                        <button
-                          onClick={() => handleViewRequest(request)}
-                          className="btn btn-secondary p-2"
-                          title="View Details"
-                        >
-                          <Eye className="h-4 w-4" />
-                        </button>
-
-                        {canEdit(request) && (
-                          <button
-                            onClick={() => handleEditRequest(request)}
-                            className="btn btn-secondary p-2"
-                            title="Edit Request"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                          </button>
-                        )}
-
-                        {canDelete(request) && (
-                          <button
-                            onClick={() => handleDeleteClick(request)}
-                            disabled={deletingId === request.id}
-                            className="btn btn-outline-danger p-2"
-                            title="Delete Request"
-                          >
-                            {deletingId === request.id ? (
-                              <LoadingSpinner size="sm" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Content Section */}
-                    <div className="space-y-4">
                       {/* Description */}
                       {request.description && (
-                        <p className="text-skyblue-300 text-sm leading-relaxed">
+                        <p className="text-gray-300 text-sm leading-relaxed mb-4 line-clamp-2">
                           {request.description}
                         </p>
                       )}
 
+                      {/* Info Grid */}
+                      <div className="space-y-2 mb-4">
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center text-yellow-400">
+                            <Package className="h-4 w-4 mr-2" />
+                            <span className="font-medium">Quantity:</span>
+                          </div>
+                          <span className="text-white font-semibold">{request.quantity_needed}</span>
+                        </div>
+                        
+                        <div className="flex items-center justify-between text-sm">
+                          <div className="flex items-center text-yellow-400">
+                            <Calendar className="h-4 w-4 mr-2" />
+                            <span className="font-medium">Created:</span>
+                          </div>
+                          <span className="text-gray-300">{formatDate(request.created_at)}</span>
+                        </div>
+                        
+                        {request.needed_by && (
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center text-amber-400">
+                              <Clock className="h-4 w-4 mr-2" />
+                              <span className="font-medium">Deadline:</span>
+                            </div>
+                            <span className="text-amber-300 font-medium">{formatDate(request.needed_by)}</span>
+                          </div>
+                        )}
+                        
+                        {request.location && (
+                          <div className="flex items-center justify-between text-sm">
+                            <div className="flex items-center text-yellow-400">
+                              <MapPin className="h-4 w-4 mr-2" />
+                              <span className="font-medium">Location:</span>
+                            </div>
+                            <span className="text-gray-300 text-xs line-clamp-1 text-right flex-1 ml-2">{request.location}</span>
+                          </div>
+                        )}
+                      </div>
+
                       {/* Tags */}
                       {request.tags && request.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-2">
-                          {request.tags.slice(0, 4).map((tag, tagIndex) => (
-                            <span key={tagIndex} className="inline-flex items-center text-xs bg-navy-800 text-skyblue-300 px-2 py-1 rounded-full">
-                              <Tag className="h-3 w-3 mr-1" />
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          {request.tags.slice(0, 3).map((tag, tagIndex) => (
+                            <span key={tagIndex} className="inline-flex items-center text-xs bg-navy-800/80 text-yellow-300 px-2 py-1 rounded border border-navy-700">
+                              <Tag className="h-2.5 w-2.5 mr-1" />
                               {tag}
                             </span>
                           ))}
-                          {request.tags.length > 4 && (
-                            <span className="text-xs text-skyblue-400 px-2 py-1">
-                              +{request.tags.length - 4} more
+                          {request.tags.length > 3 && (
+                            <span className="text-xs text-yellow-400 px-2 py-1">
+                              +{request.tags.length - 3}
                             </span>
                           )}
                         </div>
                       )}
 
-                      {/* Details Grid */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                        <div className="flex items-center text-skyblue-400">
-                          <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
-                          <span>Created {formatDate(request.created_at)}</span>
+                      {/* Claims Badge */}
+                      {request.claims_count > 0 && (
+                        <div className="mb-4 p-2 bg-green-900/20 rounded-lg border border-green-500/30">
+                          <div className="flex items-center text-green-400 text-xs font-medium">
+                            <Heart className="h-3.5 w-3.5 mr-1.5" />
+                            <span>{request.claims_count} donor{request.claims_count > 1 ? 's' : ''} claimed this request</span>
+                          </div>
                         </div>
-                        
-                        {request.needed_by && (
-                          <div className="flex items-center text-amber-400">
-                            <Clock className="h-4 w-4 mr-2 flex-shrink-0" />
-                            <span>Needed by {formatDate(request.needed_by)}</span>
-                          </div>
-                        )}
-                        
-                        {request.location && (
-                          <div className="flex items-center text-skyblue-400 md:col-span-2">
-                            <MapPin className="h-4 w-4 mr-2 flex-shrink-0" />
-                            <span className="truncate">{request.location}</span>
-                          </div>
-                        )}
-
-                        {request.claims_count > 0 && (
-                          <div className="flex items-center text-green-400">
-                            <Heart className="h-4 w-4 mr-2 flex-shrink-0" />
-                            <span>{request.claims_count} claim(s)</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
+                      )}
 
                     {/* Status Notifications */}
                     {request.status === 'in_progress' && (
@@ -536,14 +757,51 @@ const MyRequestsPage = () => {
                       </div>
                     )}
 
-                    {request.status === 'fulfilled' && (
-                      <div className="mt-4 p-3 bg-green-900/20 rounded-lg border border-green-500/20">
-                        <div className="flex items-center text-green-400 text-sm">
-                          <CheckCircle className="h-4 w-4 mr-2 flex-shrink-0" />
-                          <span>Request fulfilled! Thank you for using HopeLink.</span>
+                      {request.status === 'fulfilled' && (
+                        <div className="p-3 bg-green-900/20 rounded-lg border border-green-500/30">
+                          <div className="flex items-center text-green-400 text-xs font-medium">
+                            <CheckCircle className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+                            <span>Request fulfilled! Thank you for using HopeLink.</span>
+                          </div>
                         </div>
+                      )}
+
+                      {/* Action Buttons */}
+                      <div className="flex items-center gap-2 pt-4 border-t border-navy-700">
+                        <button
+                          onClick={() => handleViewRequest(request)}
+                          className="flex-1 px-4 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View Details
+                        </button>
+
+                        {canEdit(request) && (
+                          <button
+                            onClick={() => handleEditRequest(request)}
+                            className="px-4 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-navy-600"
+                            title="Edit Request"
+                          >
+                            <Edit3 className="h-4 w-4" />
+                          </button>
+                        )}
+
+                        {canDelete(request) && (
+                          <button
+                            onClick={() => handleDeleteClick(request)}
+                            disabled={deletingId === request.id}
+                            className="px-4 py-2.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-red-600/30"
+                            title="Delete Request"
+                          >
+                            {deletingId === request.id ? (
+                              <LoadingSpinner size="sm" />
+                            ) : (
+                              <Trash2 className="h-4 w-4" />
+                            )}
+                          </button>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </motion.div>
                 )
               })}
@@ -554,70 +812,87 @@ const MyRequestsPage = () => {
         {/* View Request Modal */}
         <AnimatePresence>
           {showViewModal && selectedRequest && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.2 }}
-                className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
               >
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center space-x-3">
-                    {(() => {
-                      const StatusIcon = getStatusIcon(selectedRequest.status)
-                      const statusInfo = getStatusInfo(selectedRequest.status)
-                      return <StatusIcon className={`h-6 w-6 ${statusInfo.color.split(' ')[0]}`} />
-                    })()}
-                    <h3 className="text-xl font-semibold text-white">Request Details</h3>
+                {/* Header */}
+                <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-yellow-500/10 rounded-lg">
+                      <Heart className="h-6 w-6 text-yellow-400" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-bold text-white">Request Details</h3>
+                      <p className="text-xs text-yellow-300">Complete information</p>
+                    </div>
                   </div>
                   <button
                     onClick={() => setShowViewModal(false)}
-                    className="text-skyblue-400 hover:text-white transition-colors"
+                    className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
 
-                <div className="space-y-6">
-                  <div>
-                    <h4 className="text-lg font-semibold text-white mb-2">{selectedRequest.title}</h4>
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      {(() => {
-                        const statusInfo = getStatusInfo(selectedRequest.status)
-                        const urgencyInfo = getUrgencyInfo(selectedRequest.urgency)
-                        return (
-                          <>
-                            <span className={`badge ${statusInfo.color}`}>{statusInfo.label}</span>
-                            <span className={`badge ${urgencyInfo.color}`}>{urgencyInfo.label} Priority</span>
-                            <span className="badge badge-primary">{selectedRequest.category}</span>
-                            <span className="badge badge-secondary">Qty: {selectedRequest.quantity_needed}</span>
-                          </>
-                        )
-                      })()}
+                {/* Content with Custom Scrollbar */}
+                <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+                  <div className="space-y-6">
+                    {/* Title and Status */}
+                    <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-start justify-between gap-4 mb-3">
+                        <h4 className="text-2xl font-bold text-white">{selectedRequest.title}</h4>
+                        <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                          {selectedRequest.category}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 mb-3">
+                        {(() => {
+                          const statusInfo = getStatusInfo(selectedRequest.status)
+                          const urgencyInfo = getUrgencyInfo(selectedRequest.urgency)
+                          return (
+                            <>
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                                {statusInfo.label}
+                              </span>
+                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${urgencyInfo.color}`}>
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                {urgencyInfo.label} Priority
+                              </span>
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-navy-700 text-yellow-300 border border-navy-600">
+                                <Package className="h-3 w-3 mr-1" />
+                                Quantity: {selectedRequest.quantity_needed}
+                              </span>
+                            </>
+                          )
+                        })()}
+                      </div>
+                      {selectedRequest.description && (
+                        <p className="text-gray-300 leading-relaxed">{selectedRequest.description}</p>
+                      )}
                     </div>
-                    {selectedRequest.description && (
-                      <p className="text-skyblue-300 leading-relaxed">{selectedRequest.description}</p>
-                    )}
-                  </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
                       <h5 className="text-sm font-medium text-white mb-3">Request Information</h5>
                       <div className="space-y-2 text-sm">
-                        <div className="flex items-center text-skyblue-400">
-                          <Calendar className="h-4 w-4 mr-2" />
+                        <div className="flex items-center text-gray-300">
+                          <Calendar className="h-4 w-4 mr-2 text-yellow-400" />
                           <span>Created {formatDate(selectedRequest.created_at)}</span>
                         </div>
                         {selectedRequest.needed_by && (
-                          <div className="flex items-center text-amber-400">
-                            <Clock className="h-4 w-4 mr-2" />
+                          <div className="flex items-center text-gray-300">
+                            <Clock className="h-4 w-4 mr-2 text-amber-400" />
                             <span>Needed by {formatDate(selectedRequest.needed_by)}</span>
                           </div>
                         )}
                         {selectedRequest.location && (
-                          <div className="flex items-center text-skyblue-400">
-                            <MapPin className="h-4 w-4 mr-2" />
+                          <div className="flex items-center text-gray-300">
+                            <MapPin className="h-4 w-4 mr-2 text-yellow-400" />
                             <span>{selectedRequest.location}</span>
                           </div>
                         )}
@@ -635,7 +910,7 @@ const MyRequestsPage = () => {
                         <h5 className="text-sm font-medium text-white mb-3">Tags</h5>
                         <div className="flex flex-wrap gap-2">
                           {selectedRequest.tags.map((tag, index) => (
-                            <span key={index} className="inline-flex items-center text-sm bg-navy-800 text-skyblue-300 px-3 py-1 rounded-full">
+                            <span key={index} className="inline-flex items-center text-sm bg-navy-800 text-yellow-300 px-3 py-1 rounded-full">
                               <Tag className="h-3 w-3 mr-1" />
                               {tag}
                             </span>
@@ -645,26 +920,26 @@ const MyRequestsPage = () => {
                     )}
                   </div>
 
-                  <div className="flex justify-end space-x-3 pt-4 border-t border-navy-700">
-                    {canEdit(selectedRequest) && (
-                      <button
-                        onClick={() => {
-                          setShowViewModal(false)
-                          handleEditRequest(selectedRequest)
-                        }}
-                        className="btn btn-secondary flex items-center"
-                      >
-                        <Edit3 className="h-4 w-4 mr-2" />
-                        Edit Request
-                      </button>
-                    )}
-                    <button
-                      onClick={() => setShowViewModal(false)}
-                      className="btn btn-primary"
-                    >
-                      Close
-                    </button>
                   </div>
+                </div>
+
+                {/* Footer */}
+                <div className="flex items-center justify-end gap-3 p-6 border-t-2 border-yellow-500/20 flex-shrink-0">
+                  {canEdit(selectedRequest) && (
+                    <button
+                      onClick={() => handleEditRequest(selectedRequest)}
+                      className="px-5 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center gap-2 font-medium border border-navy-600"
+                    >
+                      <Edit3 className="h-4 w-4" />
+                      Edit Request
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowViewModal(false)}
+                    className="px-5 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors font-medium"
+                  >
+                    Close
+                  </button>
                 </div>
               </motion.div>
             </div>
@@ -673,57 +948,10 @@ const MyRequestsPage = () => {
 
         {/* Edit Request Modal */}
         <AnimatePresence>
-          {showEditModal && selectedRequest && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                transition={{ duration: 0.2 }}
-                className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-md w-full"
-              >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold text-white">Edit Request</h3>
-                  <button
-                    onClick={() => setShowEditModal(false)}
-                    className="text-skyblue-400 hover:text-white transition-colors"
-                  >
-                    <X className="h-5 w-5" />
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <p className="text-skyblue-300">
-                    You will be redirected to the edit page where you can modify your request details.
-                  </p>
-                  
-                  <div className="flex justify-end space-x-3 pt-4">
-                    <button
-                      onClick={() => setShowEditModal(false)}
-                      className="btn btn-secondary"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowEditModal(false)
-                        navigate('/create-request', { 
-                          state: { 
-                            editMode: true, 
-                            requestData: selectedRequest 
-                          } 
-                        })
-                      }}
-                      className="btn btn-primary flex items-center"
-                    >
-                      <Edit3 className="h-4 w-4 mr-2" />
-                      Continue to Edit
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
-          )}
+          {showEditModal && selectedRequest && <EditRequestModal request={selectedRequest} onClose={() => {
+            setShowEditModal(false)
+            setSelectedRequest(null)
+          }} onSuccess={loadRequests} />}
         </AnimatePresence>
 
         {/* Delete Confirmation Modal */}
@@ -744,20 +972,20 @@ const MyRequestsPage = () => {
                   </div>
                   <button
                     onClick={() => setShowDeleteModal(false)}
-                    className="text-skyblue-400 hover:text-white transition-colors"
+                    className="text-yellow-400 hover:text-white transition-colors"
                   >
                     <X className="h-5 w-5" />
                   </button>
                 </div>
 
                 <div className="space-y-4">
-                  <p className="text-skyblue-300">
+                  <p className="text-yellow-300">
                     Are you sure you want to delete this request?
                   </p>
                   
                   <div className="p-3 bg-navy-800 rounded-lg">
                     <h4 className="font-medium text-white mb-1">{requestToDelete.title}</h4>
-                    <p className="text-sm text-skyblue-400">{requestToDelete.category}</p>
+                    <p className="text-sm text-yellow-400">{requestToDelete.category}</p>
                   </div>
 
                   <p className="text-red-400 text-sm">

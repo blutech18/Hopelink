@@ -58,9 +58,6 @@ const MyApprovedDonationsPage = () => {
             *,
             volunteer:users!deliveries_volunteer_id_fkey(id, name, phone_number)
           ),
-          pickup:pickups(
-            *
-          ),
           direct_delivery:direct_deliveries(
             *
           ),
@@ -313,8 +310,8 @@ const MyApprovedDonationsPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-8"
         >
-          <h1 className="text-3xl font-bold text-white mb-2">My Approved Donations</h1>
-          <p className="text-skyblue-300">
+          <h1 className="text-3xl font-bold text-white mb-2">My Approved Requests</h1>
+          <p className="text-yellow-300">
             Track your approved donation requests and manage pickups or deliveries
           </p>
         </motion.div>
@@ -459,9 +456,9 @@ const MyApprovedDonationsPage = () => {
         >
           {approvedDonations.length === 0 ? (
             <div className="text-center py-12">
-              <Package className="h-16 w-16 text-skyblue-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">No approved donations yet</h3>
-              <p className="text-skyblue-400 mb-6">
+              <Package className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold text-white mb-2">No approved requests yet</h3>
+              <p className="text-yellow-400 mb-6">
                 Once donors approve your requests, they will appear here for tracking.
               </p>
             </div>
@@ -482,7 +479,7 @@ const MyApprovedDonationsPage = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6, delay: index * 0.1 }}
-                    className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-6 hover:border-skyblue-500/30 transition-colors"
+                    className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-6 hover:border-yellow-500/30 transition-colors"
                   >
                     {/* Header */}
                     <div className="flex items-start justify-between mb-4">
@@ -490,7 +487,7 @@ const MyApprovedDonationsPage = () => {
                         <h3 className="text-lg font-semibold text-white mb-2">
                           {claim.donation?.title}
                         </h3>
-                        <p className="text-skyblue-300 text-sm mb-3">
+                        <p className="text-yellow-300 text-sm mb-3">
                           {claim.donation?.description}
                         </p>
                         

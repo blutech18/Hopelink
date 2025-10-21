@@ -67,7 +67,7 @@ const Navbar = () => {
         return
       }
 
-      const sections = ['home', 'events', 'about']
+      const sections = ['home', 'events', 'about', 'contact']
       const scrollPosition = window.scrollY + 100 // Offset for navbar height
 
       for (let i = sections.length - 1; i >= 0; i--) {
@@ -157,6 +157,7 @@ const Navbar = () => {
     { path: '/', label: 'Home', scrollTo: 'home' },
     { path: '/events', label: 'Events', scrollTo: 'events' },
     { path: '/about', label: 'About', scrollTo: 'about' },
+    { path: '/', label: 'Contact', scrollTo: 'contact' },
   ]
 
   // Helper function to determine if a link is active
@@ -173,10 +174,13 @@ const Navbar = () => {
     switch (role) {
       case 'donor':
       case 'admin':
-        return [{ path: '/events', label: 'Events' }] // Events for donors and admins
+        return [
+          { path: '/events', label: 'Events' },
+          { path: '/', label: 'Contact', scrollTo: 'contact' }
+        ] // Events and Contact for donors and admins
       case 'recipient':
       case 'volunteer':
-        return [] // No public nav links for recipients and volunteers
+        return [{ path: '/', label: 'Contact', scrollTo: 'contact' }] // Contact for recipients and volunteers
       default:
         return publicNavLinks // Show all for non-authenticated users
     }
@@ -258,7 +262,7 @@ const Navbar = () => {
             {publicNavLinks.map((link) => (
               link.scrollTo ? (
                 <button
-                  key={link.path}
+                  key={`${link.path}-${link.scrollTo}`}
                   onClick={() => handleScrollNavigation(link.scrollTo)}
                   className={`px-3 py-2 text-sm font-medium transition-all duration-300 ease-in-out relative ${
                     isLinkActive(link)
@@ -273,7 +277,7 @@ const Navbar = () => {
                 </button>
               ) : (
                 <Link
-                  key={link.path}
+                  key={`${link.path}-${link.label}`}
                   to={link.path}
                   className={`px-3 py-2 text-sm font-medium transition-all duration-300 ease-in-out relative ${
                     isLinkActive(link)
@@ -554,13 +558,13 @@ const Navbar = () => {
                 {publicNavLinks.map((link) => (
                   link.scrollTo ? (
                     <button
-                      key={link.path}
+                      key={`sidebar-${link.path}-${link.scrollTo}`}
                       onClick={() => {
                         handleScrollNavigation(link.scrollTo)
                         setIsSideMenuOpen(false)
                       }}
                       className={`block w-full text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                        location.pathname === link.path
+                        isLinkActive(link)
                           ? 'text-yellow-400 bg-navy-800 border-yellow-400'
                           : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
                       }`}
@@ -569,10 +573,10 @@ const Navbar = () => {
                     </button>
                   ) : (
                     <Link
-                      key={link.path}
+                      key={`sidebar-${link.path}-${link.label}`}
                       to={link.path}
                       className={`block text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                        location.pathname === link.path
+                        isLinkActive(link)
                           ? 'text-yellow-400 bg-navy-800 border-yellow-400'
                           : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
                       }`}
@@ -602,7 +606,7 @@ const Navbar = () => {
               {publicNavLinks.map((link) => (
                 link.scrollTo ? (
                   <button
-                    key={link.path}
+                    key={`mobile-${link.path}-${link.scrollTo}`}
                     onClick={() => {
                       handleScrollNavigation(link.scrollTo)
                       setIsMenuOpen(false)
@@ -617,7 +621,7 @@ const Navbar = () => {
                   </button>
                 ) : (
                   <Link
-                    key={link.path}
+                    key={`mobile-${link.path}-${link.label}`}
                     to={link.path}
                     className={`block px-6 py-3 text-center text-base font-semibold rounded-lg transition-all duration-200 ${
                       isLinkActive(link)

@@ -213,7 +213,7 @@ const UserManagementPage = () => {
       case 'recipient': return 'text-blue-400'
       case 'volunteer': return 'text-purple-400'
       case 'admin': return 'text-amber-400'
-      default: return 'text-skyblue-400'
+      default: return 'text-yellow-400'
     }
   }
 
@@ -223,7 +223,7 @@ const UserManagementPage = () => {
       case 'recipient': return 'bg-blue-500/20 border-blue-500/30'
       case 'volunteer': return 'bg-purple-500/20 border-purple-500/30'
       case 'admin': return 'bg-amber-500/20 border-amber-500/30'
-      default: return 'bg-skyblue-500/20 border-skyblue-500/30'
+      default: return 'bg-yellow-500/20 border-yellow-500/30'
     }
   }
 
@@ -243,27 +243,27 @@ const UserManagementPage = () => {
           <div className="flex items-center space-x-3 mb-6">
             <div>
               <h1 className="text-3xl font-bold text-white">User Management</h1>
-              <p className="text-skyblue-300">Manage platform users and their permissions</p>
+              <p className="text-yellow-300">Manage platform users and their permissions</p>
             </div>
           </div>
 
           {/* Filters */}
           <div className="flex flex-col sm:flex-row gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-skyblue-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
               <input
                 type="text"
                 placeholder="Search users by name or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white placeholder-skyblue-400 focus:outline-none focus:ring-2 focus:ring-skyblue-500"
+                className="w-full pl-10 pr-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white placeholder-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-500"
               />
             </div>
             
             <select
               value={roleFilter}
               onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-skyblue-500"
+              className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
             >
               <option value="all">All Roles</option>
               <option value="donor">Donors</option>
@@ -275,7 +275,7 @@ const UserManagementPage = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-skyblue-500"
+              className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
             >
               <option value="all">All Status</option>
               <option value="verified">Verified</option>
@@ -291,7 +291,7 @@ const UserManagementPage = () => {
                 <Users className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
                 <div className="flex flex-col">
                   <div className="text-xl sm:text-2xl font-bold text-white">{users.length}</div>
-                  <div className="text-skyblue-300 text-xs sm:text-sm">Total Users</div>
+                  <div className="text-yellow-300 text-xs sm:text-sm">Total Users</div>
                 </div>
               </div>
             </div>
@@ -300,7 +300,7 @@ const UserManagementPage = () => {
                 <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
                 <div className="flex flex-col">
                   <div className="text-xl sm:text-2xl font-bold text-green-400">{users.filter(u => u.is_verified).length}</div>
-                  <div className="text-skyblue-300 text-xs sm:text-sm">Verified</div>
+                  <div className="text-yellow-300 text-xs sm:text-sm">Verified</div>
                 </div>
               </div>
             </div>
@@ -309,7 +309,7 @@ const UserManagementPage = () => {
                 <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-400" />
                 <div className="flex flex-col">
                   <div className="text-xl sm:text-2xl font-bold text-yellow-400">{users.filter(u => !u.is_verified).length}</div>
-                  <div className="text-skyblue-300 text-xs sm:text-sm">Unverified</div>
+                  <div className="text-yellow-300 text-xs sm:text-sm">Unverified</div>
                 </div>
               </div>
             </div>
@@ -318,7 +318,7 @@ const UserManagementPage = () => {
                 <XCircle className="h-6 w-6 sm:h-8 sm:w-8 text-red-400" />
                 <div className="flex flex-col">
                   <div className="text-xl sm:text-2xl font-bold text-red-400">{users.filter(u => !u.is_active).length}</div>
-                  <div className="text-skyblue-300 text-xs sm:text-sm">Suspended</div>
+                  <div className="text-yellow-300 text-xs sm:text-sm">Suspended</div>
                 </div>
               </div>
             </div>
@@ -336,25 +336,25 @@ const UserManagementPage = () => {
             <table className="w-full">
               <thead className="bg-navy-800">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     User
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Role
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Contact
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     ID Verification
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Joined
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -370,12 +370,12 @@ const UserManagementPage = () => {
                   >
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="h-10 w-10 rounded-full bg-skyblue-600 flex items-center justify-center text-white font-medium">
+                        <div className="h-10 w-10 rounded-full bg-yellow-600 flex items-center justify-center text-white font-medium">
                           {user.name.charAt(0).toUpperCase()}
                         </div>
                         <div className="ml-4">
                           <div className="text-sm font-medium text-white">{user.name}</div>
-                          <div className="text-sm text-skyblue-400">{user.email}</div>
+                          <div className="text-sm text-yellow-400">{user.email}</div>
                         </div>
                       </div>
                     </td>
@@ -386,7 +386,7 @@ const UserManagementPage = () => {
                       </span>
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-skyblue-300">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-300">
                       <div className="flex flex-col space-y-1">
                         <div className="flex items-center">
                           <Phone className="h-3 w-3 mr-1" />
@@ -429,8 +429,8 @@ const UserManagementPage = () => {
                           <>
                             {user.primary_id_type ? (
                               <div className="flex items-center space-x-2">
-                                <FileText className="h-3 w-3 text-skyblue-400" />
-                                <span className="text-xs text-skyblue-300">{user.primary_id_type}</span>
+                                <FileText className="h-3 w-3 text-yellow-400" />
+                                <span className="text-xs text-yellow-300">{user.primary_id_type}</span>
                                 {user.id_verification_status === 'verified' ? (
                                   <CheckCircle className="h-3 w-3 text-green-400" />
                                 ) : user.id_verification_status === 'rejected' ? (
@@ -444,8 +444,8 @@ const UserManagementPage = () => {
                             )}
                             {user.secondary_id_type && (
                               <div className="flex items-center space-x-2">
-                                <FileText className="h-3 w-3 text-skyblue-400" />
-                                <span className="text-xs text-skyblue-300">{user.secondary_id_type}</span>
+                                <FileText className="h-3 w-3 text-yellow-400" />
+                                <span className="text-xs text-yellow-300">{user.secondary_id_type}</span>
                                 {user.id_verification_status === 'verified' ? (
                                   <CheckCircle className="h-3 w-3 text-green-400" />
                                 ) : user.id_verification_status === 'rejected' ? (
@@ -463,7 +463,7 @@ const UserManagementPage = () => {
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-skyblue-300">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-300">
                       <div className="flex items-center">
                         <Calendar className="h-3 w-3 mr-1" />
                         {new Date(user.created_at).toLocaleDateString()}
@@ -493,7 +493,7 @@ const UserManagementPage = () => {
                         
                         <button
                           onClick={() => handleViewUser(user.id)}
-                          className="text-skyblue-400 hover:text-skyblue-300 p-1"
+                          className="text-yellow-400 hover:text-yellow-300 p-1"
                           title="View Details"
                         >
                           <Eye className="h-4 w-4" />
@@ -508,8 +508,8 @@ const UserManagementPage = () => {
 
           {filteredUsers.length === 0 && (
             <div className="text-center py-12">
-              <Users className="h-12 w-12 text-skyblue-400 mx-auto mb-4" />
-              <p className="text-skyblue-300">No users found matching your criteria</p>
+              <Users className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+              <p className="text-yellow-300">No users found matching your criteria</p>
             </div>
           )}
         </motion.div>
@@ -530,17 +530,17 @@ const UserManagementPage = () => {
               <div className="sticky top-0 z-10 bg-navy-800/95 backdrop-blur px-6 py-4 border-b border-navy-700">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-3">
-                    <div className="h-12 w-12 rounded-full bg-skyblue-600 flex items-center justify-center text-white font-semibold text-lg shadow">
+                    <div className="h-12 w-12 rounded-full bg-yellow-600 flex items-center justify-center text-white font-semibold text-lg shadow">
                       {selectedUser.name.charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <h2 className="text-xl font-bold text-white leading-tight">{selectedUser.name}</h2>
-                      <p className="text-skyblue-400 text-sm">{selectedUser.email}</p>
+                      <p className="text-yellow-400 text-sm">{selectedUser.email}</p>
                     </div>
                   </div>
                   <button
                     onClick={closeUserModal}
-                    className="text-skyblue-400 hover:text-white transition-colors rounded-lg p-1 hover:bg-navy-700"
+                    className="text-yellow-400 hover:text-white transition-colors rounded-lg p-1 hover:bg-navy-700"
                   >
                     <X className="h-6 w-6" />
                   </button>
@@ -555,7 +555,7 @@ const UserManagementPage = () => {
                     className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${
                       activeTab === 'profile'
                         ? 'bg-navy-700/70 text-white border-navy-600'
-                        : 'bg-navy-800/40 text-skyblue-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
+                        : 'bg-navy-800/40 text-yellow-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
                     }`}
                   >
                     Profile Information
@@ -565,7 +565,7 @@ const UserManagementPage = () => {
                     className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${
                       activeTab === 'verification'
                         ? 'bg-navy-700/70 text-white border-navy-600'
-                        : 'bg-navy-800/40 text-skyblue-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
+                        : 'bg-navy-800/40 text-yellow-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
                     }`}
                   >
                     ID Verification
@@ -575,7 +575,7 @@ const UserManagementPage = () => {
                     className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${
                       activeTab === 'actions'
                         ? 'bg-navy-700/70 text-white border-navy-600'
-                        : 'bg-navy-800/40 text-skyblue-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
+                        : 'bg-navy-800/40 text-yellow-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
                     }`}
                   >
                     Admin Actions
@@ -589,7 +589,7 @@ const UserManagementPage = () => {
                 {activeTab === 'profile' && (
                   <div className="space-y-6">
                     <h3 className="text-xl font-semibold text-white">User Profile Information</h3>
-                    <p className="text-skyblue-300 text-sm">Overview of the user's basic and account information.</p>
+                    <p className="text-yellow-300 text-sm">Overview of the user's basic and account information.</p>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-4">
@@ -597,19 +597,19 @@ const UserManagementPage = () => {
                           <h4 className="text-md font-medium text-white mb-3">Basic Information</h4>
                           <div className="space-y-3">
                             <div>
-                              <label className="text-sm text-skyblue-300">Full Name</label>
+                              <label className="text-sm text-yellow-300">Full Name</label>
                               <p className="text-white font-medium">{selectedUser.name}</p>
                             </div>
                             <div>
-                              <label className="text-sm text-skyblue-300">Email Address</label>
+                              <label className="text-sm text-yellow-300">Email Address</label>
                               <p className="text-white">{selectedUser.email}</p>
                             </div>
                             <div>
-                              <label className="text-sm text-skyblue-300">Phone Number</label>
+                              <label className="text-sm text-yellow-300">Phone Number</label>
                               <p className="text-white">{selectedUser.phone_number}</p>
                             </div>
                             <div>
-                              <label className="text-sm text-skyblue-300">City</label>
+                              <label className="text-sm text-yellow-300">City</label>
                               <p className="text-white">{selectedUser.city}</p>
                             </div>
                           </div>
@@ -621,13 +621,13 @@ const UserManagementPage = () => {
                           <h4 className="text-md font-medium text-white mb-3">Account Details</h4>
                           <div className="space-y-3">
                             <div>
-                              <label className="text-sm text-skyblue-300">Role</label>
+                              <label className="text-sm text-yellow-300">Role</label>
                               <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium border ${getRoleBadgeColor(selectedUser.role)} mt-1`}>
                                 <span className={getRoleColor(selectedUser.role)}>{selectedUser.role}</span>
                               </div>
                             </div>
                             <div>
-                              <label className="text-sm text-skyblue-300">Account Status</label>
+                              <label className="text-sm text-yellow-300">Account Status</label>
                               <div className="flex items-center space-x-2 mt-1">
                                 {selectedUser.is_verified ? (
                                   <>
@@ -649,7 +649,7 @@ const UserManagementPage = () => {
                               </div>
                             </div>
                             <div>
-                              <label className="text-sm text-skyblue-300">Member Since</label>
+                              <label className="text-sm text-yellow-300">Member Since</label>
                               <p className="text-white">{new Date(selectedUser.created_at).toLocaleDateString('en-US', { 
                                 year: 'numeric', 
                                 month: 'long', 
@@ -667,13 +667,13 @@ const UserManagementPage = () => {
                 {activeTab === 'verification' && (
                   <div className="space-y-6">
                     <h3 className="text-xl font-semibold text-white">Identity Verification</h3>
-                    <p className="text-skyblue-300 text-sm">Review the documents submitted by the user and take action.</p>
+                    <p className="text-yellow-300 text-sm">Review the documents submitted by the user and take action.</p>
 
                     {selectedUser.role === 'admin' ? (
                       <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-6 text-center">
                         <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-4" />
                         <h4 className="text-lg font-medium text-green-400 mb-2">Administrator Account</h4>
-                        <p className="text-skyblue-300">Admin accounts are automatically verified and don't require ID verification</p>
+                        <p className="text-yellow-300">Admin accounts are automatically verified and don't require ID verification</p>
                       </div>
                     ) : (
                       <div className="space-y-6">
@@ -706,12 +706,12 @@ const UserManagementPage = () => {
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-3">
                                   <div>
-                                    <label className="text-sm text-skyblue-300 font-medium">Document Type</label>
+                                    <label className="text-sm text-yellow-300 font-medium">Document Type</label>
                                     <p className="text-white text-lg">{selectedUser.primary_id_type}</p>
                                   </div>
                                   {selectedUser.primary_id_number && (
                                     <div>
-                                      <label className="text-sm text-skyblue-300 font-medium">ID Number</label>
+                                      <label className="text-sm text-yellow-300 font-medium">ID Number</label>
                                       <p className="text-white font-mono text-lg">{selectedUser.primary_id_number}</p>
                                     </div>
                                   )}
@@ -719,7 +719,7 @@ const UserManagementPage = () => {
                                 <div>
                                   {selectedUser.primary_id_image_url ? (
                                     <div>
-                                      <label className="text-sm text-skyblue-300 font-medium">Document Image</label>
+                                      <label className="text-sm text-yellow-300 font-medium">Document Image</label>
                                       <div className="mt-2">
                                         <img 
                                           src={selectedUser.primary_id_image_url} 
@@ -727,7 +727,7 @@ const UserManagementPage = () => {
                                           className="w-full h-44 object-cover bg-navy-700 rounded-lg border cursor-pointer hover:opacity-80 transition-opacity shadow-lg"
                                           onClick={() => openImageZoom(selectedUser.primary_id_image_url, 'Primary ID Document')}
                                         />
-                                        <p className="text-xs text-skyblue-400 mt-2 text-center">📄 Click to view full size</p>
+                                        <p className="text-xs text-yellow-400 mt-2 text-center">📄 Click to view full size</p>
                                       </div>
                                     </div>
                                   ) : (
@@ -800,12 +800,12 @@ const UserManagementPage = () => {
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-3">
                                   <div>
-                                    <label className="text-sm text-skyblue-300 font-medium">Document Type</label>
+                                    <label className="text-sm text-yellow-300 font-medium">Document Type</label>
                                     <p className="text-white text-lg">{selectedUser.secondary_id_type}</p>
                                   </div>
                                   {selectedUser.secondary_id_number && (
                                     <div>
-                                      <label className="text-sm text-skyblue-300 font-medium">ID Number</label>
+                                      <label className="text-sm text-yellow-300 font-medium">ID Number</label>
                                       <p className="text-white font-mono text-lg">{selectedUser.secondary_id_number}</p>
                                     </div>
                                   )}
@@ -813,7 +813,7 @@ const UserManagementPage = () => {
                                 <div>
                                   {selectedUser.secondary_id_image_url ? (
                                     <div>
-                                      <label className="text-sm text-skyblue-300 font-medium">Document Image</label>
+                                      <label className="text-sm text-yellow-300 font-medium">Document Image</label>
                                       <div className="mt-2">
                                         <img 
                                           src={selectedUser.secondary_id_image_url} 
@@ -821,7 +821,7 @@ const UserManagementPage = () => {
                                           className="w-full h-40 object-cover bg-navy-700 rounded-lg border cursor-pointer hover:opacity-80 transition-opacity shadow-lg"
                                           onClick={() => openImageZoom(selectedUser.secondary_id_image_url, 'Secondary ID Document')}
                                         />
-                                        <p className="text-xs text-skyblue-400 mt-2 text-center">📄 Click to view full size</p>
+                                        <p className="text-xs text-yellow-400 mt-2 text-center">📄 Click to view full size</p>
                                       </div>
                                     </div>
                                   ) : (
@@ -868,7 +868,7 @@ const UserManagementPage = () => {
                 {activeTab === 'actions' && (
                   <div className="space-y-6">
                     <h3 className="text-xl font-semibold text-white">Administrative Actions</h3>
-                    <p className="text-skyblue-300 text-sm">Perform common account tasks and management actions.</p>
+                    <p className="text-yellow-300 text-sm">Perform common account tasks and management actions.</p>
 
                     {/* Verification Actions */}
                     <div className="bg-navy-800 rounded-lg p-6 border border-navy-700/60">
@@ -879,7 +879,7 @@ const UserManagementPage = () => {
                             <AlertTriangle className="h-6 w-6 text-yellow-400" />
                             <span className="text-yellow-400 font-medium text-lg">Pending Review Required</span>
                           </div>
-                          <p className="text-skyblue-300 mb-6">This user's identification documents require your review and approval.</p>
+                          <p className="text-yellow-300 mb-6">This user's identification documents require your review and approval.</p>
                           <div className="flex space-x-3">
                             <button
                               onClick={() => {
@@ -911,7 +911,7 @@ const UserManagementPage = () => {
                             <CheckCircle className="h-6 w-6 text-green-400" />
                             <span className="text-green-400 font-medium text-lg">Verification Complete</span>
                           </div>
-                          <p className="text-skyblue-300 mt-2">User has been successfully verified and approved</p>
+                          <p className="text-yellow-300 mt-2">User has been successfully verified and approved</p>
                         </div>
                       )}
 
@@ -921,7 +921,7 @@ const UserManagementPage = () => {
                             <XCircle className="h-6 w-6 text-red-400" />
                             <span className="text-red-400 font-medium text-lg">Verification Rejected</span>
                           </div>
-                          <p className="text-skyblue-300 mt-2">ID verification was rejected - user may need to resubmit documents</p>
+                          <p className="text-yellow-300 mt-2">ID verification was rejected - user may need to resubmit documents</p>
                         </div>
                       )}
 
@@ -931,7 +931,7 @@ const UserManagementPage = () => {
                             <CheckCircle className="h-6 w-6 text-blue-400" />
                             <span className="text-blue-400 font-medium text-lg">Administrator Account</span>
                           </div>
-                          <p className="text-skyblue-300 mt-2">No verification actions required for admin accounts</p>
+                          <p className="text-yellow-300 mt-2">No verification actions required for admin accounts</p>
                         </div>
                       )}
                     </div>
@@ -940,11 +940,11 @@ const UserManagementPage = () => {
                     <div className="bg-navy-800 rounded-lg p-6 border border-navy-700/60">
                       <h4 className="text-lg font-medium text-white mb-4">Account Management</h4>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <button className="flex items-center space-x-2 px-4 py-3 text-skyblue-400 hover:bg-navy-700 rounded-lg transition-colors">
+                        <button className="flex items-center space-x-2 px-4 py-3 text-yellow-400 hover:bg-navy-700 rounded-lg transition-colors">
                           <Key className="h-4 w-4" />
                           <span>Reset Password</span>
                         </button>
-                        <button className="flex items-center space-x-2 px-4 py-3 text-skyblue-400 hover:bg-navy-700 rounded-lg transition-colors">
+                        <button className="flex items-center space-x-2 px-4 py-3 text-yellow-400 hover:bg-navy-700 rounded-lg transition-colors">
                           <Mail className="h-4 w-4" />
                           <span>Send Notification</span>
                         </button>
@@ -952,7 +952,7 @@ const UserManagementPage = () => {
                           <XCircle className="h-4 w-4" />
                           <span>{selectedUser.is_active ? 'Suspend Account' : 'Activate Account'}</span>
                         </button>
-                        <button className="flex items-center space-x-2 px-4 py-3 text-skyblue-400 hover:bg-navy-700 rounded-lg transition-colors">
+                        <button className="flex items-center space-x-2 px-4 py-3 text-yellow-400 hover:bg-navy-700 rounded-lg transition-colors">
                           <Eye className="h-4 w-4" />
                           <span>View Activity Log</span>
                         </button>
@@ -981,7 +981,7 @@ const UserManagementPage = () => {
                 <h3 className="text-lg font-semibold text-white">{zoomedImage.alt}</h3>
                 <button
                   onClick={closeImageZoom}
-                  className="text-skyblue-400 hover:text-white transition-colors"
+                  className="text-yellow-400 hover:text-white transition-colors"
                 >
                   <X className="h-6 w-6" />
                 </button>

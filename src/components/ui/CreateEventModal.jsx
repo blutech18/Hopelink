@@ -14,11 +14,13 @@ import {
   Trash2,
   Package,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  CheckCircle
 } from 'lucide-react'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
+import LocationPicker from './LocationPicker'
 
 const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
   const { success, error } = useToast()
@@ -34,10 +36,18 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
     end_time: '',
     max_participants: '',
     image_url: '',
-    donation_items: []
+    donation_items: [],
+    schedule: [],
+    requirements: [],
+    what_to_bring: [],
+    contact_coordinator: '',
+    contact_phone: '',
+    contact_email: ''
   })
   const [imageFile, setImageFile] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false)
+  const [selectedLocationData, setSelectedLocationData] = useState(null)
 
   const eventTypes = [
     'Food Distribution',
@@ -84,7 +94,13 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
         end_time: endDate.toTimeString().slice(0, 5),
         max_participants: event.max_participants?.toString() || '',
         image_url: event.image_url || '',
-        donation_items: event.event_items || []
+        donation_items: event.event_items || [],
+        schedule: event.schedule || [],
+        requirements: event.requirements || [],
+        what_to_bring: event.what_to_bring || [],
+        contact_coordinator: event.contact_info?.coordinator || '',
+        contact_phone: event.contact_info?.phone || '',
+        contact_email: event.contact_info?.email || ''
       })
       setImagePreview(event.image_url || null)
       setImageFile(null)
@@ -101,7 +117,13 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
         end_time: '',
         max_participants: '',
         image_url: '',
-        donation_items: []
+        donation_items: [],
+        schedule: [],
+        requirements: [],
+        what_to_bring: [],
+        contact_coordinator: '',
+        contact_phone: '',
+        contact_email: ''
       })
       setImagePreview(null)
       setImageFile(null)
@@ -113,6 +135,15 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
       ...prev,
       [field]: value
     }))
+  }
+
+  const handleLocationSelect = (locationData) => {
+    setSelectedLocationData(locationData)
+    setFormData(prev => ({
+      ...prev,
+      location: locationData.address
+    }))
+    setIsLocationPickerOpen(false)
   }
 
   const addDonationItem = () => {
@@ -140,6 +171,78 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
       ...prev,
       donation_items: prev.donation_items.map((item, i) => 
         i === index ? { ...item, [field]: value } : item
+      )
+    }))
+  }
+
+  // Schedule management
+  const addScheduleItem = () => {
+    setFormData(prev => ({
+      ...prev,
+      schedule: [...prev.schedule, { time: '', activity: '' }]
+    }))
+  }
+
+  const removeScheduleItem = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      schedule: prev.schedule.filter((_, i) => i !== index)
+    }))
+  }
+
+  const updateScheduleItem = (index, field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      schedule: prev.schedule.map((item, i) => 
+        i === index ? { ...item, [field]: value } : item
+      )
+    }))
+  }
+
+  // Requirements management
+  const addRequirement = () => {
+    setFormData(prev => ({
+      ...prev,
+      requirements: [...prev.requirements, '']
+    }))
+  }
+
+  const removeRequirement = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      requirements: prev.requirements.filter((_, i) => i !== index)
+    }))
+  }
+
+  const updateRequirement = (index, value) => {
+    setFormData(prev => ({
+      ...prev,
+      requirements: prev.requirements.map((item, i) => 
+        i === index ? value : item
+      )
+    }))
+  }
+
+  // What to Bring management
+  const addWhatToBring = () => {
+    setFormData(prev => ({
+      ...prev,
+      what_to_bring: [...prev.what_to_bring, '']
+    }))
+  }
+
+  const removeWhatToBring = (index) => {
+    setFormData(prev => ({
+      ...prev,
+      what_to_bring: prev.what_to_bring.filter((_, i) => i !== index)
+    }))
+  }
+
+  const updateWhatToBring = (index, value) => {
+    setFormData(prev => ({
+      ...prev,
+      what_to_bring: prev.what_to_bring.map((item, i) => 
+        i === index ? value : item
       )
     }))
   }
@@ -232,30 +335,32 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
     try {
       setLoading(true)
       
-      let imageUrl = formData.image_url || null
+      // Note: Image upload disabled to prevent JSON parsing issues with large base64 strings
+      // TODO: Implement proper file storage (Supabase Storage, Cloudinary, etc.)
+      let imageUrl = null
       
-      // Upload image if a new file is selected
-      if (imageFile) {
-        try {
-          imageUrl = await uploadImage(imageFile)
-        } catch (uploadError) {
-          console.error('Image upload failed:', uploadError)
-          error('Failed to upload image. Continuing without image.')
-          imageUrl = null
-        }
-      }
+      // Combine date and time into ISO datetime strings
+      const startDateTime = new Date(`${formData.start_date}T${formData.start_time}:00`).toISOString()
+      const endDateTime = new Date(`${formData.end_date}T${formData.end_time}:00`).toISOString()
       
       const eventData = {
         name: formData.name,
         description: formData.description,
         location: formData.location,
-        start_date: formData.start_date,
-        end_date: formData.end_date,
+        start_date: startDateTime,
+        end_date: endDateTime,
         max_participants: formData.max_participants ? parseInt(formData.max_participants) : null,
         target_goal: formData.event_type,
         status: 'active',
-        current_participants: 0,
-        image_url: imageUrl
+        image_url: imageUrl,
+        schedule: formData.schedule.filter(item => item.time && item.activity),
+        requirements: formData.requirements.filter(req => req.trim()),
+        what_to_bring: formData.what_to_bring.filter(item => item.trim()),
+        contact_info: {
+          coordinator: formData.contact_coordinator || 'Event Coordinator',
+          phone: formData.contact_phone || 'N/A',
+          email: formData.contact_email || 'N/A'
+        }
       }
 
       // Remove donation_items from eventData as it will be handled separately
@@ -302,17 +407,26 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
           transition={{ duration: 0.2 }}
-          className="relative bg-navy-900 rounded-lg shadow-xl border border-navy-700 w-full max-w-4xl max-h-[90vh] overflow-hidden"
+          className="relative bg-navy-800 rounded-lg shadow-xl border border-navy-700 w-full max-w-4xl max-h-[90vh] overflow-hidden"
         >
           {/* Header */}
           <div className="flex items-center justify-between p-6 border-b border-navy-700">
-            <h2 className="text-xl font-semibold text-white flex items-center">
-              <Calendar className="h-5 w-5 text-skyblue-400 mr-2" />
-              {event ? 'Edit Event' : 'Create New Event'}
-            </h2>
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-navy-700 rounded-lg">
+                <Calendar className="h-6 w-6 text-yellow-300" />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-white">
+                  {event ? 'Edit Event' : 'Create New Event'}
+                </h2>
+                <p className="text-skyblue-300 text-sm">
+                  {event ? 'Update event information' : 'Fill in the event details'}
+                </p>
+              </div>
+            </div>
             <button
               onClick={onClose}
-              className="text-skyblue-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+              className="p-2 text-skyblue-400 hover:text-white hover:bg-navy-700 rounded-lg transition-colors"
             >
               <X className="h-5 w-5" />
             </button>
@@ -388,14 +502,25 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                   <MapPin className="h-4 w-4 inline mr-2" />
                   Location *
                 </label>
-                <input
-                  type="text"
-                  value={formData.location}
-                  onChange={(e) => handleInputChange('location', e.target.value)}
-                  className="w-full px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white placeholder-skyblue-400 focus:outline-none focus:ring-2 focus:ring-skyblue-500"
-                  placeholder="Event location address"
-                  required
-                />
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={formData.location}
+                    onChange={(e) => handleInputChange('location', e.target.value)}
+                    className="flex-1 px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white placeholder-skyblue-400 focus:outline-none focus:ring-2 focus:ring-skyblue-500"
+                    placeholder="Event location address"
+                    required
+                    readOnly
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsLocationPickerOpen(true)}
+                    className="px-4 py-2 bg-yellow-400 text-navy-900 rounded-lg hover:bg-yellow-500 transition-colors flex items-center gap-2 font-medium"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    Select
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -602,7 +727,200 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
               ))}
             </div>
 
+            {/* Event Schedule Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-white font-medium">
+                  <Clock className="h-4 w-4 inline mr-2" />
+                  Event Schedule
+                </label>
+                <button
+                  type="button"
+                  onClick={addScheduleItem}
+                  className="btn btn-sm btn-secondary flex items-center"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Schedule Item
+                </button>
+              </div>
+              
+              {formData.schedule.length === 0 && (
+                <div className="text-center py-6 text-skyblue-400 bg-navy-800 rounded-lg border border-navy-700">
+                  <Clock className="h-10 w-10 mx-auto mb-2 text-skyblue-500" />
+                  <p className="text-sm">No schedule items added yet</p>
+                </div>
+              )}
 
+              {formData.schedule.map((item, index) => (
+                <div key={index} className="bg-navy-800 p-4 rounded-lg border border-navy-700">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-white font-medium text-sm">Schedule Item {index + 1}</h4>
+                    <button
+                      type="button"
+                      onClick={() => removeScheduleItem(index)}
+                      className="text-red-400 hover:text-red-300 p-1"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-skyblue-200 text-sm mb-1">Time</label>
+                      <input
+                        type="text"
+                        value={item.time}
+                        onChange={(e) => updateScheduleItem(index, 'time', e.target.value)}
+                        className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
+                        placeholder="e.g., 9:00 AM"
+                      />
+                    </div>
+                    
+                    <div className="md:col-span-2">
+                      <label className="block text-skyblue-200 text-sm mb-1">Activity</label>
+                      <input
+                        type="text"
+                        value={item.activity}
+                        onChange={(e) => updateScheduleItem(index, 'activity', e.target.value)}
+                        className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
+                        placeholder="e.g., Registration & Orientation"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Requirements Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-white font-medium">
+                  <CheckCircle className="h-4 w-4 inline mr-2" />
+                  Requirements
+                </label>
+                <button
+                  type="button"
+                  onClick={addRequirement}
+                  className="btn btn-sm btn-secondary flex items-center"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Requirement
+                </button>
+              </div>
+              
+              {formData.requirements.length === 0 && (
+                <div className="text-center py-6 text-skyblue-400 bg-navy-800 rounded-lg border border-navy-700">
+                  <AlertCircle className="h-10 w-10 mx-auto mb-2 text-skyblue-500" />
+                  <p className="text-sm">No requirements added yet</p>
+                </div>
+              )}
+
+              {formData.requirements.map((req, index) => (
+                <div key={index} className="flex items-center gap-3 bg-navy-800 p-3 rounded-lg border border-navy-700">
+                  <input
+                    type="text"
+                    value={req}
+                    onChange={(e) => updateRequirement(index, e.target.value)}
+                    className="flex-1 px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
+                    placeholder="e.g., Must be able to lift up to 25 lbs"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeRequirement(index)}
+                    className="text-red-400 hover:text-red-300 p-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* What to Bring Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="block text-white font-medium">
+                  <Package className="h-4 w-4 inline mr-2" />
+                  What to Bring
+                </label>
+                <button
+                  type="button"
+                  onClick={addWhatToBring}
+                  className="btn btn-sm btn-secondary flex items-center"
+                >
+                  <Plus className="h-4 w-4 mr-1" />
+                  Add Item
+                </button>
+              </div>
+              
+              {formData.what_to_bring.length === 0 && (
+                <div className="text-center py-6 text-skyblue-400 bg-navy-800 rounded-lg border border-navy-700">
+                  <Package className="h-10 w-10 mx-auto mb-2 text-skyblue-500" />
+                  <p className="text-sm">No items added yet</p>
+                </div>
+              )}
+
+              {formData.what_to_bring.map((item, index) => (
+                <div key={index} className="flex items-center gap-3 bg-navy-800 p-3 rounded-lg border border-navy-700">
+                  <input
+                    type="text"
+                    value={item}
+                    onChange={(e) => updateWhatToBring(index, e.target.value)}
+                    className="flex-1 px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
+                    placeholder="e.g., Water bottle, Comfortable work clothes"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeWhatToBring(index)}
+                    className="text-red-400 hover:text-red-300 p-2"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {/* Contact Information Section */}
+            <div className="space-y-4">
+              <label className="block text-white font-medium">
+                <Users className="h-4 w-4 inline mr-2" />
+                Contact Information
+              </label>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-skyblue-200 text-sm mb-1">Coordinator Name</label>
+                  <input
+                    type="text"
+                    value={formData.contact_coordinator}
+                    onChange={(e) => handleInputChange('contact_coordinator', e.target.value)}
+                    className="w-full px-3 py-2 bg-navy-800 border border-navy-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
+                    placeholder="Event Coordinator"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-skyblue-200 text-sm mb-1">Phone Number</label>
+                  <input
+                    type="tel"
+                    value={formData.contact_phone}
+                    onChange={(e) => handleInputChange('contact_phone', e.target.value)}
+                    className="w-full px-3 py-2 bg-navy-800 border border-navy-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
+                    placeholder="+63 XX XXX-XXXX"
+                  />
+                </div>
+                
+                <div>
+                  <label className="block text-skyblue-200 text-sm mb-1">Email Address</label>
+                  <input
+                    type="email"
+                    value={formData.contact_email}
+                    onChange={(e) => handleInputChange('contact_email', e.target.value)}
+                    className="w-full px-3 py-2 bg-navy-800 border border-navy-700 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
+                    placeholder="events@example.com"
+                  />
+                </div>
+              </div>
+            </div>
 
             {/* Actions */}
             <div className="flex items-center justify-end space-x-4 pt-6 border-t border-navy-700">
@@ -631,6 +949,15 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
           </div>
         </motion.div>
       </div>
+
+      {/* Location Picker Modal */}
+      <LocationPicker
+        isOpen={isLocationPickerOpen}
+        onClose={() => setIsLocationPickerOpen(false)}
+        onLocationSelect={handleLocationSelect}
+        initialLocation={selectedLocationData?.coordinates || null}
+        title="Select Event Location"
+      />
     </AnimatePresence>
   )
 }

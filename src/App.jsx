@@ -222,7 +222,7 @@ function AppContent() {
                   <MyRequestsPage />
                 </ProtectedRoute>
               } />
-              <Route path="/my-approved-donations" element={
+              <Route path="/my-approved-requests" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
                   <MyApprovedDonationsPage />
                 </ProtectedRoute>

@@ -284,26 +284,30 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         {/* Vehicle Information Display */}
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Truck className="h-5 w-5 text-skyblue-500" />
+            <Truck className="h-5 w-5 text-yellow-400" />
             Vehicle Information
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm text-skyblue-300">Has Vehicle</label>
+              <label className="text-sm text-yellow-300">Has Vehicle</label>
               <p className="text-white">{watchedHasVehicle ? 'Yes' : 'No'}</p>
             </div>
             {watchedHasVehicle && (
               <>
                 <div>
-                  <label className="text-sm text-skyblue-300">Vehicle Type</label>
-                  <p className="text-white">{getValues('vehicle_type') || 'Not specified'}</p>
+                  <label className="text-sm text-yellow-300">Vehicle Type</label>
+                  <p className={getValues('vehicle_type') ? 'text-white' : 'text-gray-400 italic'}>
+                    {getValues('vehicle_type') || 'Not specified'}
+                  </p>
                 </div>
                 <div>
-                  <label className="text-sm text-skyblue-300">Make & Model</label>
-                  <p className="text-white">{getValues('vehicle_make_model') || 'Not specified'}</p>
+                  <label className="text-sm text-yellow-300">Make & Model</label>
+                  <p className={getValues('vehicle_make_model') ? 'text-white' : 'text-gray-400 italic'}>
+                    {getValues('vehicle_make_model') || 'Not specified'}
+                  </p>
                 </div>
                 <div>
-                  <label className="text-sm text-skyblue-300">Max Delivery Distance</label>
+                  <label className="text-sm text-yellow-300">Max Delivery Distance</label>
                   <p className="text-white">{getValues('max_delivery_distance')} km</p>
                 </div>
               </>
@@ -314,13 +318,13 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         {/* Availability Display */}
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-skyblue-500" />
+            <Calendar className="h-5 w-5 text-yellow-400" />
             Availability
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm text-skyblue-300">Available Days</label>
-              <p className="text-white">
+              <label className="text-sm text-yellow-300">Available Days</label>
+              <p className={getValues('availability_days')?.length ? 'text-white' : 'text-gray-400 italic'}>
                 {getValues('availability_days')?.length ? 
                   getValues('availability_days').join(', ') : 
                   'Not specified'
@@ -328,8 +332,8 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               </p>
             </div>
             <div>
-              <label className="text-sm text-skyblue-300">Available Times</label>
-              <p className="text-white">
+              <label className="text-sm text-yellow-300">Available Times</label>
+              <p className={getValues('availability_times')?.length ? 'text-white' : 'text-gray-400 italic'}>
                 {getValues('availability_times')?.length ? 
                   getValues('availability_times').join(', ') : 
                   'Not specified'
@@ -343,7 +347,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-skyblue-500" />
+              <FileText className="h-5 w-5 text-yellow-400" />
               Valid ID Requirements
             </div>
             <IDVerificationBadge
@@ -358,25 +362,29 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-sm text-skyblue-300">ID Type</label>
-                <p className="text-white">{getValues('primary_id_type') || 'Not specified'}</p>
+                <label className="text-sm text-yellow-300">ID Type</label>
+                <p className={getValues('primary_id_type') ? 'text-white' : 'text-gray-400 italic'}>
+                  {getValues('primary_id_type') || 'Not specified'}
+                </p>
               </div>
               <div>
-                <label className="text-sm text-skyblue-300">ID Number</label>
-                <p className="text-white">{getValues('primary_id_number') || 'Not specified'}</p>
+                <label className="text-sm text-yellow-300">ID Number</label>
+                <p className={getValues('primary_id_number') ? 'text-white' : 'text-gray-400 italic'}>
+                  {getValues('primary_id_number') || 'Not specified'}
+                </p>
               </div>
             </div>
             
             {getValues('primary_id_expiry') && (
               <div>
-                <label className="text-sm text-skyblue-300">Expiry Date</label>
+                <label className="text-sm text-yellow-300">Expiry Date</label>
                 <p className="text-white">{new Date(getValues('primary_id_expiry')).toLocaleDateString()}</p>
               </div>
             )}
 
             {idImagePreview && (
               <div>
-                <label className="text-sm text-skyblue-300 mb-2 block">ID Image</label>
+                <label className="text-sm text-yellow-300 mb-2 block">ID Image</label>
                 <img
                   src={idImagePreview}
                   alt="ID"
@@ -424,7 +432,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                 </div>
               </div>
               
-              <p className="text-xs text-skyblue-300 mt-2">
+              <p className="text-xs text-yellow-300 mt-2">
                 {(() => {
                   const hasIdUploaded = getValues('primary_id_type') && getValues('primary_id_number')
                   const idStatus = profileData?.id_verification_status || profile?.id_verification_status
@@ -449,7 +457,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         {/* Verification Status */}
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Shield className="h-5 w-5 text-skyblue-500" />
+            <Shield className="h-5 w-5 text-yellow-400" />
             Background Check Status
           </h3>
           <div className="flex items-center gap-2">
@@ -476,7 +484,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         className="card p-6"
       >
         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Truck className="h-5 w-5 text-skyblue-500" />
+          <Truck className="h-5 w-5 text-yellow-400" />
           Vehicle Information
         </h3>
 
@@ -488,7 +496,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                 type="checkbox"
                 checked={watchedHasVehicle}
                 onChange={(e) => setValue('has_vehicle', e.target.checked)}
-                className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
               />
               <span className="text-white">I have access to a vehicle for deliveries</span>
             </label>
@@ -502,12 +510,12 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
             >
               {/* Vehicle Type */}
               <div>
-                <label className="block text-sm text-skyblue-300 mb-2">Vehicle Type *</label>
+                <label className="block text-sm text-yellow-300 mb-2">Vehicle Type *</label>
                 <select
                   {...register('vehicle_type', { 
                     required: watchedHasVehicle ? 'Vehicle type is required' : false 
                   })}
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-skyblue-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
                 >
                   <option value="">Select vehicle type</option>
                   {vehicleTypes.map(type => (
@@ -522,33 +530,33 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               {/* Vehicle Details */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
-                <label className="block text-sm text-skyblue-300 mb-2">Make & Model</label>
+                <label className="block text-sm text-yellow-300 mb-2">Make & Model</label>
                 <input
                   {...register('vehicle_make_model')}
                   type="text"
                   placeholder="e.g., Toyota Vios"
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
                 />
               </div>
                               <div>
-                <label className="block text-sm text-skyblue-300 mb-2">Year</label>
+                <label className="block text-sm text-yellow-300 mb-2">Year</label>
                 <input
                   {...register('vehicle_year')}
                   type="number"
                   placeholder="2020"
                   min="1990"
                   max="2025"
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
                 />
               </div>
               </div>
 
               {/* Cargo Capacity */}
               <div>
-                <label className="block text-sm text-skyblue-300 mb-2">Cargo Capacity</label>
+                <label className="block text-sm text-yellow-300 mb-2">Cargo Capacity</label>
                 <select
                   {...register('vehicle_capacity')}
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-skyblue-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
                 >
                   <option value="">Select capacity</option>
                   <option value="small">Small (1-2 boxes)</option>
@@ -564,7 +572,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                     type="checkbox"
                     checked={watchedHasInsurance}
                     onChange={(e) => setValue('has_insurance', e.target.checked)}
-                    className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                    className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
                   />
                   <span className="text-white">Vehicle has valid insurance</span>
                 </label>
@@ -576,14 +584,14 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                       value={getValues('insurance_provider')}
                       onChange={(e) => setValue('insurance_provider', e.target.value)}
                       placeholder="Insurance provider"
-                      className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+                      className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
                     />
                     <input
                       type="text"
                       value={getValues('insurance_policy_number')}
                       onChange={(e) => setValue('insurance_policy_number', e.target.value)}
                       placeholder="Policy number"
-                      className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+                      className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
                     />
                   </div>
                 )}
@@ -593,7 +601,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
 
           {/* Max Delivery Distance */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-2">
+            <label className="block text-sm text-yellow-300 mb-2">
               Maximum Delivery Distance *
             </label>
             <div className="flex items-center gap-3">
@@ -621,14 +629,14 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         className="card p-6"
       >
         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-skyblue-500" />
+          <Calendar className="h-5 w-5 text-yellow-400" />
           Availability Schedule
         </h3>
 
         <div className="space-y-6">
           {/* Available Days */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-3">Available Days *</label>
+            <label className="block text-sm text-yellow-300 mb-3">Available Days *</label>
             <Controller
               name="availability_days"
               control={control}
@@ -647,7 +655,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                             onChange(value.filter(item => item !== day))
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
                       />
                       <span className="text-white text-sm">{day}</span>
                     </label>
@@ -662,7 +670,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
 
           {/* Available Times */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-3">Available Time Slots *</label>
+            <label className="block text-sm text-yellow-300 mb-3">Available Time Slots *</label>
             <Controller
               name="availability_times"
               control={control}
@@ -681,7 +689,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                             onChange(value.filter(item => item !== slot))
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
                       />
                       <span className="text-white text-sm">{slot}</span>
                     </label>
@@ -704,7 +712,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         className="card p-6"
       >
         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-skyblue-500" />
+          <FileText className="h-5 w-5 text-yellow-400" />
           Valid ID (Required for Volunteers)
         </h3>
 
@@ -723,7 +731,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
-                <label className="block text-sm text-skyblue-300 mb-2">ID Type *</label>
+                <label className="block text-sm text-yellow-300 mb-2">ID Type *</label>
                 <select
                   {...register('primary_id_type', { 
                     validate: {
@@ -739,7 +747,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                       }
                     }
                   })}
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-skyblue-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
                 >
                   <option value="">Select ID type</option>
                   {validIdTypes.map(type => (
@@ -751,7 +759,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                 )}
               </div>
                           <div>
-                <label className="block text-sm text-skyblue-300 mb-2">ID Number *</label>
+                <label className="block text-sm text-yellow-300 mb-2">ID Number *</label>
                 <input
                   {...register('primary_id_number', { 
                     validate: {
@@ -774,7 +782,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                   })}
                   type="text"
                   placeholder="Enter ID number"
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
                 />
                 {errors.primary_id_number && (
                   <p className="mt-1 text-sm text-red-400">{errors.primary_id_number.message}</p>
@@ -783,17 +791,17 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
           </div>
 
           <div>
-            <label className="block text-sm text-skyblue-300 mb-2">ID Expiry Date</label>
+            <label className="block text-sm text-yellow-300 mb-2">ID Expiry Date</label>
             <input
               {...register('primary_id_expiry')}
               type="date"
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-skyblue-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
             />
           </div>
 
           {/* ID Image Upload */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-2">ID Image *</label>
+            <label className="block text-sm text-yellow-300 mb-2">ID Image *</label>
             <input
               {...register('primary_id_image_url', { 
                 validate: {
@@ -819,9 +827,9 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                 </div>
               ) : (
                 <div className="border-2 border-dashed border-navy-600 rounded-lg p-8 text-center">
-                  <Camera className="h-12 w-12 text-skyblue-500 mx-auto mb-4" />
+                  <Camera className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
                   <p className="text-white mb-2">Upload ID Image</p>
-                  <p className="text-sm text-skyblue-300 mb-4">
+                  <p className="text-sm text-yellow-300 mb-4">
                     Take a clear photo of your driver's license or ID
                   </p>
                   <input
@@ -837,7 +845,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                   >
                     {uploadingImage ? (
                       <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-skyblue-500"></div>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-400"></div>
                         Uploading...
                       </>
                     ) : (
@@ -849,7 +857,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                   </label>
                 </div>
               )}
-              <p className="text-xs text-skyblue-400">
+              <p className="text-xs text-yellow-400">
                 Maximum file size: 5MB. Supported formats: JPG, PNG, GIF
               </p>
               {errors.primary_id_image_url && (
@@ -868,7 +876,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         className="card p-6"
       >
         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Shield className="h-5 w-5 text-skyblue-500" />
+          <Shield className="h-5 w-5 text-yellow-400" />
           Background Check & Verification
         </h3>
 
@@ -879,11 +887,11 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                 type="checkbox"
                 checked={getValues('background_check_consent')}
                 onChange={(e) => setValue('background_check_consent', e.target.checked)}
-                className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500 mt-1"
+                className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400 mt-1"
               />
               <div>
                 <span className="text-white block">I consent to a background check *</span>
-                <span className="text-sm text-skyblue-300">
+                <span className="text-sm text-yellow-300">
                   This helps ensure the safety of all community members participating in HopeLink
                 </span>
               </div>
@@ -914,13 +922,13 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         className="card p-6"
       >
         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Phone className="h-5 w-5 text-skyblue-500" />
+          <Phone className="h-5 w-5 text-yellow-400" />
           Emergency Contact
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm text-skyblue-300 mb-2">Contact Name *</label>
+            <label className="block text-sm text-yellow-300 mb-2">Contact Name *</label>
             <input
               {...register('emergency_contact_name', { 
                 validate: {
@@ -939,14 +947,14 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               })}
               type="text"
               placeholder="Full name"
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
             />
             {errors.emergency_contact_name && (
               <p className="mt-1 text-sm text-red-400">{errors.emergency_contact_name.message}</p>
             )}
           </div>
           <div>
-            <label className="block text-sm text-skyblue-300 mb-2">Contact Phone *</label>
+            <label className="block text-sm text-yellow-300 mb-2">Contact Phone *</label>
             <input
               {...register('emergency_contact_phone', { 
                 validate: {
@@ -967,18 +975,18 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               type="tel"
               placeholder="09123456789 or +639123456789"
               maxLength="13"
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
             />
             {errors.emergency_contact_phone && (
               <p className="mt-1 text-sm text-red-400">{errors.emergency_contact_phone.message}</p>
             )}
           </div>
           <div className="md:col-span-2">
-            <label className="block text-sm text-skyblue-300 mb-2">Relationship</label>
+            <label className="block text-sm text-yellow-300 mb-2">Relationship</label>
             <select
               value={getValues('emergency_contact_relationship')}
               onChange={(e) => setValue('emergency_contact_relationship', e.target.value)}
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-skyblue-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
             >
               <option value="">Select relationship</option>
               <option value="spouse">Spouse</option>
@@ -1000,28 +1008,28 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         className="card p-6"
       >
         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Star className="h-5 w-5 text-skyblue-500" />
+          <Star className="h-5 w-5 text-yellow-400" />
           Experience & Skills
         </h3>
 
         <div className="space-y-6">
           {/* Volunteer Experience */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-2">
+            <label className="block text-sm text-yellow-300 mb-2">
               Previous Volunteer Experience
             </label>
             <textarea
               value={getValues('volunteer_experience')}
               onChange={(e) => setValue('volunteer_experience', e.target.value)}
               placeholder="Describe any previous volunteer work or relevant experience..."
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
               rows={3}
             />
           </div>
 
           {/* Special Skills */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-3">Special Skills</label>
+            <label className="block text-sm text-yellow-300 mb-3">Special Skills</label>
             <Controller
               name="special_skills"
               control={control}
@@ -1039,7 +1047,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                             onChange(value.filter(item => item !== skill))
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
                       />
                       <span className="text-white text-sm">{skill}</span>
                     </label>
@@ -1051,7 +1059,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
 
           {/* Languages */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-3">Languages Spoken</label>
+            <label className="block text-sm text-yellow-300 mb-3">Languages Spoken</label>
             <Controller
               name="languages_spoken"
               control={control}
@@ -1069,7 +1077,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                             onChange(value.filter(item => item !== language))
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
                       />
                       <span className="text-white text-sm">{language}</span>
                     </label>
@@ -1089,14 +1097,14 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         className="card p-6"
       >
         <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <User className="h-5 w-5 text-skyblue-500" />
+          <User className="h-5 w-5 text-yellow-400" />
           Delivery Preferences
         </h3>
 
         <div className="space-y-6">
           {/* Preferred Delivery Types */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-3">
+            <label className="block text-sm text-yellow-300 mb-3">
               Preferred Delivery Types
             </label>
             <Controller
@@ -1116,7 +1124,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                             onChange(value.filter(item => item !== type))
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
                       />
                       <span className="text-white text-sm">{type}</span>
                     </label>
@@ -1128,7 +1136,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
 
           {/* Communication Preferences */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-3">
+            <label className="block text-sm text-yellow-300 mb-3">
               Preferred Communication Methods
             </label>
             <Controller
@@ -1148,7 +1156,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
                             onChange(value.filter(item => item !== pref))
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-skyblue-500 focus:ring-skyblue-500"
+                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
                       />
                       <span className="text-white text-sm">{pref}</span>
                     </label>
@@ -1160,14 +1168,14 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
 
           {/* Additional Notes */}
           <div>
-            <label className="block text-sm text-skyblue-300 mb-2">
+            <label className="block text-sm text-yellow-300 mb-2">
               Additional Notes
             </label>
             <textarea
               value={getValues('delivery_notes')}
               onChange={(e) => setValue('delivery_notes', e.target.value)}
               placeholder="Any additional information about your availability, preferences, or special circumstances..."
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-skyblue-400 focus:border-skyblue-500 focus:outline-none"
+              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
               rows={3}
             />
           </div>

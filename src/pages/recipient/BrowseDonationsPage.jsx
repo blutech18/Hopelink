@@ -21,6 +21,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
+import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { db } from '../../lib/supabase'
 
 const BrowseDonationsPage = () => {
@@ -153,7 +154,7 @@ const BrowseDonationsPage = () => {
   const getConditionColor = (condition) => {
     switch (condition) {
       case 'new': return 'text-green-400 bg-green-900/20'
-      case 'like_new': return 'text-blue-400 bg-blue-900/20'
+      case 'like_new': return 'text-yellow-400 bg-yellow-900/20'
       case 'good': return 'text-yellow-400 bg-yellow-900/20'
       case 'fair': return 'text-orange-400 bg-orange-900/20'
       default: return 'text-gray-400 bg-gray-900/20'
@@ -162,7 +163,7 @@ const BrowseDonationsPage = () => {
 
   const getDeliveryModeColor = (mode) => {
     switch (mode) {
-      case 'pickup': return 'text-blue-400 bg-blue-900/20'
+      case 'pickup': return 'text-yellow-400 bg-yellow-900/20'
       case 'volunteer': return 'text-green-400 bg-green-900/20'
       case 'direct': return 'text-purple-400 bg-purple-900/20'
       default: return 'text-gray-400 bg-gray-900/20'
@@ -211,18 +212,18 @@ const BrowseDonationsPage = () => {
           <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold text-white mb-2">Browse Donations</h1>
-              <p className="text-skyblue-300">Find donations that match your needs</p>
+              <p className="text-yellow-300">Find donations that match your needs</p>
             </div>
             <div className="flex items-center space-x-4">
               <button
-                onClick={() => navigate('/my-approved-donations')}
+                onClick={() => navigate('/my-approved-requests')}
                 className="btn btn-primary flex items-center"
               >
                 <Package className="h-4 w-4 mr-2" />
-                My Approved Donations
+                My Approved Requests
                 <ArrowRight className="h-4 w-4 ml-2" />
               </button>
-              <div className="flex items-center space-x-2 text-skyblue-400">
+              <div className="flex items-center space-x-2 text-yellow-400">
                 <Gift className="h-5 w-5" />
                 <span className="text-sm">{filteredDonations.length} donations available</span>
               </div>
@@ -237,70 +238,61 @@ const BrowseDonationsPage = () => {
           transition={{ delay: 0.1 }}
           className="card p-6 mb-8"
         >
-          <div className="flex items-center space-x-4 mb-4">
-            <Filter className="h-5 w-5 text-skyblue-400" />
-            <h2 className="text-lg font-semibold text-white">Filters</h2>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex flex-wrap gap-4">
             {/* Search */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Search</label>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="input pl-10"
-                  placeholder="Search donations..."
-                />
-              </div>
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
+                placeholder="Search donations..."
+              />
             </div>
 
             {/* Category */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Category</label>
+            <div className="relative min-w-[180px]">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="input"
+                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
               >
                 <option value="">All Categories</option>
                 {categories.map(category => (
                   <option key={category} value={category}>{category}</option>
                 ))}
               </select>
+              <Package className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
             </div>
 
             {/* Condition */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Condition</label>
+            <div className="relative min-w-[180px]">
               <select
                 value={selectedCondition}
                 onChange={(e) => setSelectedCondition(e.target.value)}
-                className="input"
+                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
               >
                 <option value="">All Conditions</option>
                 {conditions.map(condition => (
                   <option key={condition.value} value={condition.value}>{condition.label}</option>
                 ))}
               </select>
+              <CheckCircle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
             </div>
 
-            {/* Urgent Only */}
-            <div>
-              <label className="block text-sm font-medium text-white mb-2">Priority</label>
-              <label className="flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showUrgentOnly}
-                  onChange={(e) => setShowUrgentOnly(e.target.checked)}
-                  className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mr-2"
-                />
-                <span className="text-sm text-white">Urgent only</span>
-              </label>
-            </div>
+            {/* Urgent Filter */}
+            <button
+              onClick={() => setShowUrgentOnly(!showUrgentOnly)}
+              className={`px-5 py-3 rounded-lg font-medium transition-all duration-200 flex items-center gap-2 min-w-[140px] border-2 ${
+                showUrgentOnly
+                  ? 'bg-red-600 hover:bg-red-700 text-white border-red-600'
+                  : 'bg-navy-800 hover:bg-navy-700 text-white border-navy-700 hover:border-yellow-600'
+              }`}
+            >
+              <AlertCircle className="h-4 w-4" />
+              <span className="text-sm">Urgent Only</span>
+            </button>
           </div>
         </motion.div>
 
@@ -311,9 +303,9 @@ const BrowseDonationsPage = () => {
             animate={{ opacity: 1 }}
             className="text-center py-12"
           >
-            <Gift className="h-16 w-16 text-skyblue-400 mx-auto mb-4" />
+            <Gift className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
             <h3 className="text-xl font-semibold text-white mb-2">No donations found</h3>
-            <p className="text-skyblue-400">
+            <p className="text-yellow-400">
               {searchTerm || selectedCategory || selectedCondition || showUrgentOnly
                 ? 'Try adjusting your filters to see more results.'
                 : 'There are no donations available at the moment.'}
@@ -360,13 +352,13 @@ const BrowseDonationsPage = () => {
                   <div className="mb-4">
                     <div className="flex items-start justify-between mb-2">
                       <h3 className="text-lg font-semibold text-white truncate pr-2">{donation.title}</h3>
-                      <div className="flex items-center space-x-1 text-skyblue-400">
+                      <div className="flex items-center space-x-1 text-yellow-400">
                         <Star className="h-4 w-4" />
                         <span className="text-sm">{donation.donor_rating || 'New'}</span>
                       </div>
                     </div>
 
-                    <p className="text-skyblue-300 text-sm mb-3 line-clamp-2">
+                    <p className="text-yellow-300 text-sm mb-3 line-clamp-2">
                       {donation.description || 'No description provided'}
                     </p>
 
@@ -389,13 +381,13 @@ const BrowseDonationsPage = () => {
                     {donation.tags && donation.tags.length > 0 && (
                       <div className="flex flex-wrap gap-1 mb-3">
                         {donation.tags.slice(0, 3).map((tag, tagIndex) => (
-                          <span key={tagIndex} className="inline-flex items-center text-xs bg-navy-800 text-skyblue-300 px-2 py-1 rounded">
+                          <span key={tagIndex} className="inline-flex items-center text-xs bg-navy-800 text-yellow-300 px-2 py-1 rounded">
                             <Tag className="h-3 w-3 mr-1" />
                             {tag}
                           </span>
                         ))}
                         {donation.tags.length > 3 && (
-                          <span className="text-xs text-skyblue-400">+{donation.tags.length - 3} more</span>
+                          <span className="text-xs text-yellow-400">+{donation.tags.length - 3} more</span>
                         )}
                       </div>
                     )}
@@ -403,19 +395,19 @@ const BrowseDonationsPage = () => {
 
                   {/* Donation Details */}
                   <div className="space-y-2 mb-4 text-sm">
-                    <div className="flex items-center text-skyblue-400">
+                    <div className="flex items-center text-yellow-400">
                       <User className="h-4 w-4 mr-2" />
                       <span>Quantity: {donation.quantity}</span>
                     </div>
                     
                     {donation.pickup_location && (
-                      <div className="flex items-center text-skyblue-400">
+                      <div className="flex items-center text-yellow-400">
                         <MapPin className="h-4 w-4 mr-2" />
                         <span className="truncate">{donation.pickup_location}</span>
                       </div>
                     )}
                     
-                    <div className="flex items-center text-skyblue-400">
+                    <div className="flex items-center text-yellow-400">
                       <Calendar className="h-4 w-4 mr-2" />
                       <span>Posted {formatDate(donation.created_at)}</span>
                     </div>
@@ -428,7 +420,7 @@ const BrowseDonationsPage = () => {
                     )}
 
                     {/* Delivery Instructions */}
-                    <div className="text-xs text-skyblue-300 bg-navy-800 p-2 rounded">
+                    <div className="text-xs text-yellow-300 bg-navy-800 p-2 rounded">
                       💡 {getDeliveryInstructions(donation.delivery_mode)}
                     </div>
                   </div>
