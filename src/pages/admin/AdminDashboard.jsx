@@ -16,6 +16,7 @@ import {
 import { useAuth } from '../../contexts/AuthContext'
 import { db, supabase } from '../../lib/supabase'
 import { DashboardSkeleton } from '../../components/ui/Skeleton'
+import AdminFeedbackViewer from '../../components/ui/AdminFeedbackViewer'
 
 const AdminDashboard = () => {
   const { user } = useAuth()
@@ -439,6 +440,16 @@ const AdminDashboard = () => {
                </div>
             </div>
           </div>
+        </motion.div>
+
+        {/* Platform Feedback & Performance Analytics */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+          className="mt-8"
+        >
+          <AdminFeedbackViewer />
         </motion.div>
       </div>
     </div>

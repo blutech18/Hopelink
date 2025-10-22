@@ -15,10 +15,12 @@ import {
   Shield,
   Bell,
   Clock,
-  ChevronDown
+  ChevronDown,
+  MessageSquare
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import FeedbackModal from '../ui/FeedbackModal'
 
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
@@ -26,6 +28,8 @@ const Navbar = () => {
   const [isSigningOut, setIsSigningOut] = useState(false)
   const [isSideMenuOpen, setIsSideMenuOpen] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
+  const [showFeedbackFloat, setShowFeedbackFloat] = useState(false)
+  const [showFeedbackModal, setShowFeedbackModal] = useState(false)
   const { isAuthenticated, profile, signOut } = useAuth()
   const { success, error } = useToast()
   const location = useLocation()
@@ -48,8 +52,25 @@ const Navbar = () => {
     }
 
     document.addEventListener('click', handleClickOutside)
+    return () => document.removeEventListener('click', handleClickOutside)
+  }, [])
+
+  // Periodic floating animation for feedback tooltip every 20 minutes
+  useEffect(() => {
+    const showFloatingTooltip = () => {
+      setShowFeedbackFloat(true)
+      setTimeout(() => setShowFeedbackFloat(false), 5000) // Show for 5 seconds
+    }
+
+    // Show immediately on mount
+    const initialTimeout = setTimeout(showFloatingTooltip, 3000) // Show after 3 seconds
+
+    // Then show every 20 minutes
+    const interval = setInterval(showFloatingTooltip, 20 * 60 * 1000) // 20 minutes
+
     return () => {
-      document.removeEventListener('click', handleClickOutside)
+      clearTimeout(initialTimeout)
+      clearInterval(interval)
     }
   }, [])
 
@@ -315,29 +336,31 @@ const Navbar = () => {
 
             {/* Auth Section */}
             {shouldShowProfile ? (
-              <div className="relative" ref={desktopProfileMenuRef}>
-                <button
-                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-                  className="flex items-center space-x-2 p-2 rounded-lg hover:bg-navy-800 transition-colors"
-                >
-                  <div className="h-8 w-8 bg-yellow-600 rounded-full overflow-hidden flex items-center justify-center">
-                    {profile?.profile_image_url ? (
-                      <img
-                        src={profile.profile_image_url}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <span className="text-white text-sm font-medium">
-                        {profile?.name?.charAt(0)?.toUpperCase() || 'U'}
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-sm font-medium text-white">
-                    {profile?.name || 'User'}
-                  </span>
-                  <ChevronDown className={`h-4 w-4 text-yellow-400 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
-                </button>
+              <div className="flex items-center space-x-2">
+                {/* Profile Dropdown */}
+                <div className="relative" ref={desktopProfileMenuRef}>
+                  <button
+                    onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                    className="flex items-center space-x-2 p-2 rounded-lg hover:bg-navy-800 transition-colors"
+                  >
+                    <div className="h-8 w-8 bg-yellow-600 rounded-full overflow-hidden flex items-center justify-center">
+                      {profile?.profile_image_url ? (
+                        <img
+                          src={profile.profile_image_url}
+                          alt="Profile"
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-white text-sm font-medium">
+                          {profile?.name?.charAt(0)?.toUpperCase() || 'U'}
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-sm font-medium text-white">
+                      {profile?.name || 'User'}
+                    </span>
+                    <ChevronDown className={`h-4 w-4 text-yellow-400 transition-transform ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+                  </button>
 
                 <AnimatePresence>
                   {isProfileMenuOpen && (
@@ -381,6 +404,48 @@ const Navbar = () => {
                     </motion.div>
                   )}
                 </AnimatePresence>
+                </div>
+
+                {/* Feedback Button - Hide for admin users */}
+                {profile?.role !== 'admin' && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowFeedbackModal(true)}
+                      className="p-2 rounded-lg hover:bg-navy-800 transition-colors"
+                    >
+                      <MessageSquare className="h-5 w-5 text-yellow-400 hover:text-yellow-300" />
+                    </button>
+                    
+                    {/* Floating Notification Bubble */}
+                    <AnimatePresence>
+                      {showFeedbackFloat && (
+                        <motion.div
+                          initial={{ opacity: 0, y: -10, scale: 0.9 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: -10, scale: 0.9 }}
+                          className="absolute top-full right-0 mt-4 w-52 bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-sm font-medium rounded-lg shadow-xl z-50"
+                        >
+                          {/* Arrow pointing up to feedback button */}
+                          <div className="absolute bottom-full right-3 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-yellow-600"></div>
+                          
+                          <div className="p-3 flex items-center gap-2">
+                            <MessageSquare className="h-4 w-4 flex-shrink-0" />
+                            <span className="flex-1 text-center">Help Us Improve! Share your feedback</span>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                setShowFeedbackFloat(false)
+                              }}
+                              className="flex-shrink-0 hover:bg-white/20 rounded p-0.5 transition-colors"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                )}
               </div>
             ) : (
               <div className="flex items-center space-x-4">
@@ -410,6 +475,18 @@ const Navbar = () => {
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-2">
+            {/* Mobile Feedback Button */}
+            {shouldShowProfile && (
+              <Link
+                to="/dashboard"
+                state={{ scrollToFeedback: true }}
+                className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800 transition-colors"
+                title="Help Us Improve"
+              >
+                <MessageSquare className="h-5 w-5" />
+              </Link>
+            )}
+
             {/* Mobile Profile Dropdown - for authenticated users */}
             {shouldShowProfile ? (
               <div className="relative" ref={mobileProfileMenuRef}>
@@ -666,6 +743,12 @@ const Navbar = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Feedback Modal */}
+      <FeedbackModal 
+        isOpen={showFeedbackModal} 
+        onClose={() => setShowFeedbackModal(false)} 
+      />
     </nav>
   )
 }

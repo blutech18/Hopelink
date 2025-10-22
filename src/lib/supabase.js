@@ -3170,6 +3170,281 @@ export const db = {
       console.error('Error updating settings:', error)
       throw error
     }
+  },
+
+  // Feedback and Rating System
+  async getCompletedTransactionsForFeedback(userId, sinceDate) {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      // Get completed donations where user was donor (get recipient from claims)
+      const { data: donationClaims, error: donError } = await supabase
+        .from('donation_claims')
+        .select(`
+          id,
+          donation_id,
+          recipient_id,
+          updated_at,
+          donation:donations(id, title, donor_id),
+          recipient:users!donation_claims_recipient_id_fkey(id, name)
+        `)
+        .eq('donation.donor_id', userId)
+        .eq('status', 'completed')
+        .gte('updated_at', sinceDate)
+
+      if (donError) throw donError
+
+      // Transform donation claims to match expected format
+      const donations = (donationClaims || []).map(claim => ({
+        id: claim.donation_id,
+        title: claim.donation?.title,
+        status: 'completed',
+        updated_at: claim.updated_at,
+        donor_id: claim.donation?.donor_id,
+        recipient_id: claim.recipient_id,
+        recipient: claim.recipient
+      }))
+
+      // Get fulfilled requests where user was requester
+      const { data: requests, error: reqError } = await supabase
+        .from('donation_requests')
+        .select(`
+          id,
+          title,
+          status,
+          created_at,
+          updated_at,
+          requester_id,
+          users!donation_requests_requester_id_fkey(id, name)
+        `)
+        .eq('status', 'fulfilled')
+        .eq('requester_id', userId)
+        .gte('updated_at', sinceDate)
+
+      if (reqError) throw reqError
+
+      // Check which transactions already have feedback from this user
+      const allTransactionIds = [
+        ...(donations || []).map(d => d.id),
+        ...(requests || []).map(r => r.id)
+      ]
+
+      const { data: existingFeedback } = await supabase
+        .from('feedback_ratings')
+        .select('transaction_id')
+        .eq('rater_id', userId)
+        .in('transaction_id', allTransactionIds)
+
+      const ratedIds = new Set(existingFeedback?.map(f => f.transaction_id) || [])
+
+      // Format and filter transactions
+      const formattedTransactions = [
+        ...(donations || [])
+          .filter(d => !ratedIds.has(d.id))
+          .map(d => ({
+            id: d.id,
+            title: d.title,
+            type: 'Donation',
+            completed_at: d.updated_at,
+            other_user_id: d.recipient_id,
+            other_user_name: d.recipient?.name || 'Unknown User'
+          })),
+        ...(requests || [])
+          .filter(r => !ratedIds.has(r.id))
+          .map(r => ({
+            id: r.id,
+            title: r.title,
+            type: 'Request',
+            completed_at: r.updated_at,
+            other_user_id: null, // Requests don't track specific donor in main table
+            other_user_name: 'Fulfilled Request'
+          }))
+      ]
+
+      return formattedTransactions
+    } catch (error) {
+      console.error('Error getting transactions for feedback:', error)
+      throw error
+    }
+  },
+
+  async getUserPerformanceMetrics(userId) {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      // Get all feedback received by this user
+      const { data: feedback, error: feedbackError } = await supabase
+        .from('feedback_ratings')
+        .select('rating, created_at')
+        .eq('rated_user_id', userId)
+        .order('created_at', { ascending: false })
+
+      if (feedbackError) throw feedbackError
+
+      const totalFeedback = feedback?.length || 0
+      const averageRating = totalFeedback > 0
+        ? feedback.reduce((sum, f) => sum + f.rating, 0) / totalFeedback
+        : 0
+
+      const positiveRate = totalFeedback > 0
+        ? Math.round((feedback.filter(f => f.rating >= 4).length / totalFeedback) * 100)
+        : 0
+
+      // Get completed transactions count
+      // For donations, get completed claims and filter by donor
+      const { data: donationClaims } = await supabase
+        .from('donation_claims')
+        .select('id, donation:donations!inner(donor_id)')
+        .eq('donation.donor_id', userId)
+        .eq('status', 'completed')
+
+      const donationsCount = donationClaims?.length || 0
+
+      // For requests, count fulfilled requests where user was requester
+      const { count: requestsCount } = await supabase
+        .from('donation_requests')
+        .select('*', { count: 'exact', head: true })
+        .eq('requester_id', userId)
+        .eq('status', 'fulfilled')
+
+      const completedTransactions = donationsCount + (requestsCount || 0)
+
+      // Calculate satisfaction trend (last 30 days vs previous 30 days)
+      const thirtyDaysAgo = new Date()
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+      const sixtyDaysAgo = new Date()
+      sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
+
+      const recentFeedback = feedback?.filter(f => new Date(f.created_at) >= thirtyDaysAgo) || []
+      const previousFeedback = feedback?.filter(f => 
+        new Date(f.created_at) >= sixtyDaysAgo && new Date(f.created_at) < thirtyDaysAgo
+      ) || []
+
+      const recentAvg = recentFeedback.length > 0
+        ? recentFeedback.reduce((sum, f) => sum + f.rating, 0) / recentFeedback.length
+        : 0
+      const previousAvg = previousFeedback.length > 0
+        ? previousFeedback.reduce((sum, f) => sum + f.rating, 0) / previousFeedback.length
+        : 0
+
+      let satisfactionTrend = 'stable'
+      if (recentAvg > previousAvg + 0.3) satisfactionTrend = 'improving'
+      else if (recentAvg < previousAvg - 0.3) satisfactionTrend = 'declining'
+
+      return {
+        average_rating: averageRating,
+        total_feedback: totalFeedback,
+        positive_rate: positiveRate,
+        completed_transactions: completedTransactions,
+        satisfaction_trend: satisfactionTrend
+      }
+    } catch (error) {
+      console.error('Error getting performance metrics:', error)
+      throw error
+    }
+  },
+
+  async submitFeedback(feedbackData) {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      const { data, error } = await supabase
+        .from('feedback_ratings')
+        .insert({
+          transaction_id: feedbackData.transaction_id,
+          transaction_type: feedbackData.transaction_type,
+          rater_id: feedbackData.rater_id,
+          rated_user_id: feedbackData.rated_user_id,
+          rating: feedbackData.rating,
+          feedback: feedbackData.feedback,
+          created_at: feedbackData.created_at
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error submitting feedback:', error)
+      throw error
+    }
+  },
+
+  async updateUserRating(userId) {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      // Calculate new average rating
+      const { data: feedback, error: feedbackError } = await supabase
+        .from('feedback_ratings')
+        .select('rating')
+        .eq('rated_user_id', userId)
+
+      if (feedbackError) throw feedbackError
+
+      const averageRating = feedback && feedback.length > 0
+        ? feedback.reduce((sum, f) => sum + f.rating, 0) / feedback.length
+        : 0
+
+      // Update user's rating in users table
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ 
+          rating: averageRating,
+          total_ratings: feedback?.length || 0
+        })
+        .eq('id', userId)
+
+      if (updateError) throw updateError
+
+      return { averageRating, totalRatings: feedback?.length || 0 }
+    } catch (error) {
+      console.error('Error updating user rating:', error)
+      throw error
+    }
+  },
+
+  async submitPlatformFeedback(feedbackData) {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      const { data, error } = await supabase
+        .from('platform_feedback')
+        .insert({
+          user_id: feedbackData.user_id,
+          user_role: feedbackData.user_role,
+          rating: feedbackData.rating,
+          feedback: feedbackData.feedback,
+          role_specific_answers: feedbackData.role_specific_answers || {},
+          feedback_type: feedbackData.feedback_type || 'platform',
+          created_at: feedbackData.created_at
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error submitting platform feedback:', error)
+      throw error
+    }
+  },
+
+  async getAllPlatformFeedback() {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      const { data, error } = await supabase
+        .from('platform_feedback')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error getting platform feedback:', error)
+      throw error
+    }
   }
 }
 
