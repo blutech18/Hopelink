@@ -113,61 +113,66 @@ const AdminRequestsPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
+    <div className="min-h-screen py-4 sm:py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center space-x-3 mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Requests Management</h1>
-              <p className="text-yellow-300">Monitor and manage recipient requests</p>
+          <div className="flex items-center gap-3 sm:gap-4 mb-6">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Requests Management</h1>
+              <p className="text-yellow-300 text-xs sm:text-sm">Monitor and manage recipient requests</p>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+          <div className="flex flex-col gap-3 sm:gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400 flex-shrink-0" />
               <input
                 type="text"
                 placeholder="Search requests by title or requester..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
+                className="w-full pl-10 pr-4 py-3 sm:py-2.5 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm sm:text-base placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
               />
             </div>
             
-            <div className="relative">
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                className="appearance-none px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
-              >
-                <option value="all">All Statuses</option>
-                <option value="open">Open</option>
-                <option value="fulfilled">Fulfilled</option>
-                <option value="cancelled">Cancelled</option>
-                <option value="expired">Expired</option>
-              </select>
-              <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
-            </div>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <div className="relative flex-1">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className="appearance-none w-full px-5 py-3 sm:py-2.5 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm sm:text-base font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                >
+                  <option value="all">All Statuses</option>
+                  <option value="open">Open</option>
+                  <option value="fulfilled">Fulfilled</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="expired">Expired</option>
+                </select>
+                <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
+              </div>
 
-            <div className="relative">
-              <select
-                value={urgencyFilter}
-                onChange={(e) => setUrgencyFilter(e.target.value)}
-                className="appearance-none px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
-              >
-                <option value="all">All Urgency</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </select>
-              <AlertTriangle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
+              <div className="relative flex-1">
+                <select
+                  value={urgencyFilter}
+                  onChange={(e) => setUrgencyFilter(e.target.value)}
+                  className="appearance-none w-full px-5 py-3 sm:py-2.5 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm sm:text-base font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                >
+                  <option value="all">All Urgency</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                </select>
+                <AlertTriangle className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
+              </div>
             </div>
           </div>
         </motion.div>
@@ -177,7 +182,7 @@ const AdminRequestsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8"
         >
           <div className="card p-4 sm:p-6">
             <div className="flex items-center space-x-3">
@@ -234,6 +239,7 @@ const AdminRequestsPage = () => {
           className="card overflow-hidden"
         >
           <div className="overflow-x-auto custom-scrollbar">
+            <div className="min-w-[800px]">
             <table className="w-full">
               <thead className="bg-navy-800">
                 <tr>
@@ -309,14 +315,14 @@ const AdminRequestsPage = () => {
                       <div className="flex items-center justify-end space-x-2">
                         <button
                           onClick={() => handleViewRequest(request)}
-                          className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-colors"
+                          className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                           title="View Details"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
                         <button
                           onClick={() => handleUpdateRequestStatus(request.id, request.status === 'open' ? 'cancelled' : 'open')}
-                          className="p-2 text-orange-400 hover:text-orange-300 hover:bg-navy-800 rounded-lg transition-colors"
+                          className="p-2 text-orange-400 hover:text-orange-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                           title={request.status === 'open' ? 'Close Request' : 'Reopen Request'}
                         >
                           {request.status === 'open' ? <XCircle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
@@ -327,6 +333,7 @@ const AdminRequestsPage = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
           
           {filteredRequests.length === 0 && (
@@ -354,26 +361,26 @@ const AdminRequestsPage = () => {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="sticky top-0 bg-navy-900 border-b-2 border-yellow-500/20 px-6 py-4 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+            <div className="sticky top-0 bg-navy-900 border-b-2 border-yellow-500/20 px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
                   <AlertTriangle className="h-5 w-5 text-yellow-400" />
                 </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">Request Details</h3>
-                  <p className="text-xs text-gray-400">Complete request information</p>
+                <div className="min-w-0">
+                  <h3 className="text-lg sm:text-xl font-bold text-white">Request Details</h3>
+                  <p className="text-xs text-gray-400 hidden sm:block">Complete request information</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-2 rounded-lg hover:bg-navy-800 text-gray-400 hover:text-yellow-400 transition-colors"
+                className="p-2 rounded-lg hover:bg-navy-800 text-gray-400 hover:text-yellow-400 transition-colors flex-shrink-0"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             {/* Modal Content */}
-            <div className="p-6 space-y-5 overflow-y-auto">
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
               {/* Basic Information */}
               <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
                 <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
@@ -382,7 +389,7 @@ const AdminRequestsPage = () => {
                   </div>
                   <h4 className="text-sm font-semibold text-white">Basic Information</h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">Title</label>
                     <p className="text-sm text-white font-medium">{selectedRequest.title}</p>
@@ -418,7 +425,7 @@ const AdminRequestsPage = () => {
                   </div>
                   <h4 className="text-sm font-semibold text-white">Requester Information</h4>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
                     <p className="text-sm text-white font-medium">{selectedRequest.requester?.name || 'Unknown'}</p>
@@ -446,12 +453,12 @@ const AdminRequestsPage = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-navy-900 border-t border-navy-700 px-6 py-4 flex justify-end">
+            <div className="sticky bottom-0 bg-navy-900 border-t border-navy-700 px-4 sm:px-6 py-4 flex justify-end">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white rounded-lg font-bold transition-all duration-200 transform hover:scale-105 shadow-lg flex items-center gap-2"
+                className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white rounded-lg font-bold transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg flex items-center gap-2"
               >
-                <CheckCircle className="h-4 w-4" />
+                <CheckCircle className="h-4 w-4 flex-shrink-0" />
                 Close
               </button>
             </div>

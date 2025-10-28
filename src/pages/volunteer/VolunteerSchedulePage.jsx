@@ -200,45 +200,47 @@ const VolunteerSchedulePage = () => {
           transition={{ duration: 0.6 }}
           className="mb-8"
         >
-          <div className="card p-6">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg">
-                  <Calendar className="w-7 h-7 text-white" />
+          <div className="card p-4 sm:p-6">
+            <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 sm:gap-6">
+              <div className="flex items-center gap-3 sm:gap-4">
+                <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                  <Calendar className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
                 </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-white mb-1">
+                <div className="min-w-0">
+                  <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-1">
                     Volunteer Dashboard
                   </h1>
-                  <p className="text-gray-300 text-sm">
+                  <p className="text-gray-300 text-xs sm:text-sm">
                     Manage your availability and track your delivery assignments
                   </p>
                 </div>
               </div>
               
               {/* Tab Navigation */}
-              <div className="flex bg-navy-800 rounded-lg p-1.5 border-2 border-yellow-500/20 shadow-lg">
+              <div className="flex bg-navy-800 rounded-lg p-1 sm:p-1.5 border-2 border-yellow-500/20 shadow-lg w-full lg:w-auto">
                 <button
                   onClick={() => setActiveTab('schedule')}
-                  className={`px-5 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 font-semibold ${
+                  className={`flex-1 lg:flex-none px-3 sm:px-5 py-2.5 sm:py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 font-semibold text-sm sm:text-base active:scale-95 ${
                     activeTab === 'schedule'
-                      ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-white shadow-lg transform scale-105'
+                      ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-white shadow-lg'
                       : 'text-yellow-300 hover:text-white hover:bg-navy-700'
                   }`}
                 >
-                  <Calendar className="w-5 h-5" />
-                  <span>My Schedule</span>
+                  <Calendar className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">My Schedule</span>
+                  <span className="sm:hidden">Schedule</span>
                 </button>
                 <button
                   onClick={() => setActiveTab('deliveries')}
-                  className={`px-5 py-3 rounded-lg transition-all duration-200 flex items-center gap-2 font-semibold ${
+                  className={`flex-1 lg:flex-none px-3 sm:px-5 py-2.5 sm:py-3 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 font-semibold text-sm sm:text-base active:scale-95 ${
                     activeTab === 'deliveries'
-                      ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-white shadow-lg transform scale-105'
+                      ? 'bg-gradient-to-r from-yellow-600 to-yellow-500 text-white shadow-lg'
                       : 'text-yellow-300 hover:text-white hover:bg-navy-700'
                   }`}
                 >
-                  <Package className="w-5 h-5" />
-                  <span>My Deliveries</span>
+                  <Package className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">My Deliveries</span>
+                  <span className="sm:hidden">Deliveries</span>
                 </button>
               </div>
             </div>
@@ -255,16 +257,16 @@ const VolunteerSchedulePage = () => {
             className="space-y-6"
           >
             {/* Action Bar */}
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-white">Availability Schedule</h2>
-                <p className="text-gray-400 text-sm mt-1">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-lg sm:text-xl font-bold text-white">Availability Schedule</h2>
+                <p className="text-gray-400 text-xs sm:text-sm mt-1">
                   {editingAvailability ? 'Update your availability settings' : 'Your current availability preferences'}
                 </p>
               </div>
               <button
                 onClick={editingAvailability ? cancelEditing : startEditing}
-                className={`px-5 py-3 rounded-lg font-bold transition-all duration-200 flex items-center gap-2 shadow-lg transform hover:scale-105 ${
+                className={`w-full sm:w-auto px-4 sm:px-5 py-3 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 flex items-center justify-center gap-2 shadow-lg transform hover:scale-105 active:scale-95 flex-shrink-0 ${
                   editingAvailability 
                     ? hasUnsavedChanges 
                       ? 'bg-red-600 hover:bg-red-700 text-white' 
@@ -274,7 +276,7 @@ const VolunteerSchedulePage = () => {
               >
                 {editingAvailability ? (
                   <>
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
                     <span>{hasUnsavedChanges ? 'Cancel Changes' : 'Cancel'}</span>
                     {hasUnsavedChanges && (
                       <span className="ml-1 text-xs bg-white text-red-600 px-2 py-0.5 rounded-full font-semibold">
@@ -284,7 +286,7 @@ const VolunteerSchedulePage = () => {
                   </>
                 ) : (
                   <>
-                    <Settings className="h-5 w-5" />
+                    <Settings className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
                     <span>Edit Schedule</span>
                   </>
                 )}
@@ -306,26 +308,28 @@ const VolunteerSchedulePage = () => {
             <div className="flex items-center justify-center sm:justify-end gap-2">
               <button
                 onClick={() => setSelectedWeek(selectedWeek - 1)}
-                className="btn btn-secondary text-sm"
+                className="btn btn-secondary text-xs sm:text-sm px-3 sm:px-4 py-2 active:scale-95"
                 aria-label="Previous week"
               >
-                ← Previous
+                <span className="hidden sm:inline">← Previous</span>
+                <span className="sm:hidden">←</span>
               </button>
-              <span className="text-yellow-300 text-sm px-2 py-1 bg-navy-800 rounded">
-                {isCurrentWeek ? 'This Week' : `Week of ${weekDates[0].toLocaleDateString()}`}
+              <span className="text-yellow-300 text-xs sm:text-sm px-2 sm:px-3 py-1.5 sm:py-2 bg-navy-800 rounded font-medium whitespace-nowrap">
+                {isCurrentWeek ? 'This Week' : `Week of ${weekDates[0].toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`}
               </span>
               <button
                 onClick={() => setSelectedWeek(selectedWeek + 1)}
-                className="btn btn-secondary text-sm"
+                className="btn btn-secondary text-xs sm:text-sm px-3 sm:px-4 py-2 active:scale-95"
                 aria-label="Next week"
               >
-                Next →
+                <span className="hidden sm:inline">Next →</span>
+                <span className="sm:hidden">→</span>
               </button>
             </div>
           </div>
 
           {/* Calendar Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-7 gap-2 sm:gap-3 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-2 sm:gap-3">
             {weekDates.map((date, index) => {
               const dayName = daysOfWeek[index]
               const isAvailable = scheduleData.availability_days.includes(dayName)
@@ -334,7 +338,7 @@ const VolunteerSchedulePage = () => {
               return (
                 <div
                   key={index}
-                  className={`p-3 sm:p-4 rounded-lg border-2 transition-all duration-200 hover:scale-105 cursor-pointer ${
+                  className={`p-3 sm:p-4 rounded-lg border-2 transition-all duration-200 ${editingAvailability ? 'hover:scale-105 cursor-pointer active:scale-95' : ''} ${
                     isAvailable 
                       ? 'border-green-500 bg-green-500/10 hover:bg-green-500/20' 
                       : 'border-navy-600 bg-navy-800 hover:bg-navy-700'
@@ -379,8 +383,8 @@ const VolunteerSchedulePage = () => {
           </div>
           
           {editingAvailability && (
-            <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-              <p className="text-sm text-yellow-300 text-center">
+            <div className="mt-4 p-3 sm:p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+              <p className="text-xs sm:text-sm text-yellow-300 text-center">
                 💡 Click on any day to toggle availability
                 {hasUnsavedChanges && (
                   <span className="block mt-1 text-orange-400 font-medium">
@@ -410,9 +414,9 @@ const VolunteerSchedulePage = () => {
                 {/* Available Days */}
                 <div>
                   <label className="block text-sm font-medium text-yellow-300 mb-3">Available Days</label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-2 sm:gap-3">
                     {daysOfWeek.map(day => (
-                      <label key={day} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group">
+                      <label key={day} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group active:scale-95">
                         <input
                           type="checkbox"
                           checked={scheduleData.availability_days.includes(day)}
@@ -432,9 +436,9 @@ const VolunteerSchedulePage = () => {
                 {/* Time Slots */}
                 <div>
                   <label className="block text-sm font-medium text-yellow-300 mb-3">Available Time Slots</label>
-                  <div className="space-y-3">
+                  <div className="space-y-2 sm:space-y-3">
                     {timeSlots.map(slot => (
-                      <label key={slot.value} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group">
+                      <label key={slot.value} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group active:scale-95">
                         <input
                           type="checkbox"
                           checked={scheduleData.availability_times.includes(slot.value)}
@@ -442,9 +446,11 @@ const VolunteerSchedulePage = () => {
                           className="rounded border-navy-600 bg-navy-800 text-yellow-500 focus:ring-yellow-500 focus:ring-2 w-4 h-4"
                           aria-describedby={`time-${slot.value}-description`}
                         />
-                        <div className="flex-1">
-                          <span className="text-white text-sm font-medium group-hover:text-yellow-300 transition-colors">{slot.label}</span>
-                          <span className="text-yellow-400 text-xs ml-2">({slot.time})</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-col sm:flex-row sm:items-center gap-0.5 sm:gap-2">
+                            <span className="text-white text-sm font-medium group-hover:text-yellow-300 transition-colors">{slot.label}</span>
+                            <span className="text-yellow-400 text-xs">({slot.time})</span>
+                          </div>
                         </div>
                         <span id={`time-${slot.value}-description`} className="sr-only">
                           Toggle availability for {slot.label} time slot
@@ -481,7 +487,7 @@ const VolunteerSchedulePage = () => {
                 <button
                   onClick={saveSchedule}
                   disabled={loading}
-                  className="btn btn-primary w-full flex items-center justify-center gap-2"
+                  className="btn btn-primary w-full flex items-center justify-center gap-2 py-3 active:scale-95"
                 >
                   {loading ? (
                     <>
@@ -571,9 +577,9 @@ const VolunteerSchedulePage = () => {
                 <label className="block text-sm font-medium text-yellow-300 mb-3">
                   Preferred Delivery Types (Optional)
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-2 sm:gap-3">
                   {deliveryPreferences.map(pref => (
-                    <label key={pref} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group">
+                    <label key={pref} className="flex items-center gap-3 p-3 rounded-lg border border-navy-700 hover:border-yellow-500/50 transition-colors cursor-pointer group active:scale-95">
                       <input
                         type="checkbox"
                         checked={scheduleData.delivery_preferences.includes(pref)}

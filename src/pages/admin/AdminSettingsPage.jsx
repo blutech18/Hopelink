@@ -31,13 +31,13 @@ const SettingSection = ({ icon: Icon, title, children }) => (
   <motion.div
     initial={{ opacity: 0, y: 20 }}
     animate={{ opacity: 1, y: 0 }}
-    className="card p-6"
+    className="card p-4 sm:p-6"
   >
-    <h3 className="text-lg font-semibold text-white mb-6 flex items-center">
-      <Icon className="h-5 w-5 text-yellow-400 mr-2" />
+    <h3 className="text-base sm:text-lg font-semibold text-white mb-4 sm:mb-6 flex items-center">
+      <Icon className="h-5 w-5 text-yellow-400 mr-2 flex-shrink-0" />
       {title}
     </h3>
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {children}
     </div>
   </motion.div>
@@ -61,14 +61,14 @@ const StatusIndicator = ({ status, label }) => {
 }
 
 const ToggleSwitch = ({ label, description, checked, onChange, disabled }) => (
-  <div className="flex items-center justify-between py-3">
-    <div className="flex-1">
-      <div className="text-white font-medium">{label}</div>
+  <div className="flex items-start sm:items-center justify-between py-3 gap-3">
+    <div className="flex-1 min-w-0">
+      <div className="text-white font-medium text-sm sm:text-base">{label}</div>
       {description && (
-        <div className="text-yellow-400 text-sm mt-1">{description}</div>
+        <div className="text-yellow-400 text-xs sm:text-sm mt-1">{description}</div>
       )}
     </div>
-    <label className={`relative inline-flex items-center ${!disabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
+    <label className={`relative inline-flex items-center flex-shrink-0 ${!disabled ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
       <input
         type="checkbox"
         checked={checked}
@@ -83,26 +83,26 @@ const ToggleSwitch = ({ label, description, checked, onChange, disabled }) => (
 
 const InputField = ({ label, value, onChange, type = "text", placeholder = "", disabled }) => (
   <div className="space-y-2">
-    <label className="block text-white font-medium">{label}</label>
+    <label className="block text-white font-medium text-sm sm:text-base">{label}</label>
     <input
       type={type}
       value={value || ''}
       onChange={(e) => onChange(e.target.value)}
       placeholder={placeholder}
       disabled={disabled}
-      className="w-full px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 disabled:opacity-60 disabled:cursor-not-allowed"
+      className="w-full px-4 py-2.5 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 disabled:opacity-60 disabled:cursor-not-allowed"
     />
   </div>
 )
 
 const SelectField = ({ label, value, onChange, options, disabled }) => (
   <div className="space-y-2">
-    <label className="block text-white font-medium">{label}</label>
+    <label className="block text-white font-medium text-sm sm:text-base">{label}</label>
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
       disabled={disabled}
-      className="w-full px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400 disabled:opacity-60 disabled:cursor-not-allowed"
+      className="w-full px-4 py-2.5 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-yellow-400 disabled:opacity-60 disabled:cursor-not-allowed"
     >
       {options.map(option => (
         <option key={option.value} value={option.value}>
@@ -341,48 +341,53 @@ const AdminSettingsPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
+    <div className="min-h-screen py-4 sm:py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-between mb-6">
-            <div className="flex items-center space-x-3">
-              <Settings className="h-8 w-8 text-yellow-400" />
-              <div>
-                <h1 className="text-3xl font-bold text-white">Platform Settings</h1>
-                <p className="text-yellow-300">Configure and manage your HopeLink platform</p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                <Settings className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Platform Settings</h1>
+                <p className="text-yellow-300 text-xs sm:text-sm">Configure and manage your HopeLink platform</p>
               </div>
             </div>
             
-            <div className="flex gap-3">
+            <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
               {isEditing ? (
                 <>
                   <button
                     onClick={handleCancel}
                     disabled={loading}
-                    className="px-5 py-3 rounded-lg font-bold transition-all duration-200 flex items-center gap-2 bg-gray-600 hover:bg-gray-700 text-white"
+                    className="flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-2.5 rounded-lg font-bold transition-all duration-200 flex items-center justify-center gap-2 bg-gray-600 hover:bg-gray-700 text-white text-sm sm:text-base active:scale-95"
                   >
-                    <X className="h-5 w-5" />
-                    Cancel
+                    <X className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+                    <span className="hidden sm:inline">Cancel</span>
+                    <span className="sm:hidden">Cancel</span>
                   </button>
                   <button
                     onClick={handleSaveSettings}
                     disabled={loading}
-                    className="px-5 py-3 rounded-lg font-bold transition-all duration-200 flex items-center gap-2 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white shadow-lg transform hover:scale-105"
+                    className="flex-1 sm:flex-none px-4 sm:px-5 py-3 sm:py-2.5 rounded-lg font-bold transition-all duration-200 flex items-center justify-center gap-2 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white text-sm sm:text-base shadow-lg transform hover:scale-105 active:scale-95"
                   >
                     {loading ? (
                       <>
                         <LoadingSpinner size="sm" />
-                        Saving...
+                        <span className="hidden sm:inline">Saving...</span>
+                        <span className="sm:hidden">Saving...</span>
                       </>
                     ) : (
                       <>
-                        <Save className="h-5 w-5" />
-                        Save Changes
+                        <Save className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+                        <span className="hidden sm:inline">Save Changes</span>
+                        <span className="sm:hidden">Save</span>
                       </>
                     )}
                   </button>
@@ -390,10 +395,11 @@ const AdminSettingsPage = () => {
               ) : (
                 <button
                   onClick={handleEdit}
-                  className="px-5 py-3 rounded-lg font-bold transition-all duration-200 flex items-center gap-2 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white shadow-lg transform hover:scale-105"
+                  className="w-full sm:w-auto px-4 sm:px-5 py-3 sm:py-2.5 rounded-lg font-bold transition-all duration-200 flex items-center justify-center gap-2 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white text-sm sm:text-base shadow-lg transform hover:scale-105 active:scale-95"
                 >
-                  <Settings className="h-5 w-5" />
-                  Edit Settings
+                  <Settings className="h-4 w-4 sm:h-5 sm:w-5 flex-shrink-0" />
+                  <span className="hidden sm:inline">Edit Settings</span>
+                  <span className="sm:hidden">Edit</span>
                 </button>
               )}
             </div>
@@ -401,7 +407,7 @@ const AdminSettingsPage = () => {
         </motion.div>
 
         {/* Settings Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
           {/* System Status */}
           <SettingSection icon={Activity} title="System Status">
             <StatusIndicator status={systemStatus.database} label="Database Connection" />

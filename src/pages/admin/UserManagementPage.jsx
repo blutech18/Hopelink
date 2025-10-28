@@ -232,60 +232,65 @@ const UserManagementPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
+    <div className="min-h-screen py-4 sm:py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center space-x-3 mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-white">User Management</h1>
-              <p className="text-yellow-300">Manage platform users and their permissions</p>
+          <div className="flex items-center gap-3 sm:gap-4 mb-6">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <Users className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">User Management</h1>
+              <p className="text-yellow-300 text-xs sm:text-sm">Manage platform users and their permissions</p>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
+          <div className="flex flex-col gap-3 sm:gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400 flex-shrink-0" />
               <input
                 type="text"
                 placeholder="Search users by name or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white placeholder-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                className="w-full pl-10 pr-4 py-3 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-colors"
               />
             </div>
             
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
-            >
-              <option value="all">All Roles</option>
-              <option value="donor">Donors</option>
-              <option value="recipient">Recipients</option>
-              <option value="volunteer">Volunteers</option>
-              <option value="admin">Admins</option>
-            </select>
+            <div className="flex flex-col sm:flex-row gap-3">
+              <select
+                value={roleFilter}
+                onChange={(e) => setRoleFilter(e.target.value)}
+                className="flex-1 px-4 py-3 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-colors"
+              >
+                <option value="all">All Roles</option>
+                <option value="donor">Donors</option>
+                <option value="recipient">Recipients</option>
+                <option value="volunteer">Volunteers</option>
+                <option value="admin">Admins</option>
+              </select>
 
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
-            >
-              <option value="all">All Status</option>
-              <option value="verified">Verified</option>
-              <option value="unverified">Unverified</option>
-              <option value="suspended">Suspended</option>
-            </select>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="flex-1 px-4 py-3 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-yellow-500 transition-colors"
+              >
+                <option value="all">All Status</option>
+                <option value="verified">Verified</option>
+                <option value="unverified">Unverified</option>
+                <option value="suspended">Suspended</option>
+              </select>
+            </div>
           </div>
 
           {/* Stats */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 sm:mb-8">
             <div className="card p-4 sm:p-6">
               <div className="flex items-center space-x-3">
                 <Users className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
@@ -333,6 +338,7 @@ const UserManagementPage = () => {
           className="card overflow-hidden"
         >
           <div className="overflow-x-auto custom-scrollbar">
+            <div className="min-w-[800px]">
             <table className="w-full">
               <thead className="bg-navy-800">
                 <tr>
@@ -504,6 +510,7 @@ const UserManagementPage = () => {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
 
           {filteredUsers.length === 0 && (
@@ -527,32 +534,32 @@ const UserManagementPage = () => {
               onClick={(e) => e.stopPropagation()}
             >
               {/* Modal Header */}
-              <div className="sticky top-0 z-10 bg-navy-800/95 backdrop-blur px-6 py-4 border-b border-navy-700">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <div className="h-12 w-12 rounded-full bg-yellow-600 flex items-center justify-center text-white font-semibold text-lg shadow">
+              <div className="sticky top-0 z-10 bg-navy-800/95 backdrop-blur px-4 sm:px-6 py-4 border-b border-navy-700">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-full bg-yellow-600 flex items-center justify-center text-white font-semibold text-base sm:text-lg shadow flex-shrink-0">
                       {selectedUser.name.charAt(0).toUpperCase()}
                     </div>
-                    <div>
-                      <h2 className="text-xl font-bold text-white leading-tight">{selectedUser.name}</h2>
-                      <p className="text-yellow-400 text-sm">{selectedUser.email}</p>
+                    <div className="min-w-0">
+                      <h2 className="text-lg sm:text-xl font-bold text-white leading-tight truncate">{selectedUser.name}</h2>
+                      <p className="text-yellow-400 text-xs sm:text-sm truncate">{selectedUser.email}</p>
                     </div>
                   </div>
                   <button
                     onClick={closeUserModal}
-                    className="text-yellow-400 hover:text-white transition-colors rounded-lg p-1 hover:bg-navy-700"
+                    className="text-yellow-400 hover:text-white transition-colors rounded-lg p-1 hover:bg-navy-700 flex-shrink-0"
                   >
-                    <X className="h-6 w-6" />
+                    <X className="h-5 w-5 sm:h-6 sm:w-6" />
                   </button>
                 </div>
               </div>
 
               {/* Tab Navigation */}
-              <div className="px-6 py-3 border-b border-navy-700 bg-navy-900">
+              <div className="px-4 sm:px-6 py-3 border-b border-navy-700 bg-navy-900">
                 <div className="flex flex-wrap gap-2">
                   <button
                     onClick={() => setActiveTab('profile')}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${
+                    className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all active:scale-95 border ${
                       activeTab === 'profile'
                         ? 'bg-navy-700/70 text-white border-navy-600'
                         : 'bg-navy-800/40 text-yellow-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
@@ -562,7 +569,7 @@ const UserManagementPage = () => {
                   </button>
                   <button
                     onClick={() => setActiveTab('verification')}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${
+                    className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all active:scale-95 border ${
                       activeTab === 'verification'
                         ? 'bg-navy-700/70 text-white border-navy-600'
                         : 'bg-navy-800/40 text-yellow-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
@@ -572,7 +579,7 @@ const UserManagementPage = () => {
                   </button>
                   <button
                     onClick={() => setActiveTab('actions')}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors border ${
+                    className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-all active:scale-95 border ${
                       activeTab === 'actions'
                         ? 'bg-navy-700/70 text-white border-navy-600'
                         : 'bg-navy-800/40 text-yellow-300 hover:text-white hover:bg-navy-700/40 border-navy-700'
@@ -584,14 +591,14 @@ const UserManagementPage = () => {
               </div>
 
               {/* Modal Content */}
-              <div className="p-6 custom-scrollbar overflow-y-auto max-h-[calc(90vh-180px)]">
+              <div className="p-4 sm:p-6 custom-scrollbar overflow-y-auto max-h-[calc(90vh-180px)]">
                 {/* Profile Information Tab */}
                 {activeTab === 'profile' && (
-                  <div className="space-y-6">
-                    <h3 className="text-xl font-semibold text-white">User Profile Information</h3>
-                    <p className="text-yellow-300 text-sm">Overview of the user's basic and account information.</p>
+                  <div className="space-y-4 sm:space-y-6">
+                    <h3 className="text-lg sm:text-xl font-semibold text-white">User Profile Information</h3>
+                    <p className="text-yellow-300 text-xs sm:text-sm">Overview of the user's basic and account information.</p>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
                       <div className="space-y-4">
                         <div className="bg-navy-800 rounded-lg p-4 border border-navy-700/60">
                           <h4 className="text-md font-medium text-white mb-3">Basic Information</h4>

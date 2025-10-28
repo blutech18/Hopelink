@@ -103,14 +103,14 @@ export const IDVerificationBadge = ({
   let status, icon, bgColor, textColor, borderColor, label, description
 
   if (!hasIdUploaded) {
-    // ID not uploaded - Required
+    // ID not uploaded - Profile incomplete
     status = 'required'
     icon = AlertCircle
-    bgColor = 'bg-red-500/20'
-    textColor = 'text-red-300'
-    borderColor = 'border-red-500/30'
-    label = 'ID Required'
-    description = 'Identity verification required'
+    bgColor = 'bg-orange-500/20'
+    textColor = 'text-orange-300'
+    borderColor = 'border-orange-500/30'
+    label = 'Profile Incomplete'
+    description = 'Profile information missing'
   } else if (idStatus === 'pending') {
     // ID uploaded but waiting for admin approval
     status = 'pending'
@@ -118,8 +118,8 @@ export const IDVerificationBadge = ({
     bgColor = 'bg-yellow-500/20'
     textColor = 'text-yellow-300'
     borderColor = 'border-yellow-500/30'
-    label = 'Under Review'
-    description = 'Administrative review in progress'
+    label = 'Verifying'
+    description = 'Account verification in progress'
   } else if (idStatus === 'verified') {
     // ID verified by admin
     status = 'verified'
@@ -128,16 +128,16 @@ export const IDVerificationBadge = ({
     textColor = 'text-green-300'
     borderColor = 'border-green-500/30'
     label = 'Verified'
-    description = 'Verified'
+    description = 'Account verified'
   } else if (idStatus === 'rejected') {
     // ID rejected by admin
     status = 'rejected'
-    icon = XCircle
-    bgColor = 'bg-red-500/20'
-    textColor = 'text-red-300'
-    borderColor = 'border-red-500/30'
-    label = 'Verification Failed'
-    description = 'Documentation requires resubmission'
+    icon = AlertCircle
+    bgColor = 'bg-orange-500/20'
+    textColor = 'text-orange-300'
+    borderColor = 'border-orange-500/30'
+    label = 'Profile Incomplete'
+    description = 'Profile needs completion'
   } else {
     // Default to pending if unknown status but ID uploaded
     status = 'pending'
@@ -145,8 +145,8 @@ export const IDVerificationBadge = ({
     bgColor = 'bg-yellow-500/20'
     textColor = 'text-yellow-300'
     borderColor = 'border-yellow-500/30'
-    label = 'Processing'
-    description = 'Documentation under evaluation'
+    label = 'Verifying'
+    description = 'Account being verified'
   }
 
   const IconComponent = icon

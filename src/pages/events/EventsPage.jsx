@@ -166,30 +166,30 @@ const EventsPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
+    <div className="min-h-screen py-4 sm:py-8" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
           {/* Back Button */}
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-6">
             <Link
               to="/"
-              className="inline-flex items-center text-yellow-400 hover:text-yellow-300 transition-colors"
+              className="inline-flex items-center text-yellow-400 hover:text-yellow-300 transition-colors active:scale-95"
             >
-              <ArrowLeft className="h-5 w-5 mr-2" />
-              <span className="font-medium">Back to Home</span>
+              <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 mr-2 flex-shrink-0" />
+              <span className="font-medium text-sm sm:text-base">Back to Home</span>
             </Link>
           </div>
           
-          <div className="flex items-center justify-between mb-6">
-            <div className="text-center flex-1">
-              <Calendar className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
-              <h1 className="text-3xl font-bold text-white mb-2">Community Events</h1>
-              <p className="text-yellow-200 max-w-2xl mx-auto">
+          <div className="flex items-center justify-center mb-6">
+            <div className="text-center">
+              <Calendar className="h-12 w-12 sm:h-16 sm:w-16 text-yellow-400 mx-auto mb-3 sm:mb-4" />
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">Community Events</h1>
+              <p className="text-yellow-200 text-sm sm:text-base max-w-2xl mx-auto px-4">
                 Discover and participate in local events that make a difference in our community
               </p>
             </div>
@@ -202,24 +202,24 @@ const EventsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="card p-6 mb-8"
+          className="card p-4 sm:p-6 mb-6 sm:mb-8"
         >
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="relative sm:col-span-2 lg:col-span-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 flex-shrink-0" />
               <input
                 type="text"
                 placeholder="Search events..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="input pl-10"
+                className="input pl-10 text-sm sm:text-base"
               />
             </div>
             
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="input"
+              className="input text-sm sm:text-base"
             >
               {statusOptions.map(option => (
                 <option key={option.value} value={option.value}>
@@ -231,7 +231,7 @@ const EventsPage = () => {
             <select
               value={categoryFilter}
               onChange={(e) => setCategoryFilter(e.target.value)}
-              className="input"
+              className="input text-sm sm:text-base"
             >
               {eventTypes.map(type => (
                 <option key={type} value={type}>
@@ -246,7 +246,7 @@ const EventsPage = () => {
                 setStatusFilter('all')
                 setCategoryFilter('all')
               }}
-              className="btn btn-secondary"
+              className="btn btn-secondary text-sm sm:text-base active:scale-95"
             >
               Clear Filters
             </button>
@@ -283,13 +283,13 @@ const EventsPage = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.1 }}
-                    className="card p-5 hover:border-yellow-400/30 transition-all border-2 border-navy-700"
+                    className="card p-4 sm:p-5 hover:border-yellow-400/30 transition-all border-2 border-navy-700"
                   >
-                    <div className="flex gap-5">
-                      {/* Left Side - Fixed Size Image */}
-                      <div className="flex-shrink-0">
+                    <div className="flex flex-col lg:flex-row gap-4 sm:gap-5">
+                      {/* Left Side - Responsive Image */}
+                      <div className="flex-shrink-0 w-full lg:w-96">
                         {event.image_url ? (
-                          <div className="relative w-96 h-64 rounded-lg overflow-hidden">
+                          <div className="relative w-full h-48 sm:h-56 lg:h-64 rounded-lg overflow-hidden">
                             <img
                               src={event.image_url}
                               alt={event.name}
@@ -303,7 +303,7 @@ const EventsPage = () => {
                             </div>
                           </div>
                         ) : (
-                          <div className="w-96 h-64 bg-gradient-to-br from-[#00237d] to-[#001a5c] rounded-lg flex flex-col items-center justify-center">
+                          <div className="w-full h-48 sm:h-56 lg:h-64 bg-gradient-to-br from-[#00237d] to-[#001a5c] rounded-lg flex flex-col items-center justify-center">
                             <EventIcon className="h-12 w-12 text-yellow-400 mb-2" />
                             <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${getStatusColor(event)}`}>
                               {getStatusText(event)}
@@ -329,14 +329,14 @@ const EventsPage = () => {
                               </span>
                             )}
                           </div>
-                          <h3 className="text-xl font-bold text-white mb-2">{event.name}</h3>
-                          <p className="text-sm text-yellow-200 line-clamp-2">
+                          <h3 className="text-lg sm:text-xl font-bold text-white mb-2">{event.name}</h3>
+                          <p className="text-xs sm:text-sm text-yellow-200 line-clamp-2">
                             {event.description || 'No description available'}
                           </p>
                         </div>
                         
                         {/* Event Details */}
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-yellow-300 mb-4">
+                        <div className="flex flex-wrap items-center gap-3 sm:gap-4 text-xs sm:text-sm text-yellow-300 mb-4">
                           <div className="flex items-center">
                             <Calendar className="h-4 w-4 mr-1" />
                             {formatDate(event.start_date)}
@@ -397,18 +397,18 @@ const EventsPage = () => {
                         <div className="flex items-center justify-end gap-2 mt-4">
                           <Link
                             to={`/events/${event.id}`}
-                            className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all"
+                            className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all active:scale-95"
                             title="View Details"
                           >
                             <Eye className="h-4 w-4" />
                           </Link>
                           
                           {isUpcoming && event.status !== 'cancelled' && (
-                            <button className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all" title="Join Event">
+                            <button className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all active:scale-95" title="Join Event">
                               <UserPlus className="h-4 w-4" />
                             </button>
                           )}
-                          <button className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all" title="Share Event">
+                          <button className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all active:scale-95" title="Share Event">
                             <Share2 className="h-4 w-4" />
                           </button>
                         </div>
@@ -429,23 +429,23 @@ const EventsPage = () => {
             transition={{ delay: 0.4 }}
             className="mt-12"
           >
-            <div className="card p-8 text-center">
-              <h3 className="text-xl font-semibold text-white mb-4">Community Impact</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="card p-6 sm:p-8 text-center">
+              <h3 className="text-lg sm:text-xl font-semibold text-white mb-4">Community Impact</h3>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6">
                 <div>
-                  <div className="text-2xl font-bold text-yellow-400 mb-1">
+                  <div className="text-xl sm:text-2xl font-bold text-yellow-400 mb-1">
                     {events.filter(e => e.status === 'completed').length}
                   </div>
                   <div className="text-sm text-yellow-300">Events Completed</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-yellow-400 mb-1">
+                  <div className="text-xl sm:text-2xl font-bold text-yellow-400 mb-1">
                     {events.filter(e => new Date(e.start_date) > new Date()).length}
                   </div>
                   <div className="text-sm text-yellow-300">Upcoming Events</div>
                 </div>
                 <div>
-                  <div className="text-2xl font-bold text-yellow-400 mb-1">
+                  <div className="text-xl sm:text-2xl font-bold text-yellow-400 mb-1">
                     {events.reduce((total, event) => total + (event.participants?.[0]?.count || 0), 0)}
                   </div>
                   <div className="text-sm text-yellow-300">Total Participants</div>

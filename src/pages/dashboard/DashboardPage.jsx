@@ -297,12 +297,12 @@ const DashboardPage = () => {
           transition={{ duration: 0.6 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-white">
-                Welcome back, {profile?.name}!
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white break-words">
+                Welcome back, <span className="text-yellow-400">{profile?.name}</span>!
               </h1>
-              <p className="text-yellow-200 mt-2">
+              <p className="text-sm sm:text-base text-yellow-200 mt-2">
                 {isDonor && "Ready to make a difference with your donations?"}
                 {isRecipient && "Let's find the support you need."}
                 {isVolunteer && "Thank you for helping connect our community."}
@@ -310,7 +310,7 @@ const DashboardPage = () => {
               </p>
             </div>
             {/* ID Verification Status Badge */}
-            <div className="flex items-center">
+            <div className="flex items-center justify-start sm:justify-end flex-shrink-0">
               <IDVerificationBadge
                 idStatus={profile?.id_verification_status}
                 hasIdUploaded={profile?.primary_id_type && profile?.primary_id_number}

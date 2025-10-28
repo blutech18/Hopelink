@@ -231,31 +231,34 @@ const AdminDashboard = () => {
     const colorClass = getActivityColor(activity.type)
 
     return (
-      <div className="flex items-start space-x-3 p-4 hover:bg-navy-800/50 rounded-lg transition-colors">
-        <div className={`p-2 rounded-lg bg-navy-800 ${colorClass}`}>
+      <div className="flex items-start gap-3 p-3 sm:p-4 hover:bg-navy-800/50 rounded-lg transition-colors">
+        <div className={`p-2 rounded-lg bg-navy-800 ${colorClass} flex-shrink-0`}>
           <Icon className="h-4 w-4" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-white text-sm">{activity.message}</p>
-          <p className="text-skyblue-400 text-xs mt-1">{activity.timestamp}</p>
+          <p className="text-white text-sm break-words">{activity.message}</p>
+          <p className="text-yellow-400 text-xs mt-1">{activity.timestamp}</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
+    <div className="min-h-screen py-4 sm:py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center space-x-3 mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Admin Dashboard</h1>
-              <p className="text-skyblue-300">Platform management and oversight</p>
+          <div className="flex items-center gap-3 sm:gap-4 mb-4">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <Shield className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Admin Dashboard</h1>
+              <p className="text-yellow-300 text-xs sm:text-sm">Platform management and oversight</p>
             </div>
           </div>
         </motion.div>
@@ -265,7 +268,7 @@ const AdminDashboard = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8"
         >
                      <StatCard
              icon={Users}
@@ -297,61 +300,61 @@ const AdminDashboard = () => {
         </motion.div>
 
         {/* Dashboard Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
           {/* Quick Actions */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-          className="card p-6 border border-gray-600"
+          className="card p-4 sm:p-6 border border-gray-600"
           style={{backgroundColor: '#001a5c'}}
           >
-            <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-              <BarChart3 className="h-5 w-5 text-yellow-300 mr-2" />
+            <h2 className="text-lg sm:text-xl font-semibold text-white mb-4 sm:mb-6 flex items-center">
+              <BarChart3 className="h-5 w-5 text-yellow-300 mr-2 flex-shrink-0" />
               Quick Actions
             </h2>
-                         <div className="space-y-3">
+            <div className="space-y-2 sm:space-y-3">
                <button 
                  onClick={() => navigate('/admin/users')}
-              className="w-full btn btn-primary text-left flex items-center border border-gray-600"
+                 className="w-full btn btn-primary text-left flex items-center border border-gray-600 py-3 active:scale-95 transition-transform"
                >
-                 <Users className="h-4 w-4 mr-2" />
-                 Manage Users
+                 <Users className="h-4 w-4 mr-2 flex-shrink-0" />
+                 <span className="text-sm sm:text-base">Manage Users</span>
                </button>
                <button 
                  onClick={() => navigate('/admin/donations')}
-              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
+                 className="w-full btn btn-secondary text-left flex items-center border border-gray-600 py-3 active:scale-95 transition-transform"
                >
-                 <Package className="h-4 w-4 mr-2" />
-                 Review Donations
+                 <Package className="h-4 w-4 mr-2 flex-shrink-0" />
+                 <span className="text-sm sm:text-base">Review Donations</span>
                </button>
                <button 
                  onClick={() => navigate('/admin/volunteers')}
-              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
+                 className="w-full btn btn-secondary text-left flex items-center border border-gray-600 py-3 active:scale-95 transition-transform"
                >
-                 <Truck className="h-4 w-4 mr-2" />
-                 Volunteer Management
+                 <Truck className="h-4 w-4 mr-2 flex-shrink-0" />
+                 <span className="text-sm sm:text-base">Volunteer Management</span>
                </button>
                <button 
                  onClick={() => navigate('/admin/requests')}
-              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
+                 className="w-full btn btn-secondary text-left flex items-center border border-gray-600 py-3 active:scale-95 transition-transform"
                >
-                 <AlertTriangle className="h-4 w-4 mr-2" />
-                 Review Requests
+                 <AlertTriangle className="h-4 w-4 mr-2 flex-shrink-0" />
+                 <span className="text-sm sm:text-base">Review Requests</span>
                </button>
                <button 
                  onClick={() => navigate('/admin/events')}
-              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
+                 className="w-full btn btn-secondary text-left flex items-center border border-gray-600 py-3 active:scale-95 transition-transform"
                >
-                 <Calendar className="h-4 w-4 mr-2" />
-                 Manage Events
+                 <Calendar className="h-4 w-4 mr-2 flex-shrink-0" />
+                 <span className="text-sm sm:text-base">Manage Events</span>
                </button>
                <button 
                  onClick={() => navigate('/admin/settings')}
-              className="w-full btn btn-secondary text-left flex items-center border border-gray-600"
+                 className="w-full btn btn-secondary text-left flex items-center border border-gray-600 py-3 active:scale-95 transition-transform"
                >
-                 <Shield className="h-4 w-4 mr-2" />
-                 Platform Settings
+                 <Shield className="h-4 w-4 mr-2 flex-shrink-0" />
+                 <span className="text-sm sm:text-base">Platform Settings</span>
                </button>
              </div>
           </motion.div>
@@ -361,14 +364,14 @@ const AdminDashboard = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="lg:col-span-2 card p-6 border border-gray-600"
+            className="lg:col-span-2 card p-4 sm:p-6 border border-gray-600"
             style={{backgroundColor: '#001a5c'}}
           >
-            <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-              <Clock className="h-5 w-5 text-yellow-300 mr-2" />
+            <h2 className="text-lg sm:text-xl font-semibold text-white mb-4 sm:mb-6 flex items-center">
+              <Clock className="h-5 w-5 text-yellow-300 mr-2 flex-shrink-0" />
               Recent Activity
             </h2>
-                         <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
+            <div className="space-y-2 max-h-96 overflow-y-auto custom-scrollbar">
                {recentActivity.length > 0 ? (
                  recentActivity.map((activity) => (
                    <ActivityItem key={activity.id} activity={activity} />
@@ -389,11 +392,11 @@ const AdminDashboard = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6"
+          className="mt-6 sm:mt-8 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6"
         >
-          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <CheckCircle className="h-5 w-5 text-green-400 mr-2" />
+          <div className="card p-4 sm:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-4 flex items-center">
+              <CheckCircle className="h-5 w-5 text-green-400 mr-2 flex-shrink-0" />
               Delivery Status
             </h3>
             <div className="space-y-4">
@@ -416,9 +419,9 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-              <Users className="h-5 w-5 text-yellow-300 mr-2" />
+          <div className="card p-4 sm:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <h3 className="text-base sm:text-lg font-semibold text-white mb-4 flex items-center">
+              <Users className="h-5 w-5 text-yellow-300 mr-2 flex-shrink-0" />
               User Verification
             </h3>
             <div className="space-y-4">
@@ -447,7 +450,7 @@ const AdminDashboard = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.5 }}
-          className="mt-8"
+          className="mt-6 sm:mt-8"
         >
           <AdminFeedbackViewer />
         </motion.div>

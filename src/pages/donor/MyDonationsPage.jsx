@@ -718,38 +718,40 @@ const MyDonationsPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8"
+          className="mb-4 sm:mb-6 lg:mb-8"
         >
-            <div className="flex items-center mb-4 sm:mb-0">
-            <Package className="h-8 w-8 text-yellow-500 mr-3" />
-            <div>
-              <h1 className="text-3xl font-bold text-white">My Donations</h1>
-                <p className="text-yellow-200">Manage and track your donations</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center">
+              <Package className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-yellow-500 mr-2 sm:mr-3" />
+              <div>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">My Donations</h1>
+                <p className="text-xs sm:text-sm text-yellow-200">Manage and track your donations</p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => fetchDonations()}
-              disabled={loading}
-              className="btn btn-secondary flex items-center justify-center"
-              title="Refresh donations"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </button>
-            <Link
-              to="/post-donation"
-              className="btn btn-primary flex items-center justify-center"
-            >
-              <Plus className="h-4 w-4 mr-2" />
-              Post New Donation
-            </Link>
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link
+                to="/post-donation"
+                className="btn btn-primary flex items-center justify-center text-xs sm:text-sm px-3 sm:px-4 py-2 whitespace-nowrap flex-1 sm:flex-initial active:scale-95"
+              >
+                <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                <span>Post Donation</span>
+              </Link>
+              <button
+                onClick={() => fetchDonations()}
+                disabled={loading}
+                className="btn btn-secondary flex items-center justify-center text-xs sm:text-sm px-3 sm:px-4 py-2 flex-1 sm:flex-initial active:scale-95"
+                title="Refresh donations"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 ${loading ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
           </div>
         </motion.div>
 
@@ -758,48 +760,60 @@ const MyDonationsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+          className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 lg:mb-8"
         >
-          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-yellow-400">Total Donations</p>
-                <p className="text-2xl font-bold text-white">{stats.total}</p>
+          <div className="card p-2.5 sm:p-4 lg:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">Total</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{stats.total}</p>
               </div>
-              <Gift className="h-8 w-8 text-yellow-500" />
+              <div className="flex flex-col items-center gap-0.5">
+                <Gift className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-yellow-500" />
+                <span className="text-[10px] sm:hidden text-yellow-400 font-medium">Gifts</span>
+              </div>
             </div>
           </div>
           
-          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-yellow-400">Available</p>
-                <p className="text-2xl font-bold text-white">{stats.available}</p>
+          <div className="card p-2.5 sm:p-4 lg:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">Available</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{stats.available}</p>
               </div>
-              <CheckCircle className="h-8 w-8 text-success-500" />
+              <div className="flex flex-col items-center gap-0.5">
+                <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-success-500" />
+                <span className="text-[10px] sm:hidden text-success-400 font-medium">Ready</span>
+              </div>
             </div>
           </div>
           
-          <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-yellow-400">In Progress</p>
-                <p className="text-2xl font-bold text-white">{stats.claimed}</p>
+          <div className="card p-2.5 sm:p-4 lg:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">In Progress</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{stats.claimed}</p>
               </div>
-              <Activity className="h-8 w-8 text-amber-500" />
+              <div className="flex flex-col items-center gap-0.5">
+                <Activity className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-amber-500" />
+                <span className="text-[10px] sm:hidden text-amber-400 font-medium">Active</span>
+              </div>
             </div>
           </div>
           
-          <div className="card p-6 relative overflow-hidden">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm text-yellow-400">Completed</p>
-                <p className="text-2xl font-bold text-white">{stats.completed}</p>
+          <div className="card p-2.5 sm:p-4 lg:p-6 relative overflow-hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">Completed</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{stats.completed}</p>
                 {stats.completed > 0 && (
-                  <p className="text-xs text-green-400 mt-1">🎉 Impact achieved!</p>
+                  <p className="text-[10px] text-green-400 mt-0.5">🎉 Impact!</p>
                 )}
               </div>
-              <Award className="h-8 w-8 text-emerald-500" />
+              <div className="flex flex-col items-center gap-0.5">
+                <Award className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-emerald-500" />
+                <span className="text-[10px] sm:hidden text-emerald-400 font-medium">Done</span>
+              </div>
             </div>
             {stats.completed > 0 && (
               <div className="absolute inset-0 bg-gradient-to-r from-green-500/5 to-emerald-500/5 pointer-events-none"></div>
@@ -1102,25 +1116,40 @@ const MyDonationsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="card p-6 mb-8"
+          className="card p-4 sm:p-6 mb-6 sm:mb-8 border-2 border-yellow-500/20"
         >
-          <div className="flex flex-wrap gap-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+          {/* Filter Header */}
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-2">
+              <Filter className="h-5 w-5 text-yellow-400" />
+              <h3 className="text-base sm:text-lg font-semibold text-white">Filter Donations</h3>
+            </div>
+            {(searchTerm || statusFilter !== 'all' || categoryFilter !== 'all') && (
+              <span className="text-xs sm:text-sm text-yellow-300 bg-yellow-900/20 px-2 sm:px-3 py-1 rounded-full">
+                {filteredDonations.length} result{filteredDonations.length !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-full sm:min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-yellow-400" />
               <input
                 type="text"
-                placeholder="Search donations..."
+                placeholder="Search by title or description..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
+                className="w-full pl-9 sm:pl-10 pr-4 py-2.5 sm:py-3 text-sm sm:text-base bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 hover:border-yellow-600/50"
               />
             </div>
             
-            <div className="relative min-w-[180px]">
+            {/* Status Filter */}
+            <div className="relative w-full sm:w-auto sm:min-w-[180px]">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                className="appearance-none w-full px-4 sm:px-5 py-2.5 sm:py-3 pr-10 text-sm sm:text-base bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600/50"
               >
                 {statusOptions.map(option => (
                   <option key={option.value} value={option.value}>
@@ -1131,11 +1160,12 @@ const MyDonationsPage = () => {
               <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
             </div>
             
-            <div className="relative min-w-[180px]">
+            {/* Category Filter */}
+            <div className="relative w-full sm:w-auto sm:min-w-[180px]">
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                className="appearance-none w-full px-4 sm:px-5 py-2.5 sm:py-3 pr-10 text-sm sm:text-base bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600/50"
               >
                 {categories.map(category => (
                   <option key={category} value={category}>
@@ -1146,20 +1176,22 @@ const MyDonationsPage = () => {
               <Package className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
             </div>
             
+            {/* Clear Button */}
             <button
               onClick={() => {
                 setSearchTerm('')
                 setStatusFilter('all')
                 setCategoryFilter('all')
               }}
-              className={`w-[110px] px-4 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 whitespace-nowrap border-2 ${
+              disabled={!searchTerm && statusFilter === 'all' && categoryFilter === 'all'}
+              className={`w-full sm:w-auto px-4 sm:px-5 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base font-semibold transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap border-2 ${
                 searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
-                  ? 'bg-yellow-600 hover:bg-yellow-700 text-white border-yellow-600 hover:border-yellow-700'
-                  : 'bg-navy-800 hover:bg-navy-700 text-gray-400 border-navy-700'
+                  ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white border-yellow-500 hover:border-yellow-600 shadow-md hover:shadow-lg active:scale-95'
+                  : 'bg-navy-800 text-gray-500 border-navy-700 cursor-not-allowed opacity-50'
               }`}
             >
               <X className="h-4 w-4" />
-              Clear
+              Clear Filters
             </button>
           </div>
         </motion.div>
@@ -1195,7 +1227,7 @@ const MyDonationsPage = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="card hover:shadow-xl transition-all duration-300 overflow-hidden border-l-4"
+                  className="card hover:shadow-xl transition-all duration-300 overflow-hidden border-l-4 sm:border-l-4"
                   style={{
                     borderLeftColor: donation.status === 'completed' ? '#4ade80' : 
                                     donation.status === 'delivered' ? '#10b981' : 
@@ -1204,12 +1236,12 @@ const MyDonationsPage = () => {
                                     donation.status === 'matched' ? '#fbbf24' : '#60a5fa'
                   }}
                 >
-                  <div className="p-6">
-                    <div className="flex flex-col md:flex-row gap-6">
+                  <div className="p-4 sm:p-6">
+                    <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
                       {/* Donation Image */}
                       <div className="flex-shrink-0">
                         {donation.images && donation.images.length > 0 ? (
-                          <div className="relative w-full md:w-56 h-48 rounded-lg overflow-hidden border-2 border-yellow-500/30 shadow-lg">
+                          <div className="relative w-full sm:w-48 lg:w-56 h-40 sm:h-48 rounded-lg overflow-hidden border-2 border-yellow-500/30 shadow-lg">
                             <img 
                               src={donation.images[0]} 
                               alt={donation.title}
@@ -1217,16 +1249,43 @@ const MyDonationsPage = () => {
                             />
                             {/* Status Badge on Image */}
                             <div className="absolute top-2 right-2">
-                              <span className={`px-2 py-1 rounded-md text-xs font-semibold backdrop-blur-sm border ${getStatusColor(donation.status)}`}>
+                              <span className={`px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold backdrop-blur-sm border ${getStatusColor(donation.status)}`}>
                                 {donation.status.replace('_', ' ').toUpperCase()}
                               </span>
                             </div>
+                            {/* Notification Badges - Mobile Only */}
+                            <div className="absolute top-2 left-2 flex gap-1.5 sm:hidden">
+                              {donationRequests[donation.id] && donationRequests[donation.id].length > 0 && (
+                                <button
+                                  onClick={() => handleViewRequests(donation)}
+                                  className="relative p-1.5 bg-amber-500/90 backdrop-blur-sm hover:bg-amber-600 rounded-lg transition-all active:scale-95"
+                                  title={`${donationRequests[donation.id].length} pending donation request(s)`}
+                                >
+                                  <Bell className="h-3.5 w-3.5 text-white" />
+                                  <span className="absolute -top-1 -right-1 bg-danger-600 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-semibold">
+                                    {donationRequests[donation.id].length}
+                                  </span>
+                                </button>
+                              )}
+                              {volunteerRequests[donation.id] && volunteerRequests[donation.id].length > 0 && (
+                                <button
+                                  onClick={() => handleViewRequests(donation)}
+                                  className="relative p-1.5 bg-purple-500/90 backdrop-blur-sm hover:bg-purple-600 rounded-lg transition-all active:scale-95"
+                                  title={`${volunteerRequests[donation.id].length} pending volunteer request(s)`}
+                                >
+                                  <Truck className="h-3.5 w-3.5 text-white" />
+                                  <span className="absolute -top-1 -right-1 bg-purple-700 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-semibold">
+                                    {volunteerRequests[donation.id].length}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
                           </div>
                         ) : (
-                          <div className="w-full md:w-56 h-48 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600 shadow-lg">
-                            <Gift className="h-16 w-16 text-yellow-400 mb-2" />
-                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
-                            <span className={`mt-2 px-2 py-1 rounded-md text-xs font-semibold ${getStatusColor(donation.status)}`}>
+                          <div className="w-full sm:w-48 lg:w-56 h-40 sm:h-48 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600 shadow-lg">
+                            <Gift className="h-12 w-12 sm:h-16 sm:w-16 text-yellow-400 mb-2" />
+                            <span className="text-[10px] sm:text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
+                            <span className={`mt-2 px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold ${getStatusColor(donation.status)}`}>
                               {donation.status.replace('_', ' ').toUpperCase()}
                             </span>
                           </div>
@@ -1234,108 +1293,112 @@ const MyDonationsPage = () => {
                       </div>
 
                       {/* Donation Details */}
-                      <div className="flex-1 space-y-3">
+                      <div className="flex-1 space-y-2 sm:space-y-3">
                         {/* Header with Actions */}
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="flex-1">
-                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                              <h3 className="text-xl font-bold text-white">{donation.title}</h3>
-                              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
+                        <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white mb-1.5 sm:mb-2">{donation.title}</h3>
+                            <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
+                              <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
                                 {donation.category}
                               </span>
                               {donation.is_urgent && (
-                                <span className="px-3 py-1 rounded-full text-xs font-semibold text-red-400 bg-red-500/20 border border-red-500/30 uppercase">
+                                <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold text-red-400 bg-red-500/20 border border-red-500/30 uppercase whitespace-nowrap">
                                   ⚡ URGENT
                                 </span>
                               )}
                             </div>
-                            <p className="text-gray-300 text-sm line-clamp-2">
+                            <p className="text-gray-300 text-xs sm:text-sm line-clamp-2">
                               {donation.description || 'No description available'}
                             </p>
                           </div>
                           
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-2">
-                            {/* Request Indicators */}
-                            {donationRequests[donation.id] && donationRequests[donation.id].length > 0 && (
-                              <button
-                                onClick={() => handleViewRequests(donation)}
-                                className="relative p-2 text-amber-400 hover:text-amber-300 hover:bg-navy-700 rounded-lg transition-all"
-                                title={`${donationRequests[donation.id].length} pending donation request(s)`}
-                              >
-                                <Bell className="h-4 w-4" />
-                                <span className="absolute -top-1 -right-1 bg-danger-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                  {donationRequests[donation.id].length}
-                                </span>
-                              </button>
-                            )}
-                            
-                            {/* Volunteer Request Indicator */}
-                            {volunteerRequests[donation.id] && volunteerRequests[donation.id].length > 0 && (
-                              <button
-                                onClick={() => handleViewRequests(donation)}
-                                className="relative p-2 text-purple-400 hover:text-purple-300 hover:bg-navy-700 rounded-lg transition-all"
-                                title={`${volunteerRequests[donation.id].length} pending volunteer request(s)`}
-                              >
-                                <Truck className="h-4 w-4" />
-                                <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                                  {volunteerRequests[donation.id].length}
-                                </span>
-                              </button>
-                            )}
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                            {/* Request Indicators - Desktop Only */}
+                            <div className="hidden sm:flex items-center gap-1.5">
+                              {donationRequests[donation.id] && donationRequests[donation.id].length > 0 && (
+                                <button
+                                  onClick={() => handleViewRequests(donation)}
+                                  className="relative p-1.5 sm:p-2 text-amber-400 hover:text-amber-300 hover:bg-navy-700 rounded-lg transition-all"
+                                  title={`${donationRequests[donation.id].length} pending donation request(s)`}
+                                >
+                                  <Bell className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                  <span className="absolute -top-1 -right-1 bg-danger-600 text-white text-[10px] sm:text-xs rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center">
+                                    {donationRequests[donation.id].length}
+                                  </span>
+                                </button>
+                              )}
+                              
+                              {/* Volunteer Request Indicator */}
+                              {volunteerRequests[donation.id] && volunteerRequests[donation.id].length > 0 && (
+                                <button
+                                  onClick={() => handleViewRequests(donation)}
+                                  className="relative p-1.5 sm:p-2 text-purple-400 hover:text-purple-300 hover:bg-navy-700 rounded-lg transition-all"
+                                  title={`${volunteerRequests[donation.id].length} pending volunteer request(s)`}
+                                >
+                                  <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                  <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] sm:text-xs rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center">
+                                    {volunteerRequests[donation.id].length}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
                             
                             <button 
                               onClick={() => handleViewDonation(donation)}
-                              className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all"
-                              title="View Details"
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-navy-950 bg-yellow-400 hover:bg-yellow-500 rounded-lg transition-all active:scale-95"
                             >
-                              <Eye className="h-4 w-4" />
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>View</span>
                             </button>
                             <button 
                               onClick={() => handleEditDonation(donation)}
-                              className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-700 rounded-lg transition-all"
-                              title="Edit Donation"
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-navy-700 hover:bg-navy-600 border border-yellow-500/30 rounded-lg transition-all active:scale-95"
                             >
-                              <Edit className="h-4 w-4" />
+                              <Edit className="h-3.5 w-3.5" />
+                              <span>Edit</span>
                             </button>
                             <button 
                               onClick={() => handleDeleteDonation(donation.id)}
                               disabled={deletingId === donation.id}
-                              className="p-2 text-yellow-400 hover:text-danger-300 hover:bg-navy-700 rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                              title="Delete Donation"
+                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-danger-600 hover:bg-danger-700 rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                               {deletingId === donation.id ? (
                                 <LoadingSpinner size="sm" />
                               ) : (
-                                <Trash2 className="h-4 w-4" />
+                                <>
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                  <span>Delete</span>
+                                </>
                               )}
                             </button>
                           </div>
                         </div>
 
                         {/* Compact Details */}
-                        <div className="flex flex-wrap items-center gap-4 text-sm text-yellow-300">
-                          <div className="flex items-center gap-1.5">
-                            <Package className="h-4 w-4 text-blue-400" />
-                            <span className="font-medium">Qty:</span>
+                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 lg:gap-4 text-xs sm:text-sm text-yellow-300">
+                          <div className="flex items-center gap-1 sm:gap-1.5">
+                            <Package className="h-3 w-3 sm:h-4 sm:w-4 text-blue-400 flex-shrink-0" />
+                            <span className="font-medium">Quantity:</span>
                             <span className="text-white">{donation.quantity}</span>
                           </div>
                           
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="h-4 w-4 text-green-400" />
+                          <div className="flex items-center gap-1 sm:gap-1.5">
+                            <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-green-400 flex-shrink-0" />
                             <span className="font-medium">Location:</span>
-                            <span className="text-white">{donation.pickup_location}</span>
+                            <span className="text-white truncate max-w-[150px] sm:max-w-none">{donation.pickup_location}</span>
                           </div>
                           
-                          <div className="flex items-center gap-1.5">
-                            <Calendar className="h-4 w-4 text-purple-400" />
+                          <div className="flex items-center gap-1 sm:gap-1.5">
+                            <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-purple-400 flex-shrink-0" />
                             <span className="font-medium">Posted:</span>
                             <span className="text-white">{new Date(donation.created_at).toLocaleDateString()}</span>
                           </div>
                           
                           {donation.expiry_date && (
-                            <div className="flex items-center gap-1.5">
-                              <Clock className="h-4 w-4 text-orange-400" />
+                            <div className="flex items-center gap-1 sm:gap-1.5">
+                              <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-orange-400 flex-shrink-0" />
                               <span className="font-medium">Expires:</span>
                               <span className="text-white">{new Date(donation.expiry_date).toLocaleDateString()}</span>
                             </div>

@@ -86,31 +86,34 @@ const AdminVolunteersPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
+    <div className="min-h-screen py-4 sm:py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center space-x-3 mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Volunteer Management</h1>
-              <p className="text-yellow-300">Monitor volunteers and delivery operations</p>
+          <div className="flex items-center gap-3 sm:gap-4 mb-6">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <Truck className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Volunteer Management</h1>
+              <p className="text-yellow-300 text-xs sm:text-sm">Monitor volunteers and delivery operations</p>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+          <div className="flex flex-col gap-3 sm:gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400 flex-shrink-0" />
               <input
                 type="text"
                 placeholder="Search volunteers by name or email..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
+                className="w-full pl-10 pr-4 py-3 sm:py-2.5 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm sm:text-base placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
               />
             </div>
             
@@ -118,7 +121,7 @@ const AdminVolunteersPage = () => {
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="appearance-none px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                className="appearance-none w-full px-5 py-3 sm:py-2.5 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm sm:text-base font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
@@ -134,7 +137,7 @@ const AdminVolunteersPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8"
         >
           <div className="card p-4 sm:p-6">
             <div className="flex items-center space-x-3">
@@ -183,7 +186,7 @@ const AdminVolunteersPage = () => {
           </div>
         </motion.div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
           {/* Volunteers List */}
           <motion.div
             initial={{ opacity: 0, x: -20 }}
@@ -191,13 +194,13 @@ const AdminVolunteersPage = () => {
             transition={{ delay: 0.2 }}
             className="card overflow-hidden"
           >
-            <div className="px-6 py-4 border-b-2 border-yellow-500/20 bg-navy-900">
+            <div className="px-4 sm:px-6 py-4 border-b-2 border-yellow-500/20 bg-navy-900">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
                   <User className="h-5 w-5 text-blue-400" />
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-white">Active Volunteers</h2>
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Active Volunteers</h2>
                   <p className="text-xs text-gray-400">{filteredVolunteers.length} volunteers available</p>
                 </div>
               </div>
@@ -210,7 +213,7 @@ const AdminVolunteersPage = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="p-5 border-b border-navy-700 last:border-b-0 hover:bg-navy-800/50 transition-colors"
+                  className="p-4 sm:p-5 border-b border-navy-700 last:border-b-0 hover:bg-navy-800/50 transition-colors"
                 >
                   <div className="flex items-start gap-4">
                     <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-500 flex items-center justify-center text-white font-bold text-lg shadow-lg flex-shrink-0">
@@ -218,8 +221,8 @@ const AdminVolunteersPage = () => {
                     </div>
                     
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <h3 className="text-white font-semibold text-lg">{volunteer.name}</h3>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <h3 className="text-white font-semibold text-base sm:text-lg truncate">{volunteer.name}</h3>
                         <div className="flex items-center gap-1.5 bg-yellow-500/10 px-2 py-1 rounded-lg">
                           <Star className="h-3.5 w-3.5 text-yellow-400 fill-yellow-400" />
                           <span className="text-xs font-semibold text-yellow-400">4.5</span>
@@ -294,13 +297,13 @@ const AdminVolunteersPage = () => {
             transition={{ delay: 0.3 }}
             className="card overflow-hidden"
           >
-            <div className="px-6 py-4 border-b-2 border-yellow-500/20 bg-navy-900">
+            <div className="px-4 sm:px-6 py-4 border-b-2 border-yellow-500/20 bg-navy-900">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
                   <Package className="h-5 w-5 text-green-400" />
                 </div>
-                <div>
-                  <h2 className="text-xl font-bold text-white">Recent Deliveries</h2>
+                <div className="min-w-0">
+                  <h2 className="text-lg sm:text-xl font-bold text-white">Recent Deliveries</h2>
                   <p className="text-xs text-gray-400">{deliveries.length} total deliveries</p>
                 </div>
               </div>
@@ -318,7 +321,7 @@ const AdminVolunteersPage = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
-                    className="p-5 border-b border-navy-700 last:border-b-0 hover:bg-navy-800/50 transition-colors"
+                    className="p-4 sm:p-5 border-b border-navy-700 last:border-b-0 hover:bg-navy-800/50 transition-colors"
                   >
                     <div className="flex items-start gap-4">
                       <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-green-600 to-green-500 flex items-center justify-center shadow-lg flex-shrink-0">
@@ -326,8 +329,8 @@ const AdminVolunteersPage = () => {
                       </div>
                       
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-2">
-                          <h3 className="text-white font-semibold text-lg truncate">{donationTitle}</h3>
+                        <div className="flex items-center justify-between gap-2 mb-2">
+                          <h3 className="text-white font-semibold text-base sm:text-lg truncate">{donationTitle}</h3>
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${getDeliveryStatusColor(delivery.status)}`}>
                             {delivery.status?.replace('_', ' ') || 'pending'}
                           </span>

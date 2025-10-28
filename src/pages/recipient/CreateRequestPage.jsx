@@ -36,6 +36,7 @@ const CreateRequestPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(null)
+  const formTopRef = React.useRef(null)
   
   // Check if we're in edit mode
   const editMode = location.state?.editMode || false
@@ -205,12 +206,16 @@ const CreateRequestPage = () => {
     
     if (isValid && currentStep < 3) {
       setCurrentStep(currentStep + 1)
+      // Scroll to top of form smoothly
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 
   const prevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1)
+      // Scroll to top of form smoothly
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 
@@ -233,52 +238,54 @@ const CreateRequestPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         {/* Header */}
         <motion.div
+          ref={formTopRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8 text-center"
+          className="text-center mb-6 sm:mb-8"
         >
-          <div className="flex justify-center mb-4">
-            <div className="w-20 h-20 bg-yellow-600 rounded-2xl flex items-center justify-center">
-              <Heart className="h-10 w-10 text-white" />
-            </div>
-          </div>
-          <h1 className="text-4xl font-bold text-white mb-3">
+          <Heart className="h-12 w-12 sm:h-14 sm:w-14 lg:h-16 lg:w-16 text-yellow-500 mx-auto mb-3 sm:mb-4" />
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">
             {editMode ? 'Edit Request' : 'Create a Request'}
           </h1>
-          <p className="text-yellow-300 text-lg">
+          <p className="text-sm sm:text-base text-yellow-300">
             {editMode ? 'Update your request details' : 'Share your needs with generous donors'}
           </p>
         </motion.div>
 
-        {/* Step Indicator */}
+        {/* Progress Steps */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-center">
+          <div className="flex items-center justify-center space-x-2 sm:space-x-4">
             {steps.map((step, index) => {
               const StepIcon = step.icon
               return (
                 <div key={step.number} className="flex items-center">
-                  <div
-                    className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
+                  <motion.div
+                    animate={{
+                      scale: currentStep === step.number ? 1.1 : 1,
+                      boxShadow: currentStep === step.number ? '0 0 20px rgba(251, 191, 36, 0.5)' : 'none'
+                    }}
+                    transition={{ duration: 0.3 }}
+                    className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-full border-2 transition-all ${
                       currentStep >= step.number
-                        ? 'bg-yellow-600 border-yellow-600 text-white'
+                        ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 border-yellow-400 text-white shadow-lg'
                         : 'bg-navy-800 border-navy-600 text-yellow-400'
                     }`}
                   >
-                    <StepIcon className="h-6 w-6" />
-                  </div>
+                    <StepIcon className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+                  </motion.div>
                   {index < steps.length - 1 && (
                     <div
-                      className={`w-16 h-1 mx-2 transition-all ${
-                        currentStep > step.number ? 'bg-yellow-600' : 'bg-navy-700'
+                      className={`w-8 sm:w-12 lg:w-16 h-1 mx-1 sm:mx-2 transition-all duration-500 ${
+                        currentStep > step.number ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 'bg-navy-700'
                       }`}
                     />
                   )}
@@ -286,30 +293,36 @@ const CreateRequestPage = () => {
               )
             })}
           </div>
-          <div className="flex justify-center mt-4">
-            <span className="text-sm text-yellow-300">
-              Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
-            </span>
+          <div className="flex justify-center mt-4 sm:mt-6">
+            <div className="bg-navy-800 px-3 sm:px-4 lg:px-6 py-1.5 sm:py-2 rounded-full border border-yellow-500/30">
+              <span className="text-xs sm:text-sm font-medium text-yellow-300">
+                Step {currentStep} of {steps.length}: <span className="text-white hidden sm:inline">{steps[currentStep - 1].title}</span>
+              </span>
+            </div>
           </div>
         </motion.div>
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
-          <AnimatePresence mode="wait">
-            {/* Step 1: Basic Information */}
-            {currentStep === 1 && (
-            <motion.div
-              key="step1"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="card p-6"
-          >
-            <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-              <FileText className="h-5 w-5 text-yellow-400 mr-2" />
-              Basic Information
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Form */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2 }}
+          className="card p-4 sm:p-6 lg:p-8 border-2 border-yellow-500/20 shadow-2xl"
+          style={{backgroundColor: '#001a5c'}}
+        >
+          <form onSubmit={handleSubmit(onSubmit)}>
+            <AnimatePresence mode="wait">
+              {/* Step 1: Basic Information */}
+              {currentStep === 1 && (
+                <motion.div
+                  key="step1"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-white mb-2">
                   Request Title *
@@ -367,65 +380,42 @@ const CreateRequestPage = () => {
                 )}
               </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-white mb-2">
-                  Description
-                </label>
-                <textarea
-                  {...register('description', {
-                    maxLength: { value: 1000, message: 'Description must be less than 1000 characters' }
-                  })}
-                  rows="4"
-                  className="input resize-none"
-                  placeholder="Describe what you need and why. Include any specific requirements, sizes, or conditions."
-                />
-                {errors.description && (
-                  <p className="mt-1 text-sm text-danger-600">{errors.description.message}</p>
-                )}
-              </div>
-            </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-white mb-2">
+                        Description
+                      </label>
+                      <textarea
+                        {...register('description', {
+                          maxLength: { value: 1000, message: 'Description must be less than 1000 characters' }
+                        })}
+                        rows="4"
+                        className="input h-32 resize-none"
+                        placeholder="Describe what you need and why. Include any specific requirements, sizes, or conditions."
+                      />
+                      {errors.description && (
+                        <p className="mt-1 text-sm text-danger-600">{errors.description.message}</p>
+                      )}
+                      <div className="mt-1 text-xs text-yellow-400 text-right">
+                        {watch('description')?.length || 0}/1000 characters
+                      </div>
+                    </div>
+                  </div>
 
-            {/* Navigation Buttons */}
-            <div className="flex justify-between mt-8">
-              <button
-                type="button"
-                onClick={prevStep}
-                disabled={currentStep === 1}
-                className="btn btn-secondary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Previous
-              </button>
+                </motion.div>
+              )}
 
-              <button
-                type="button"
-                onClick={nextStep}
-                className="btn btn-primary flex items-center"
-              >
-                Next
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </button>
-            </div>
-          </motion.div>
-          )}
-
-          {/* Step 2: Priority and Timeline */}
-          {currentStep === 2 && (
-            <motion.div
-              key="step2"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-              className="card p-6"
-            >
-              <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                <AlertCircle className="h-5 w-5 text-yellow-400 mr-2" />
-                Priority & Timeline
-              </h2>
-
-              {/* Urgency Level Section */}
-              <div className="mb-8">
+              {/* Step 2: Priority and Timeline */}
+              {currentStep === 2 && (
+                <motion.div
+                  key="step2"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
+                >
+                  {/* Urgency Level Section */}
+                  <div>
                 <label className="block text-sm font-semibold text-white mb-4">
                   Urgency Level *
                 </label>
@@ -467,223 +457,190 @@ const CreateRequestPage = () => {
                 )}
               </div>
 
-              {/* Deadline Section */}
-              <div className="bg-navy-800/50 border border-navy-700 rounded-lg p-5">
-                <div className="flex items-center mb-3">
-                  <Calendar className="h-5 w-5 text-yellow-400 mr-2" />
-                  <label className="text-sm font-semibold text-white">
-                    Deadline (Optional)
-                  </label>
-                </div>
-                <input
-                  {...register('needed_by')}
-                  type="date"
-                  className="input w-full"
-                  min={new Date().toISOString().split('T')[0]}
-                />
-                <p className="mt-2 text-xs text-yellow-300 flex items-center">
-                  <Clock className="h-3 w-3 mr-1" />
-                  Leave empty if there's no specific deadline
-                </p>
-              </div>
-
-            {/* Navigation Buttons */}
-            <div className="flex justify-between mt-8">
-              <button
-                type="button"
-                onClick={prevStep}
-                className="btn btn-secondary flex items-center"
-              >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Previous
-              </button>
-
-              <button
-                type="button"
-                onClick={nextStep}
-                className="btn btn-primary flex items-center"
-              >
-                Next
-                <ArrowRight className="h-4 w-4 ml-2" />
-              </button>
-            </div>
-          </motion.div>
-          )}
-
-          {/* Step 3: Location and Tags */}
-          {currentStep === 3 && (
-            <motion.div
-              key="step3"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-              className="card p-6"
-            >
-              <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                <Calendar className="h-5 w-5 text-yellow-400 mr-2" />
-                Location & Delivery Details
-              </h2>
-
-              {/* Location Section */}
-              <div className="bg-navy-800/50 border border-navy-700 rounded-lg p-5 mb-6">
-                <div className="flex items-center mb-4">
-                  <MapPin className="h-5 w-5 text-yellow-400 mr-2" />
-                  <label className="text-sm font-semibold text-white">
-                    Pickup/Delivery Location *
-                  </label>
-                </div>
-                <div className="space-y-3">
-                  <div className="flex gap-3">
+                  {/* Deadline Section */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Deadline (Optional)
+                    </label>
                     <input
-                      {...register('location', {
-                        required: 'Location is required',
-                        minLength: { value: 5, message: 'Location must be at least 5 characters' }
-                      })}
-                      className="input flex-1"
-                      placeholder="Enter your complete address"
-                      value={selectedLocation?.address || watch('location') || ''}
-                      readOnly={selectedLocation !== null}
+                      {...register('needed_by')}
+                      type="date"
+                      className="input"
+                      min={new Date().toISOString().split('T')[0]}
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowLocationPicker(true)}
-                      className="px-5 py-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center gap-2 font-medium whitespace-nowrap"
-                    >
-                      <MapPin className="w-4 h-4" />
-                      <span>Select on Map</span>
-                    </button>
-                  </div>
-                  {selectedLocation && (
-                    <div className="bg-green-900/20 border border-green-500/30 p-3 rounded-lg">
-                      <p className="text-sm text-green-400 flex items-center">
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        Location confirmed on map
-                      </p>
-                    </div>
-                  )}
-                  {errors.location && (
-                    <p className="text-sm text-red-400 flex items-center">
-                      <AlertCircle className="h-4 w-4 mr-1" />
-                      {errors.location.message}
+                    <p className="mt-1 text-xs text-yellow-400">
+                      Leave empty if there's no specific deadline
                     </p>
-                  )}
-                  <p className="text-xs text-yellow-300 flex items-center">
-                    <AlertCircle className="h-3 w-3 mr-1" />
-                    This helps donors and volunteers coordinate delivery
-                  </p>
-                </div>
-              </div>
+                  </div>
+                </motion.div>
+              )}
 
-              {/* Delivery Mode Section */}
-              <div className="bg-navy-800/50 border border-navy-700 rounded-lg p-5 mb-6">
-                <div className="flex items-center mb-4">
-                  <Truck className="h-5 w-5 text-yellow-400 mr-2" />
-                  <label className="text-sm font-semibold text-white">
-                    Preferred Delivery Mode *
-                  </label>
-                </div>
-                <select
-                  {...register('delivery_mode', {
-                    required: 'Delivery mode is required'
-                  })}
-                  className="input w-full text-base"
+              {/* Step 3: Location and Tags */}
+              {currentStep === 3 && (
+                <motion.div
+                  key="step3"
+                  initial={{ opacity: 0, x: 20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
+                  className="space-y-6"
                 >
-                  <option value="">Select how you'd like to receive donations</option>
-                  <option value="pickup">🚶 Self Pickup - I will collect the items</option>
-                  <option value="volunteer">🚚 Volunteer Delivery - Request volunteer assistance</option>
-                  <option value="direct">📦 Direct Delivery - Donor will deliver directly</option>
-                </select>
-                {errors.delivery_mode && (
-                  <p className="mt-2 text-sm text-red-400 flex items-center">
-                    <AlertCircle className="h-4 w-4 mr-1" />
-                    {errors.delivery_mode.message}
-                  </p>
-                )}
-                <p className="mt-2 text-xs text-yellow-300 flex items-center">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Choose the most convenient option for you
-                </p>
-              </div>
-
-              {/* Tags Section */}
-              <div className="bg-navy-800/50 border border-navy-700 rounded-lg p-5">
-                <div className="flex items-center mb-4">
-                  <Tag className="h-5 w-5 text-yellow-400 mr-2" />
-                  <label className="text-sm font-semibold text-white">
-                    Tags (Optional)
-                  </label>
-                </div>
-                <p className="text-xs text-yellow-300 mb-4 flex items-center">
-                  <AlertCircle className="h-3 w-3 mr-1" />
-                  Add keywords to help donors find your request (e.g., urgent, children, winter)
-                </p>
-                
-                <div className="space-y-3">
-                  {fields.map((field, index) => (
-                    <div key={field.id} className="flex items-center gap-2">
-                      <div className="flex-1">
+                  {/* Location Section */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Pickup/Delivery Location *
+                    </label>
+                    <div className="space-y-2">
+                      <div className="flex space-x-2">
                         <input
-                          {...register(`tags.${index}.value`)}
-                          className="input w-full"
-                          placeholder={`Tag ${index + 1} (e.g., urgent, children, winter)`}
+                          {...register('location', {
+                            required: 'Location is required',
+                            minLength: { value: 5, message: 'Location must be at least 5 characters' }
+                          })}
+                          className="input flex-1"
+                          placeholder="Enter your complete address"
+                          value={selectedLocation?.address || watch('location') || ''}
+                          readOnly={selectedLocation !== null}
                         />
-                      </div>
-                      {index > 0 && (
                         <button
                           type="button"
-                          onClick={() => remove(index)}
-                          className="p-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors flex-shrink-0"
+                          onClick={() => setShowLocationPicker(true)}
+                          className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center space-x-2"
                         >
-                          <Minus className="h-4 w-4" />
+                          <MapPin className="w-4 h-4" />
+                          <span>Map</span>
+                        </button>
+                      </div>
+                      {selectedLocation && (
+                        <div className="bg-green-900/20 border border-green-500/20 p-2 rounded-lg">
+                          <p className="text-xs text-green-400 flex items-center">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            Location set on map
+                          </p>
+                        </div>
+                      )}
+                      {errors.location && (
+                        <p className="mt-1 text-sm text-danger-600">{errors.location.message}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Delivery Mode Section */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Preferred Delivery Mode *
+                    </label>
+                    <select
+                      {...register('delivery_mode', {
+                        required: 'Delivery mode is required'
+                      })}
+                      className="input"
+                    >
+                      <option value="">Select how you'd like to receive donations</option>
+                      <option value="pickup">Self Pickup - I will collect the items</option>
+                      <option value="volunteer">Volunteer Delivery - Request volunteer assistance</option>
+                      <option value="direct">Direct Delivery - Donor will deliver directly</option>
+                    </select>
+                    {errors.delivery_mode && (
+                      <p className="mt-1 text-sm text-danger-600">{errors.delivery_mode.message}</p>
+                    )}
+                    <p className="mt-1 text-xs text-yellow-400">
+                      Choose the most convenient option for you
+                    </p>
+                  </div>
+
+                  {/* Tags Section */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      Tags (optional)
+                    </label>
+                    <div className="space-y-3">
+                      {fields.map((field, index) => (
+                        <div key={field.id} className="flex items-center gap-2">
+                          <div className="flex-1">
+                            <input
+                              {...register(`tags.${index}.value`)}
+                              className="input"
+                              placeholder={`Tag ${index + 1} (e.g., urgent, children, winter)`}
+                            />
+                          </div>
+                          {index > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => remove(index)}
+                              className="p-2 bg-danger-600 hover:bg-danger-700 text-white rounded-lg transition-colors flex-shrink-0"
+                            >
+                              <Minus className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                      
+                      {fields.length < 5 && (
+                        <button
+                          type="button"
+                          onClick={() => append({ value: '' })}
+                          className="w-full py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium border border-navy-600"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Add Another Tag
                         </button>
                       )}
                     </div>
-                  ))}
-                  
-                  {fields.length < 5 && (
-                    <button
-                      type="button"
-                      onClick={() => append({ value: '' })}
-                      className="w-full py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium border border-navy-600"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add Another Tag
-                    </button>
-                  )}
-                </div>
-              </div>
+                    <p className="mt-1 text-xs text-yellow-400">
+                      Add keywords to help donors find your request
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Navigation Buttons */}
-            <div className="flex justify-between mt-8">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-6 sm:mt-8 lg:mt-10 pt-4 sm:pt-6 border-t-2 border-navy-700">
               <button
                 type="button"
                 onClick={prevStep}
-                className="btn btn-secondary flex items-center"
+                disabled={currentStep === 1}
+                className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-navy-700 hover:bg-navy-600 text-white rounded-lg text-sm sm:text-base font-medium transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-navy-700 shadow-lg hover:shadow-xl order-2 sm:order-1"
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Previous
+                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span>Previous</span>
               </button>
 
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="btn btn-primary flex items-center"
-              >
-                {isSubmitting ? (
-                  <LoadingSpinner size="sm" />
-                ) : (
-                  <>
-                    <Save className="h-4 w-4 mr-2" />
-                    {editMode ? 'Update Request' : 'Create Request'}
-                  </>
-                )}
-              </button>
+              {currentStep < 3 ? (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.preventDefault()
+                    nextStep()
+                  }}
+                  className="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg text-sm sm:text-base font-semibold transition-all flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 order-1 sm:order-2"
+                >
+                  <span>Next Step</span>
+                  <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                </button>
+              ) : (
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm sm:text-base font-bold transition-all flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 order-1 sm:order-2"
+                >
+                  {isSubmitting ? (
+                    <>
+                      <LoadingSpinner size="sm" />
+                      <span>{editMode ? 'Updating...' : 'Creating...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <span>{editMode ? 'Update Request' : 'Create Request'}</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
-          </motion.div>
-          )}
-          </AnimatePresence>
-        </form>
+          </form>
+        </motion.div>
 
         {/* Location Picker Modal */}
         <LocationPicker

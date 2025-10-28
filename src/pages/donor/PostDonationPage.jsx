@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { useNavigate } from 'react-router-dom'
@@ -38,6 +38,7 @@ const PostDonationPage = () => {
   const [imageFiles, setImageFiles] = useState([])
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(null)
+  const formTopRef = useRef(null)
 
   const {
     register,
@@ -103,6 +104,8 @@ const PostDonationPage = () => {
     if (isValid && currentStep < 3) {
       console.log('Moving to step:', currentStep + 1)
       setCurrentStep(currentStep + 1)
+      // Scroll to top of form smoothly
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     } else if (!isValid) {
       console.log('Validation failed, staying on current step')
     }
@@ -111,6 +114,8 @@ const PostDonationPage = () => {
   const prevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1)
+      // Scroll to top of form smoothly
+      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     }
   }
 
@@ -161,7 +166,7 @@ const PostDonationPage = () => {
         quantity: parseInt(data.quantity),
         expiry_date: data.expiry_date || null,
         tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [],
-        image_url: uploadedImages.length > 0 ? uploadedImages[0].preview : null, // Save first image as base64
+        images: uploadedImages.length > 0 ? uploadedImages.map(img => img.preview) : [], // Save all images as base64 array
         created_at: new Date().toISOString()
       }
 
@@ -185,17 +190,18 @@ const PostDonationPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="max-w-4xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         {/* Header */}
         <motion.div
+          ref={formTopRef}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-8"
+          className="text-center mb-6 sm:mb-8"
         >
-          <Gift className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
-          <h1 className="text-3xl font-bold text-white mb-2">Post a Donation</h1>
-          <p className="text-yellow-300">Share your generosity with those in need</p>
+          <Gift className="h-12 w-12 sm:h-14 sm:w-14 lg:h-16 lg:w-16 text-yellow-500 mx-auto mb-3 sm:mb-4" />
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">Post a Donation</h1>
+          <p className="text-sm sm:text-base text-yellow-300">Share your generosity with those in need</p>
         </motion.div>
 
         {/* Progress Steps */}
@@ -203,26 +209,31 @@ const PostDonationPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-center space-x-4">
+          <div className="flex items-center justify-center space-x-2 sm:space-x-4">
             {steps.map((step, index) => {
               const StepIcon = step.icon
               return (
                 <div key={step.number} className="flex items-center">
-                  <div
-                    className={`flex items-center justify-center w-12 h-12 rounded-full border-2 transition-all ${
+                  <motion.div
+                    animate={{
+                      scale: currentStep === step.number ? 1.1 : 1,
+                      boxShadow: currentStep === step.number ? '0 0 20px rgba(251, 191, 36, 0.5)' : 'none'
+                    }}
+                    transition={{ duration: 0.3 }}
+                    className={`flex items-center justify-center w-10 h-10 sm:w-12 sm:h-12 lg:w-14 lg:h-14 rounded-full border-2 transition-all ${
                       currentStep >= step.number
-                        ? 'bg-yellow-600 border-yellow-600 text-white'
+                        ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 border-yellow-400 text-white shadow-lg'
                         : 'bg-navy-800 border-navy-600 text-yellow-400'
                     }`}
                   >
-                    <StepIcon className="h-5 w-5" />
-                  </div>
+                    <StepIcon className="h-4 w-4 sm:h-5 sm:w-5 lg:h-6 lg:w-6" />
+                  </motion.div>
                   {index < steps.length - 1 && (
                     <div
-                      className={`w-16 h-1 mx-2 transition-all ${
-                        currentStep > step.number ? 'bg-yellow-600' : 'bg-navy-700'
+                      className={`w-8 sm:w-12 lg:w-16 h-1 mx-1 sm:mx-2 transition-all duration-500 ${
+                        currentStep > step.number ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 'bg-navy-700'
                       }`}
                     />
                   )}
@@ -230,10 +241,12 @@ const PostDonationPage = () => {
               )
             })}
           </div>
-          <div className="flex justify-center mt-4">
-            <span className="text-sm text-yellow-300">
-              Step {currentStep} of {steps.length}: {steps[currentStep - 1].title}
-            </span>
+          <div className="flex justify-center mt-4 sm:mt-6">
+            <div className="bg-navy-800 px-3 sm:px-4 lg:px-6 py-1.5 sm:py-2 rounded-full border border-yellow-500/30">
+              <span className="text-xs sm:text-sm font-medium text-yellow-300">
+                Step {currentStep} of {steps.length}: <span className="text-white hidden sm:inline">{steps[currentStep - 1].title}</span>
+              </span>
+            </div>
           </div>
         </motion.div>
 
@@ -242,7 +255,7 @@ const PostDonationPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="card p-8 border border-gray-600"
+          className="card p-4 sm:p-6 lg:p-8 border-2 border-yellow-500/20 shadow-2xl"
           style={{backgroundColor: '#001a5c'}}
         >
           <form onSubmit={(e) => {
@@ -260,6 +273,7 @@ const PostDonationPage = () => {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
                   className="space-y-6"
                 >
                   <div>
@@ -366,6 +380,7 @@ const PostDonationPage = () => {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
                   className="space-y-6"
                 >
                   <div>
@@ -495,22 +510,121 @@ const PostDonationPage = () => {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
+                  transition={{ duration: 0.3 }}
                   className="space-y-6"
                 >
+                  {/* Urgent Priority Section */}
                   <div>
-                    <label className="flex items-start">
-                      <input
-                        {...register('is_urgent')}
-                        type="checkbox"
-                        className="h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-navy-600 rounded bg-navy-800 mt-1"
-                      />
-                      <div className="ml-3">
-                        <span className="text-sm font-medium text-white">Mark as urgent</span>
-                        <p className="text-xs text-yellow-400">
-                          This donation needs to be claimed quickly (e.g., perishable items)
-                        </p>
-                      </div>
+                    <label className="block text-sm font-medium text-white mb-3">
+                      Priority Level *
                     </label>
+                    <p className="text-xs text-yellow-400 mb-4">
+                      Select the urgency level for this donation
+                    </p>
+                    
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Normal Priority Button */}
+                      <button
+                        type="button"
+                        onClick={() => setValue('is_urgent', false)}
+                        className={`relative p-6 rounded-xl border-2 transition-all duration-300 ${
+                          !watchedIsUrgent
+                            ? 'border-yellow-500 bg-gradient-to-br from-yellow-900/30 to-yellow-800/20 shadow-lg shadow-yellow-500/20'
+                            : 'border-navy-600 bg-navy-800 hover:border-navy-500'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-4">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                            !watchedIsUrgent
+                              ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg shadow-yellow-500/50'
+                              : 'bg-navy-700 border-2 border-navy-600'
+                          }`}>
+                            <Clock className={`h-6 w-6 ${
+                              !watchedIsUrgent ? 'text-white' : 'text-yellow-400'
+                            }`} />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <h3 className={`text-base font-semibold mb-1 ${
+                              !watchedIsUrgent ? 'text-white' : 'text-gray-300'
+                            }`}>
+                              Normal Priority
+                            </h3>
+                            <p className="text-sm text-yellow-400 leading-relaxed">
+                              Standard donation with flexible pickup timeline
+                            </p>
+                          </div>
+                        </div>
+                        {!watchedIsUrgent && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute top-3 right-3"
+                          >
+                            <CheckCircle className="h-6 w-6 text-yellow-500" />
+                          </motion.div>
+                        )}
+                      </button>
+
+                      {/* Urgent Priority Button */}
+                      <button
+                        type="button"
+                        onClick={() => setValue('is_urgent', true)}
+                        className={`relative p-6 rounded-xl border-2 transition-all duration-300 ${
+                          watchedIsUrgent
+                            ? 'border-red-500 bg-gradient-to-br from-red-900/30 to-red-800/20 shadow-lg shadow-red-500/20'
+                            : 'border-navy-600 bg-navy-800 hover:border-navy-500'
+                        }`}
+                      >
+                        <div className="flex items-start space-x-4">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                            watchedIsUrgent
+                              ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/50'
+                              : 'bg-navy-700 border-2 border-navy-600'
+                          }`}>
+                            <AlertCircle className={`h-6 w-6 ${
+                              watchedIsUrgent ? 'text-white' : 'text-yellow-400'
+                            }`} />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <h3 className={`text-base font-semibold mb-1 ${
+                              watchedIsUrgent ? 'text-white' : 'text-gray-300'
+                            }`}>
+                              Urgent Priority
+                            </h3>
+                            <p className="text-sm text-yellow-400 leading-relaxed">
+                              Needs immediate attention (perishable items, time-sensitive supplies)
+                            </p>
+                          </div>
+                        </div>
+                        {watchedIsUrgent && (
+                          <motion.div
+                            initial={{ scale: 0 }}
+                            animate={{ scale: 1 }}
+                            className="absolute top-3 right-3"
+                          >
+                            <CheckCircle className="h-6 w-6 text-red-500" />
+                          </motion.div>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Urgent Priority Info Banner */}
+                    {watchedIsUrgent && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-4 flex items-start space-x-3 text-red-400 bg-red-900/20 px-4 py-3 rounded-lg border border-red-500/30"
+                      >
+                        <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium">Urgent Priority Enabled</p>
+                          <p className="text-xs text-red-300 mt-1">
+                            This donation will be highlighted and prioritized in search results to ensure quick matching with recipients.
+                          </p>
+                        </div>
+                      </motion.div>
+                    )}
                   </div>
 
                   {/* Image Upload Section */}
@@ -586,15 +700,15 @@ const PostDonationPage = () => {
                   </div>
 
                   {/* Review Section */}
-                  <div className="border-t border-navy-700 pt-6">
-                    <h3 className="text-lg font-semibold text-white mb-4">Review Your Donation</h3>
+                  <div className="border-t border-navy-700 pt-4 sm:pt-6">
+                    <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">Review Your Donation</h3>
                     
-                    <div className="bg-navy-800 rounded-lg p-6 space-y-4">
-                      <div className="flex items-start justify-between">
+                    <div className="bg-navy-800 rounded-lg p-4 sm:p-6 space-y-3 sm:space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-0">
                         <div className="flex-1">
-                          <h4 className="font-medium text-white">{watch('title') || 'Donation Title'}</h4>
-                          <p className="text-sm text-yellow-300 mt-1">
-                            {watch('category') || 'Category'} • Quantity: {watch('quantity') || 1}
+                          <h4 className="text-sm sm:text-base font-medium text-white">{watch('title') || 'Donation Title'}</h4>
+                          <p className="text-xs sm:text-sm text-yellow-300 mt-1">
+                            {watch('category') || 'Category'} • Qty: {watch('quantity') || 1}
                           </p>
                           {watchedIsUrgent && (
                             <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-danger-900/20 text-danger-300 mt-2">
@@ -603,7 +717,7 @@ const PostDonationPage = () => {
                             </span>
                           )}
                         </div>
-                        <div className="text-right">
+                        <div className="text-left sm:text-right">
                           <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
                             watchedCondition === 'new' ? 'bg-success-900/20 text-success-300' :
                             watchedCondition === 'like_new' ? 'bg-yellow-900/20 text-yellow-300' :
@@ -615,15 +729,15 @@ const PostDonationPage = () => {
                         </div>
                       </div>
                       
-                      <div className="text-sm text-yellow-200">
-                        <p className="mb-2">{watch('description') || 'Description will appear here...'}</p>
+                      <div className="text-xs sm:text-sm text-yellow-200">
+                        <p className="mb-2 line-clamp-2 sm:line-clamp-none">{watch('description') || 'Description will appear here...'}</p>
                         <div className="flex items-center text-yellow-400 mb-2">
-                          <MapPin className="h-4 w-4 mr-1" />
-                          {watch('pickup_location') || 'Pickup location'}
+                          <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
+                          <span className="truncate">{watch('pickup_location') || 'Pickup location'}</span>
                         </div>
                         {uploadedImages.length > 0 && (
                           <div className="flex items-center text-yellow-400">
-                            <ImageIcon className="h-4 w-4 mr-1" />
+                            <ImageIcon className="h-3 w-3 sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
                             {uploadedImages.length} photo(s) uploaded
                           </div>
                         )}
@@ -635,15 +749,15 @@ const PostDonationPage = () => {
             </AnimatePresence>
 
             {/* Navigation Buttons */}
-            <div className="flex justify-between mt-8">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 mt-6 sm:mt-8 lg:mt-10 pt-4 sm:pt-6 border-t-2 border-navy-700">
               <button
                 type="button"
                 onClick={prevStep}
                 disabled={currentStep === 1}
-                className="btn btn-secondary flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 bg-navy-700 hover:bg-navy-600 text-white rounded-lg text-sm sm:text-base font-medium transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-navy-700 shadow-lg hover:shadow-xl order-2 sm:order-1"
               >
-                <ArrowLeft className="h-4 w-4 mr-2" />
-                Previous
+                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+                <span>Previous</span>
               </button>
 
               {currentStep < 3 ? (
@@ -653,23 +767,26 @@ const PostDonationPage = () => {
                     e.preventDefault()
                     nextStep()
                   }}
-                  className="btn btn-primary flex items-center"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg text-sm sm:text-base font-semibold transition-all flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 order-1 sm:order-2"
                 >
-                  Next
-                  <ArrowRight className="h-4 w-4 ml-2" />
+                  <span>Next Step</span>
+                  <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="btn btn-primary flex items-center"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-3.5 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm sm:text-base font-bold transition-all flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 order-1 sm:order-2"
                 >
                   {isLoading ? (
-                    <LoadingSpinner size="sm" />
+                    <>
+                      <LoadingSpinner size="sm" />
+                      <span>Posting...</span>
+                    </>
                   ) : (
                     <>
-                      <Gift className="h-4 w-4 mr-2" />
-                      Post Donation
+                      <Gift className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <span>Post Donation</span>
                     </>
                   )}
                 </button>

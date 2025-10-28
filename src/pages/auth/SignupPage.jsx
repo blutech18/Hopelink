@@ -247,20 +247,22 @@ const SignupPage = () => {
             className="mx-auto w-full max-w-xl"
           >
             {/* Mobile Logo */}
-            <div className="lg:hidden text-center mb-6">
-              <img src="/hopelinklogo.png" alt="HopeLink" className="h-16 rounded mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-white">Join HopeLink</h2>
-              <p className="text-yellow-800 mt-2">Create your account and start making a difference</p>
+            <div className="lg:hidden text-center mb-3">
+              <div className="inline-block p-2 rounded-lg mb-2" style={{backgroundColor: '#001a5c'}}>
+                <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 rounded mx-auto" />
+              </div>
+              <h2 className="text-lg font-bold" style={{color: '#001a5c'}}>Join HopeLink</h2>
+              <p className="text-xs mt-0.5" style={{color: '#001a5c'}}>Create your account and start making a difference</p>
           </div>
 
             {/* Quick Signup Notice removed for compactness */}
 
         {/* Progress Steps */}
-            <div className="mb-4">
-              <div className="flex items-center justify-center space-x-4">
+            <div className="mb-2">
+              <div className="flex items-center justify-center space-x-3">
             {steps.map((step, index) => (
               <div key={step.number} className="flex items-center">
-                    <div className={`flex items-center justify-center w-7 h-7 rounded-full border-2 ${
+                    <div className={`flex items-center justify-center w-6 h-6 rounded-full border-2 text-xs ${
                   currentStep >= step.number 
                         ? 'bg-[#001a5c] border-[#001a5c] text-white' 
                         : 'bg-white border-gray-700 text-gray-900'
@@ -268,21 +270,21 @@ const SignupPage = () => {
                   {step.number}
                 </div>
                 {index < steps.length - 1 && (
-                      <div className={`w-12 h-0.5 ${
+                      <div className={`w-8 h-0.5 ${
                         currentStep > step.number ? 'bg-gray-800' : 'bg-gray-600'
                   }`} />
                 )}
               </div>
             ))}
           </div>
-          <div className="mt-2 text-center">
-                <p className="text-sm font-medium text-[#001a5c]">{steps[currentStep - 1].title}</p>
-                <p className="text-xs text-[#001a5c]">{steps[currentStep - 1].description}</p>
+          <div className="mt-1.5 text-center">
+                <p className="text-xs font-medium text-[#001a5c]">{steps[currentStep - 1].title}</p>
+                <p className="text-[10px] text-[#001a5c]">{steps[currentStep - 1].description}</p>
         </div>
       </div>
 
-            <div className="py-4 px-5 shadow-xl rounded-2xl" style={{backgroundColor: '#001a5c'}}>
-              <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
+            <div className="py-3 px-4 shadow-xl rounded-2xl" style={{backgroundColor: '#001a5c'}}>
+              <form className="space-y-3" onSubmit={handleSubmit(onSubmit)}>
             <AnimatePresence mode="wait">
               {currentStep === 1 && (
                 <motion.div
@@ -290,7 +292,7 @@ const SignupPage = () => {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                      className="space-y-4"
+                      className="space-y-3"
                 >
                   <div>
                         <label htmlFor="fullName" className="block text-sm font-medium text-white">
@@ -386,7 +388,7 @@ const SignupPage = () => {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
-                      className="space-y-4"
+                      className="space-y-3"
                     >
                   <div>
                     <label htmlFor="password" className="block text-sm font-medium text-white">
@@ -475,13 +477,13 @@ const SignupPage = () => {
                       initial={{ opacity: 0, x: 20 }}
                       animate={{ opacity: 1, x: 0 }}
                       exit={{ opacity: 0, x: -20 }}
-                      className="space-y-4"
+                      className="space-y-3"
                     >
                       <div>
-                        <label className="block text-sm font-medium text-white mb-4">
+                        <label className="block text-sm font-medium text-white mb-3">
                           Choose Your Role
                         </label>
-                        <div className="space-y-3">
+                        <div className="space-y-2">
                           {roles.map((role) => {
                             const IconComponent = role.icon
                             return (
@@ -493,20 +495,20 @@ const SignupPage = () => {
                                   className="sr-only"
                                 />
                                 <div className={`
-                                  flex items-center p-4 rounded-lg border-2 transition-all
+                                  flex items-center p-3 rounded-lg border-2 transition-all
                                   ${selectedRole === role.value 
                                     ? 'border-yellow-500 bg-yellow-900/20 shadow-lg' 
                                     : 'border-gray-600 bg-gray-800 hover:border-gray-500'
                                   }
                                 `}>
-                                  <IconComponent className="h-6 w-6 text-yellow-400 mr-3" />
-                                  <div className="flex-1">
+                                  <IconComponent className="h-5 w-5 text-yellow-400 mr-2.5 flex-shrink-0" />
+                                  <div className="flex-1 min-w-0">
                                     <h3 className="text-sm font-medium text-white">{role.label}</h3>
-                                    <p className="text-xs text-yellow-200">{role.description}</p>
+                                    <p className="text-xs text-gray-300">{role.description}</p>
                                   </div>
                                   {selectedRole === role.value && (
-                                    <div className="w-5 h-5 bg-yellow-500 rounded-full flex items-center justify-center">
-                                      <div className="w-2.5 h-2.5 bg-white rounded-full"></div>
+                                    <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                      <div className="w-2 h-2 bg-white rounded-full"></div>
                                     </div>
                                   )}
                                 </div>
@@ -519,16 +521,16 @@ const SignupPage = () => {
                         )}
                       </div>
 
-                      <div className="bg-gray-800/50 p-4 rounded-lg">
+                      <div className="bg-gray-800/50 p-2.5 rounded-lg">
                         <label className="flex items-start cursor-pointer" onClick={handleCheckboxClick}>
                           <input
                             type="checkbox"
                             checked={agreeToLegal}
                             onChange={() => {}}
                             onClick={handleCheckboxClick}
-                            className="mt-1 h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded pointer-events-none"
+                            className="mt-0.5 h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded pointer-events-none flex-shrink-0"
                           />
-                          <span className="ml-3 text-sm text-gray-300">
+                          <span className="ml-2.5 text-xs text-gray-300">
                             I agree to the{' '}
                             <button
                               type="button"
@@ -548,15 +550,15 @@ const SignupPage = () => {
                 </AnimatePresence>
 
                 {/* Navigation Buttons */}
-                <div className="flex justify-between pt-6">
+                <div className="flex gap-3 pt-4">
                   <button
                     type="button"
                     onClick={prevStep}
                     disabled={currentStep === 1}
                     tabIndex={currentStep === 2 ? -1 : 0}
-                    className="flex items-center px-4 py-2 text-sm font-medium text-gray-300 bg-gray-700 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="flex items-center justify-center px-4 py-2.5 text-sm font-medium text-white bg-gray-700 rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
                   >
-                    <ArrowLeft className="h-4 w-4 mr-2" />
+                    <ArrowLeft className="h-4 w-4 mr-1.5" />
                     Previous
                   </button>
 
@@ -565,22 +567,22 @@ const SignupPage = () => {
                       type="button"
                       onClick={nextStep}
                       disabled={currentStep === 1 && (emailTaken || isCheckingEmail)}
-                      className="flex items-center px-4 py-2 text-sm font-medium text-white bg-yellow-600 rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      className="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-navy-900 bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"
                     >
                       Next
-                      <ArrowRight className="h-4 w-4 ml-2" />
+                      <ArrowRight className="h-4 w-4 ml-1.5" />
                     </button>
                   ) : (
                     <button
                       type="submit"
                       disabled={isLoading || isSigningIn || !agreeToLegal}
-                      className="flex items-center justify-center px-6 py-2.5 text-sm font-semibold text-white bg-yellow-600 rounded-lg hover:bg-yellow-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl disabled:hover:bg-yellow-600"
+                      className="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-navy-900 bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"
                     >
                       {isLoading || isSigningIn ? (
                         <LoadingSpinner size="sm" />
                       ) : (
                         <>
-                          <UserPlus className="h-5 w-5 mr-2" />
+                          <UserPlus className="h-4 w-4 mr-1.5" />
                           Create Account
                         </>
                       )}
@@ -591,7 +593,7 @@ const SignupPage = () => {
 
               {/* Google Signup - Only show on Step 1 */}
               {currentStep === 1 && (
-                <div className="mt-6">
+                <div className="mt-4">
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center">
                       <div className="w-full border-t border-gray-300" />
@@ -601,7 +603,7 @@ const SignupPage = () => {
                     </div>
                   </div>
 
-                  <div className="mt-6">
+                  <div className="mt-4">
                     <button
                       type="button"
                       onClick={handleGoogleSignupClick}
@@ -626,7 +628,7 @@ const SignupPage = () => {
                 </div>
               )}
 
-              <div className="mt-6 text-center">
+              <div className="mt-4 text-center">
               <Link
                 to="/login"
                   className="text-sm text-yellow-400 hover:text-yellow-300"

@@ -80,7 +80,7 @@ const AdminEventsPage = () => {
       case 'upcoming': return 'text-blue-400 bg-blue-500/20'
       case 'completed': return 'text-gray-400 bg-gray-500/20'
       case 'cancelled': return 'text-red-400 bg-red-500/20'
-      default: return 'text-skyblue-400 bg-skyblue-500/20'
+      default: return 'text-yellow-400 bg-yellow-500/20'
     }
   }
 
@@ -184,48 +184,53 @@ const AdminEventsPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
+    <div className="min-h-screen py-4 sm:py-8 custom-scrollbar" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Events Management</h1>
-              <p className="text-skyblue-300">Manage community events and activities</p>
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
+                <Calendar className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+              </div>
+              <div className="min-w-0">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Events Management</h1>
+                <p className="text-yellow-300 text-xs sm:text-sm">Manage community events and activities</p>
+              </div>
             </div>
-            <div>
+            <div className="w-full sm:w-auto">
               <button
                 onClick={handleCreateEvent}
-                className="btn btn-primary flex items-center space-x-2"
+                className="btn btn-primary flex items-center justify-center gap-2 w-full sm:w-auto py-3 sm:py-2 active:scale-95"
               >
-                <Plus className="h-4 w-4" />
+                <Plus className="h-4 w-4 flex-shrink-0" />
                 <span>Create Event</span>
               </button>
             </div>
           </div>
 
           {/* Filters */}
-          <div className="flex flex-col lg:flex-row gap-4 mb-6">
+          <div className="flex flex-col gap-3 sm:gap-4 mb-6">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-skyblue-400" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400 flex-shrink-0" />
               <input
                 type="text"
                 placeholder="Search events by title or description..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white placeholder-skyblue-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
+                className="w-full pl-10 pr-4 py-3 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:border-transparent"
               />
             </div>
             
-            <div className="flex gap-4">
+            <div className="flex flex-col sm:flex-row gap-3">
               <select
                 value={statusFilter}
                 onChange={(e) => setStatusFilter(e.target.value)}
-                className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                className="flex-1 px-4 py-3 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-yellow-400"
               >
                 <option value="all">All Status</option>
                 <option value="active">Active</option>
@@ -237,7 +242,7 @@ const AdminEventsPage = () => {
               <select
                 value={categoryFilter}
                 onChange={(e) => setCategoryFilter(e.target.value)}
-                className="px-4 py-2 bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                className="flex-1 px-4 py-3 sm:py-2 bg-navy-800 border border-navy-700 rounded-lg text-white text-sm sm:text-base focus:outline-none focus:ring-2 focus:ring-yellow-400"
               >
                 <option value="all">All Categories</option>
                 <option value="Food Distribution">Food Distribution</option>
@@ -259,14 +264,14 @@ const AdminEventsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+            className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8"
           >
             <div className="card p-4 sm:p-6">
               <div className="flex items-center space-x-3">
                 <Calendar className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
                 <div className="flex flex-col">
                   <p className="text-xl sm:text-2xl font-bold text-white">{events.length}</p>
-                  <p className="text-skyblue-300 text-xs sm:text-sm">Total Events</p>
+                  <p className="text-yellow-300 text-xs sm:text-sm">Total Events</p>
                 </div>
               </div>
             </div>
@@ -278,7 +283,7 @@ const AdminEventsPage = () => {
                   <p className="text-xl sm:text-2xl font-bold text-white">
                     {events.filter(e => e.status === 'active').length}
                   </p>
-                  <p className="text-skyblue-300 text-xs sm:text-sm">Active</p>
+                  <p className="text-yellow-300 text-xs sm:text-sm">Active</p>
                 </div>
               </div>
             </div>
@@ -290,7 +295,7 @@ const AdminEventsPage = () => {
                   <p className="text-xl sm:text-2xl font-bold text-white">
                     {events.filter(e => e.status === 'upcoming').length}
                   </p>
-                  <p className="text-skyblue-300 text-xs sm:text-sm">Upcoming</p>
+                  <p className="text-yellow-300 text-xs sm:text-sm">Upcoming</p>
                 </div>
               </div>
             </div>
@@ -302,7 +307,7 @@ const AdminEventsPage = () => {
                   <p className="text-xl sm:text-2xl font-bold text-white">
                     {events.filter(e => e.status === 'completed').length}
                   </p>
-                  <p className="text-skyblue-300 text-xs sm:text-sm">Completed</p>
+                  <p className="text-yellow-300 text-xs sm:text-sm">Completed</p>
                 </div>
               </div>
             </div>
@@ -317,32 +322,33 @@ const AdminEventsPage = () => {
           className="card overflow-hidden"
           style={{backgroundColor: '#001a5c'}}
         >
-          <div className="px-6 py-4 border-b border-navy-700">
-            <h2 className="text-xl font-semibold text-white">
+          <div className="px-4 sm:px-6 py-4 border-b border-navy-700">
+            <h2 className="text-lg sm:text-xl font-semibold text-white">
               Events ({filteredEvents.length})
             </h2>
           </div>
           
           <div className="overflow-x-auto">
+            <div className="min-w-[800px]">
             <table className="w-full">
               <thead className="bg-navy-800">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Event
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Category
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Location
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-skyblue-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -363,7 +369,7 @@ const AdminEventsPage = () => {
                           </div>
                           <div className="ml-4">
                             <div className="text-sm font-medium text-white">{event.name}</div>
-                            <div className="text-sm text-skyblue-300 truncate max-w-xs">
+                            <div className="text-sm text-yellow-400 truncate max-w-xs">
                               {event.description}
                             </div>
                           </div>
@@ -383,21 +389,21 @@ const AdminEventsPage = () => {
                           {event.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-skyblue-300">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-400">
                         {event.location || 'Not specified'}
                       </td>
                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                          <div className="flex items-center justify-end space-x-2">
                            <button
                              onClick={() => handleViewEvent(event)}
-                             className="text-yellow-400 hover:text-yellow-300 transition-colors p-1"
+                             className="text-yellow-400 hover:text-yellow-300 transition-all active:scale-95 p-1"
                              title="View Details"
                            >
                              <Eye className="h-4 w-4" />
                            </button>
                            <button
                              onClick={() => handleEditEvent(event)}
-                             className="text-blue-400 hover:text-blue-300 transition-colors p-1"
+                             className="text-blue-400 hover:text-blue-300 transition-all active:scale-95 p-1"
                              title="Edit Event"
                            >
                              <Edit className="h-4 w-4" />
@@ -405,7 +411,7 @@ const AdminEventsPage = () => {
                            {event.status !== 'cancelled' && (
                              <button
                                onClick={() => handleCancelEvent(event.id)}
-                               className="text-orange-400 hover:text-orange-300 transition-colors p-1"
+                               className="text-orange-400 hover:text-orange-300 transition-all active:scale-95 p-1"
                                title="Cancel Event"
                              >
                                <XCircle className="h-4 w-4" />
@@ -413,7 +419,7 @@ const AdminEventsPage = () => {
                            )}
                            <button
                              onClick={() => handleDeleteEvent(event.id)}
-                             className="text-red-400 hover:text-red-300 transition-colors p-1"
+                             className="text-red-400 hover:text-red-300 transition-all active:scale-95 p-1"
                              title="Delete Event"
                            >
                              <Trash2 className="h-4 w-4" />
@@ -425,13 +431,14 @@ const AdminEventsPage = () => {
                 })}
               </tbody>
             </table>
+            </div>
           </div>
 
           {filteredEvents.length === 0 && (
             <div className="text-center py-12">
-              <Calendar className="h-12 w-12 text-skyblue-400 mx-auto mb-4" />
+              <Calendar className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
               <h3 className="text-lg font-medium text-white mb-2">No events found</h3>
-              <p className="text-skyblue-300">
+              <p className="text-yellow-300">
                 {searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
                   ? 'Try adjusting your search or filter criteria'
                   : 'Events will appear here as they are created'

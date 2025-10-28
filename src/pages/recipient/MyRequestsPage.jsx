@@ -445,53 +445,89 @@ const MyRequestsPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-4 sm:mb-6 lg:mb-8"
         >
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white mb-2">My Requests</h1>
-              <p className="text-yellow-300">Manage your donation requests and track their status</p>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center">
+              <Heart className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-yellow-500 mr-2 sm:mr-3" />
+              <div>
+                <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">My Requests</h1>
+                <p className="text-xs sm:text-sm text-yellow-200">Manage your donation requests and track their status</p>
+              </div>
             </div>
             <button
               onClick={() => navigate('/create-request')}
-              className="btn btn-primary flex items-center"
+              className="btn btn-primary flex items-center justify-center text-xs sm:text-sm px-3 sm:px-4 py-2 whitespace-nowrap active:scale-95"
             >
-              <Plus className="h-4 w-4 mr-2" />
-              Create Request
+              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+              <span>Create Request</span>
             </button>
           </div>
 
-          {/* Stats */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div className="card p-4">
-              <div className="text-2xl font-bold text-white">
-                {requests.filter(r => r.status === 'open').length}
+        </motion.div>
+
+        {/* Stats Cards */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-6 mb-4 sm:mb-6 lg:mb-8"
+        >
+          <div className="card p-2.5 sm:p-4 lg:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">Open</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{requests.filter(r => r.status === 'open').length}</p>
               </div>
-              <div className="text-sm text-yellow-400">Open Requests</div>
+              <div className="flex flex-col items-center gap-0.5">
+                <Eye className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-blue-500" />
+                <span className="text-[10px] sm:hidden text-blue-400 font-medium">Active</span>
+              </div>
             </div>
-            <div className="card p-4">
-              <div className="text-2xl font-bold text-yellow-400">
-                {requests.filter(r => r.status === 'claimed').length}
+          </div>
+          
+          <div className="card p-2.5 sm:p-4 lg:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">Claimed</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{requests.filter(r => r.status === 'claimed').length}</p>
               </div>
-              <div className="text-sm text-yellow-400">Claimed</div>
+              <div className="flex flex-col items-center gap-0.5">
+                <Heart className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-yellow-500" />
+                <span className="text-[10px] sm:hidden text-yellow-400 font-medium">Matched</span>
+              </div>
             </div>
-            <div className="card p-4">
-              <div className="text-2xl font-bold text-green-400">
-                {requests.filter(r => r.status === 'fulfilled').length}
+          </div>
+          
+          <div className="card p-2.5 sm:p-4 lg:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">Fulfilled</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{requests.filter(r => r.status === 'fulfilled').length}</p>
               </div>
-              <div className="text-sm text-yellow-400">Fulfilled</div>
+              <div className="flex flex-col items-center gap-0.5">
+                <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-success-500" />
+                <span className="text-[10px] sm:hidden text-success-400 font-medium">Done</span>
+              </div>
             </div>
-            <div className="card p-4">
-              <div className="text-2xl font-bold text-yellow-400">
-                {requests.length}
+          </div>
+          
+          <div className="card p-2.5 sm:p-4 lg:p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs text-yellow-400 mb-0.5">Total</p>
+                <p className="text-2xl sm:text-3xl font-bold text-white">{requests.length}</p>
               </div>
-              <div className="text-sm text-yellow-400">Total Requests</div>
+              <div className="flex flex-col items-center gap-0.5">
+                <Package className="h-5 w-5 sm:h-6 sm:w-6 lg:h-7 lg:w-7 text-yellow-500" />
+                <span className="text-[10px] sm:hidden text-yellow-400 font-medium">All</span>
+              </div>
             </div>
           </div>
         </motion.div>
@@ -502,19 +538,20 @@ const MyRequestsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.15 }}
-            className="card p-6 mb-8 border-l-4 border-amber-500"
+            className="card p-4 sm:p-6 mb-4 sm:mb-6 lg:mb-8 border border-navy-700 border-l-4 border-l-amber-500"
+            style={{backgroundColor: '#001a5c'}}
           >
-            <div className="flex items-center justify-between mb-4">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-amber-500/10 rounded-lg">
-                  <Truck className="h-6 w-6 text-amber-500" />
+                <div className="p-2 bg-amber-500/10 rounded-lg flex-shrink-0">
+                  <Truck className="h-5 w-5 sm:h-6 sm:w-6 text-amber-500" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-white">Delivery Confirmations Needed</h3>
-                  <p className="text-yellow-300 text-sm">Please confirm these completed deliveries</p>
+                  <h3 className="text-base sm:text-lg font-semibold text-white">Delivery Confirmations Needed</h3>
+                  <p className="text-yellow-300 text-xs sm:text-sm">Please confirm these completed deliveries</p>
                 </div>
               </div>
-              <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-sm font-medium">
+              <span className="bg-amber-500/20 text-amber-400 px-3 py-1 rounded-full text-xs sm:text-sm font-medium self-start sm:self-auto">
                 {deliveryConfirmationNotifications.length} pending
               </span>
             </div>
@@ -523,13 +560,13 @@ const MyRequestsPage = () => {
               {deliveryConfirmationNotifications.map((notification) => (
                 <div
                   key={notification.id}
-                  className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                  className="bg-navy-800/50 rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3"
                 >
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-amber-500" />
-                    <div>
-                      <p className="text-white font-medium">{notification.title}</p>
-                      <p className="text-yellow-300 text-sm">{notification.message}</p>
+                  <div className="flex items-start gap-3">
+                    <CheckCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-white font-medium text-sm sm:text-base">{notification.title}</p>
+                      <p className="text-yellow-300 text-xs sm:text-sm">{notification.message}</p>
                       <p className="text-yellow-400 text-xs mt-1">
                         Volunteer: {notification.data?.volunteer_name}
                       </p>
@@ -537,7 +574,7 @@ const MyRequestsPage = () => {
                   </div>
                   <button
                     onClick={() => handleConfirmDelivery(notification)}
-                    className="btn btn-primary text-sm px-4 py-2"
+                    className="btn btn-primary text-xs sm:text-sm px-3 sm:px-4 py-2 whitespace-nowrap active:scale-95 w-full sm:w-auto"
                   >
                     Confirm Delivery
                   </button>
@@ -551,28 +588,28 @@ const MyRequestsPage = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-8"
+          transition={{ delay: 0.2 }}
+          className="mb-4 sm:mb-6 lg:mb-8"
         >
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
             {/* Search */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-yellow-400" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
+                className="w-full pl-9 sm:pl-10 pr-4 py-2.5 sm:py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-sm sm:text-base text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
                 placeholder="Search requests..."
               />
             </div>
 
             {/* Status */}
-            <div className="relative min-w-[180px]">
+            <div className="relative w-full sm:w-auto sm:min-w-[180px]">
               <select
                 value={selectedStatus}
                 onChange={(e) => setSelectedStatus(e.target.value)}
-                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                className="appearance-none w-full px-4 sm:px-5 py-2.5 sm:py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-sm sm:text-base text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
               >
                 <option value="">All Statuses</option>
                 {statusOptions.map(status => (
@@ -583,11 +620,11 @@ const MyRequestsPage = () => {
             </div>
 
             {/* Category */}
-            <div className="relative min-w-[180px]">
+            <div className="relative w-full sm:w-auto sm:min-w-[180px]">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
-                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                className="appearance-none w-full px-4 sm:px-5 py-2.5 sm:py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-sm sm:text-base text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
               >
                 <option value="">All Categories</option>
                 {categories.map(category => (
@@ -812,7 +849,7 @@ const MyRequestsPage = () => {
         {/* View Request Modal */}
         <AnimatePresence>
           {showViewModal && selectedRequest && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -821,49 +858,49 @@ const MyRequestsPage = () => {
                 className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
               >
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-500/10 rounded-lg">
-                      <Heart className="h-6 w-6 text-yellow-400" />
+                <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                      <Heart className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
                     </div>
                     <div>
-                      <h3 className="text-xl font-bold text-white">Request Details</h3>
+                      <h3 className="text-base sm:text-xl font-bold text-white">Request Details</h3>
                       <p className="text-xs text-yellow-300">Complete information</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setShowViewModal(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                    className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg flex-shrink-0"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-4 w-4 sm:h-5 sm:w-5" />
                   </button>
                 </div>
 
                 {/* Content with Custom Scrollbar */}
-                <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 custom-scrollbar">
                   <div className="space-y-6">
                     {/* Title and Status */}
-                    <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-start justify-between gap-4 mb-3">
-                        <h4 className="text-2xl font-bold text-white">{selectedRequest.title}</h4>
-                        <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                    <div className="bg-navy-800/50 rounded-lg p-3 sm:p-4 border border-navy-700">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 sm:gap-4 mb-3">
+                        <h4 className="text-lg sm:text-2xl font-bold text-white">{selectedRequest.title}</h4>
+                        <span className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap self-start">
                           {selectedRequest.category}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 mb-3">
+                      <div className="flex flex-wrap items-center gap-2 mb-3">
                         {(() => {
                           const statusInfo = getStatusInfo(selectedRequest.status)
                           const urgencyInfo = getUrgencyInfo(selectedRequest.urgency)
                           return (
                             <>
-                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
+                              <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium ${statusInfo.color}`}>
                                 {statusInfo.label}
                               </span>
-                              <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${urgencyInfo.color}`}>
+                              <span className={`inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs font-medium ${urgencyInfo.color}`}>
                                 <AlertCircle className="h-3 w-3 mr-1" />
                                 {urgencyInfo.label} Priority
                               </span>
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-navy-700 text-yellow-300 border border-navy-600">
+                              <span className="inline-flex items-center px-2.5 sm:px-3 py-1 rounded-full text-xs font-semibold bg-navy-700 text-yellow-300 border border-navy-600">
                                 <Package className="h-3 w-3 mr-1" />
                                 Quantity: {selectedRequest.quantity_needed}
                               </span>
@@ -872,14 +909,14 @@ const MyRequestsPage = () => {
                         })()}
                       </div>
                       {selectedRequest.description && (
-                        <p className="text-gray-300 leading-relaxed">{selectedRequest.description}</p>
+                        <p className="text-sm sm:text-base text-gray-300 leading-relaxed">{selectedRequest.description}</p>
                       )}
                     </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                     <div>
-                      <h5 className="text-sm font-medium text-white mb-3">Request Information</h5>
-                      <div className="space-y-2 text-sm">
+                      <h5 className="text-sm font-medium text-white mb-2 sm:mb-3">Request Information</h5>
+                      <div className="space-y-2 text-xs sm:text-sm">
                         <div className="flex items-center text-gray-300">
                           <Calendar className="h-4 w-4 mr-2 text-yellow-400" />
                           <span>Created {formatDate(selectedRequest.created_at)}</span>
@@ -907,10 +944,10 @@ const MyRequestsPage = () => {
 
                     {selectedRequest.tags && selectedRequest.tags.length > 0 && (
                       <div>
-                        <h5 className="text-sm font-medium text-white mb-3">Tags</h5>
-                        <div className="flex flex-wrap gap-2">
+                        <h5 className="text-sm font-medium text-white mb-2 sm:mb-3">Tags</h5>
+                        <div className="flex flex-wrap gap-1.5 sm:gap-2">
                           {selectedRequest.tags.map((tag, index) => (
-                            <span key={index} className="inline-flex items-center text-sm bg-navy-800 text-yellow-300 px-3 py-1 rounded-full">
+                            <span key={index} className="inline-flex items-center text-xs sm:text-sm bg-navy-800 text-yellow-300 px-2.5 sm:px-3 py-1 rounded-full">
                               <Tag className="h-3 w-3 mr-1" />
                               {tag}
                             </span>
@@ -924,19 +961,19 @@ const MyRequestsPage = () => {
                 </div>
 
                 {/* Footer */}
-                <div className="flex items-center justify-end gap-3 p-6 border-t-2 border-yellow-500/20 flex-shrink-0">
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 p-4 sm:p-6 border-t-2 border-yellow-500/20 flex-shrink-0">
                   {canEdit(selectedRequest) && (
                     <button
                       onClick={() => handleEditRequest(selectedRequest)}
-                      className="px-5 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center gap-2 font-medium border border-navy-600"
+                      className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium border border-navy-600 order-2 sm:order-1"
                     >
                       <Edit3 className="h-4 w-4" />
-                      Edit Request
+                      <span>Edit Request</span>
                     </button>
                   )}
                   <button
                     onClick={() => setShowViewModal(false)}
-                    className="px-5 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors font-medium"
+                    className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors font-medium order-1 sm:order-2"
                   >
                     Close
                   </button>

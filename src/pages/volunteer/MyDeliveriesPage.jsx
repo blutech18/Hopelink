@@ -298,20 +298,30 @@ const MyDeliveriesPage = () => {
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white">My Deliveries</h1>
-              <p className="text-yellow-300 mt-2">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 mb-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">My Deliveries</h1>
+              <p className="text-yellow-300 mt-2 text-sm sm:text-base">
                 Track and manage your volunteer delivery assignments with photo documentation
               </p>
+              
+              {/* Result Count Badge */}
+              {deliveries.length > 0 && (
+                <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-600/20 to-yellow-500/20 border border-yellow-500/30 rounded-full">
+                  <Truck className="h-4 w-4 text-yellow-400" />
+                  <span className="text-yellow-300 font-semibold text-sm">
+                    {deliveries.length} {deliveries.length === 1 ? 'Delivery' : 'Deliveries'}
+                  </span>
+                </div>
+              )}
             </div>
             
             {/* Status Legend */}
-            <div className="card p-4">
+            <div className="card p-4 sm:p-5 flex-shrink-0">
               <h3 className="text-xs font-semibold text-yellow-300 uppercase tracking-wide mb-3">Status Legend</h3>
-              <div className="flex flex-wrap gap-3">
+              <div className="flex flex-wrap gap-2 sm:gap-3">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-full bg-blue-500"></div>
                   <span className="text-xs text-gray-300">Assigned</span>
@@ -342,7 +352,7 @@ const MyDeliveriesPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8"
         >
           {[
             { 
@@ -375,7 +385,7 @@ const MyDeliveriesPage = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 + index * 0.1 }}
-              className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-6 hover:border-yellow-500/30 transition-colors"
+              className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-4 sm:p-6 hover:border-yellow-500/30 transition-colors"
             >
               <div className="flex items-center">
                 <div className="flex-shrink-0">
@@ -397,7 +407,7 @@ const MyDeliveriesPage = () => {
           transition={{ duration: 0.6, delay: 0.2 }}
         >
           {deliveries.length === 0 ? (
-            <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-12 text-center">
+            <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-8 sm:p-12 text-center">
               <Truck className="h-16 w-16 text-yellow-500 mx-auto mb-4" />
               <h3 className="text-xl font-semibold text-white mb-2">No Deliveries Yet</h3>
               <p className="text-yellow-300 mb-6">
@@ -405,13 +415,13 @@ const MyDeliveriesPage = () => {
               </p>
               <button
                 onClick={() => window.location.href = '/available-tasks'}
-                className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors"
+                className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors active:scale-95"
               >
                 Find Available Tasks
               </button>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {deliveries.map((delivery, index) => {
                 const StatusIcon = getStatusIcon(delivery.status)
                 const nextAction = getNextAction(delivery.status)
@@ -422,7 +432,7 @@ const MyDeliveriesPage = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4, delay: index * 0.05 }}
-                    className="card hover:shadow-xl transition-all duration-300 overflow-hidden border-l-4"
+                    className="card hover:shadow-xl transition-all duration-300 overflow-hidden border-l-4 group"
                     style={{
                       borderLeftColor: delivery.status === 'delivered' ? '#4ade80' : 
                                       delivery.status === 'in_transit' ? '#fb923c' : 
@@ -430,16 +440,16 @@ const MyDeliveriesPage = () => {
                                       delivery.status === 'accepted' ? '#a78bfa' : '#60a5fa'
                     }}
                   >
-                    <div className="p-6">
-                      <div className="flex flex-col md:flex-row gap-6">
+                    <div className="p-4 sm:p-5 lg:p-6">
+                      <div className="flex flex-col lg:flex-row gap-4 sm:gap-5 lg:gap-6">
                         {/* Item Image */}
-                        <div className="flex-shrink-0">
+                        <div className="flex-shrink-0 mx-auto lg:mx-0">
                           {delivery.claim?.donation?.image_url || delivery.claim?.request?.image_url ? (
-                            <div className="relative w-56 h-full rounded-lg overflow-hidden border-2 border-yellow-500/30 shadow-lg">
+                            <div className="relative w-full sm:w-64 lg:w-56 h-48 sm:h-64 lg:h-56 rounded-lg overflow-hidden border-2 border-yellow-500/30 shadow-lg">
                               <img 
                                 src={delivery.claim?.donation?.image_url || delivery.claim?.request?.image_url} 
                                 alt={delivery.claim?.donation?.title || delivery.claim?.request?.title}
-                                className="w-full h-full object-cover"
+                                className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                               />
                               {/* Status Badge on Image */}
                               <div className="absolute top-2 right-2">
@@ -449,7 +459,7 @@ const MyDeliveriesPage = () => {
                               </div>
                             </div>
                           ) : (
-                            <div className="w-56 h-full rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600 shadow-lg">
+                            <div className="w-full sm:w-64 lg:w-56 h-48 sm:h-64 lg:h-56 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600 shadow-lg">
                               <StatusIcon className="h-16 w-16 text-yellow-400 mb-2" />
                               <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
                               <span className={`mt-2 px-2 py-1 rounded-md text-xs font-semibold ${getStatusColor(delivery.status)}`}>
@@ -462,10 +472,10 @@ const MyDeliveriesPage = () => {
                         {/* Delivery Details */}
                         <div className="flex-1 space-y-3">
                           {/* Header with View Details */}
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1">
+                          <div className="flex flex-col sm:flex-row items-start justify-between gap-3 sm:gap-4">
+                            <div className="flex-1 min-w-0">
                               <div className="flex flex-wrap items-center gap-2 mb-2">
-                                <h3 className="text-xl font-bold text-white">
+                                <h3 className="text-lg sm:text-xl font-bold text-white break-words">
                                   {delivery.claim?.donation?.title || delivery.claim?.request?.title || 'Delivery Task'}
                                 </h3>
                                 {delivery.claim?.donation?.is_urgent && (
@@ -482,7 +492,7 @@ const MyDeliveriesPage = () => {
                             {/* View Details Button */}
                             <button
                               onClick={() => openDetailsModal(delivery)}
-                              className="px-4 py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg font-medium transition-colors flex items-center gap-2 border border-navy-600 whitespace-nowrap"
+                              className="w-full sm:w-auto px-4 py-2.5 sm:py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 border border-navy-600 whitespace-nowrap active:scale-95"
                             >
                               <Eye className="h-4 w-4" />
                               View Details
@@ -490,58 +500,64 @@ const MyDeliveriesPage = () => {
                           </div>
 
                           {/* Compact Details */}
-                          <div className="flex flex-wrap items-center gap-4 text-sm text-yellow-300">
-                            <div className="flex items-center gap-1.5">
-                              <MapPin className="h-4 w-4 text-green-400" />
-                              <span className="font-medium">From:</span>
-                              <span className="text-white">{delivery.pickup_city || 'TBD'}</span>
-                            </div>
-                            
-                            <div className="flex items-center gap-1.5">
-                              <Navigation className="h-4 w-4 text-red-400" />
-                              <span className="font-medium">To:</span>
-                              <span className="text-white">{delivery.delivery_city || 'TBD'}</span>
-                            </div>
-                            
-                            {delivery.estimated_distance && (
-                              <div className="flex items-center gap-1.5">
-                                <Truck className="h-4 w-4 text-purple-400" />
-                                <span className="font-medium">Distance:</span>
-                                <span className="text-white">~{delivery.estimated_distance}km</span>
+                          <div className="space-y-2 text-sm">
+                            <div className="flex items-start gap-1.5 text-yellow-300">
+                              <MapPin className="h-4 w-4 text-green-400 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium">From:</span>
+                                <span className="text-white ml-1 break-words">{delivery.pickup_city || 'TBD'}</span>
                               </div>
-                            )}
-                            
-                            <div className="flex items-center gap-1.5">
-                              <User className="h-4 w-4 text-blue-400" />
-                              <span className="font-medium">Donor:</span>
-                              <span className="text-white">{delivery.claim?.donor?.name || 'Anonymous'}</span>
-                              {delivery.claim?.donor?.phone_number && (
-                                <a
-                                  href={`tel:${delivery.claim.donor.phone_number}`}
-                                  className="text-yellow-400 hover:text-yellow-300 transition-colors"
-                                >
-                                  <Phone className="h-4 w-4" />
-                                </a>
-                              )}
                             </div>
                             
-                            <div className="flex items-center gap-1.5">
-                              <User className="h-4 w-4 text-green-400" />
-                              <span className="font-medium">Recipient:</span>
-                              <span className="text-white">{delivery.claim?.recipient?.name || 'Anonymous'}</span>
-                              {delivery.claim?.recipient?.phone_number && (
-                                <a
-                                  href={`tel:${delivery.claim.recipient.phone_number}`}
-                                  className="text-yellow-400 hover:text-yellow-300 transition-colors"
-                                >
-                                  <Phone className="h-4 w-4" />
-                                </a>
+                            <div className="flex items-start gap-1.5 text-yellow-300">
+                              <Navigation className="h-4 w-4 text-red-400 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <span className="font-medium">To:</span>
+                                <span className="text-white ml-1 break-words">{delivery.delivery_city || 'TBD'}</span>
+                              </div>
+                            </div>
+                            
+                            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-2 text-yellow-300">
+                              {delivery.estimated_distance && (
+                                <div className="flex items-center gap-1.5">
+                                  <Truck className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                                  <span className="font-medium">Distance:</span>
+                                  <span className="text-white">~{delivery.estimated_distance}km</span>
+                                </div>
                               )}
+                              
+                              <div className="flex items-center gap-1.5">
+                                <User className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                                <span className="font-medium whitespace-nowrap">Donor:</span>
+                                <span className="text-white truncate">{delivery.claim?.donor?.name || 'Anonymous'}</span>
+                                {delivery.claim?.donor?.phone_number && (
+                                  <a
+                                    href={`tel:${delivery.claim.donor.phone_number}`}
+                                    className="text-yellow-400 hover:text-yellow-300 transition-colors flex-shrink-0"
+                                  >
+                                    <Phone className="h-4 w-4" />
+                                  </a>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-1.5">
+                                <User className="h-4 w-4 text-green-400 flex-shrink-0" />
+                                <span className="font-medium whitespace-nowrap">Recipient:</span>
+                                <span className="text-white truncate">{delivery.claim?.recipient?.name || 'Anonymous'}</span>
+                                {delivery.claim?.recipient?.phone_number && (
+                                  <a
+                                    href={`tel:${delivery.claim.recipient.phone_number}`}
+                                    className="text-yellow-400 hover:text-yellow-300 transition-colors flex-shrink-0"
+                                  >
+                                    <Phone className="h-4 w-4" />
+                                  </a>
+                                )}
+                              </div>
                             </div>
                           </div>
 
                           {/* Additional Information */}
-                          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 bg-navy-800/50 rounded-lg border border-yellow-500/20">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 bg-navy-800/50 rounded-lg border border-yellow-500/20">
                             {/* Delivery Timeline */}
                             <div className="space-y-2">
                               <div className="flex items-center gap-2 pb-2 border-b border-navy-700">
@@ -643,12 +659,12 @@ const MyDeliveriesPage = () => {
 
                         {/* Action Section */}
                         {nextAction && (
-                          <div className="flex flex-col justify-center md:min-w-[200px] border-t-2 md:border-t-0 md:border-l-2 border-yellow-500/20 pt-3 md:pt-0 md:pl-6 mt-3 md:mt-0">
+                          <div className="flex flex-col justify-center lg:min-w-[200px] border-t-2 lg:border-t-0 lg:border-l-2 border-yellow-500/20 pt-4 lg:pt-0 lg:pl-6 mt-4 lg:mt-0">
                             <button
                               onClick={() => openStatusModal(delivery, nextAction.action)}
-                              className={`px-5 py-3 rounded-lg font-bold transition-all duration-200 flex items-center justify-center gap-2 text-white shadow-lg hover:shadow-xl transform hover:scale-105 border-2 border-white/20 ${nextAction.color}`}
+                              className={`px-5 py-3.5 sm:py-3 rounded-lg font-bold text-sm sm:text-base transition-all duration-200 flex items-center justify-center gap-2 text-white shadow-lg hover:shadow-xl transform hover:scale-105 active:scale-95 border-2 border-white/20 ${nextAction.color}`}
                             >
-                              <nextAction.icon className="h-5 w-5" />
+                              <nextAction.icon className="h-5 w-5 flex-shrink-0" />
                               {nextAction.label}
                             </button>
                           </div>
@@ -670,20 +686,20 @@ const MyDeliveriesPage = () => {
               animate={{ opacity: 1, scale: 1 }}
               className="bg-navy-900 border border-navy-700 rounded-xl max-w-lg w-full max-h-[90vh] overflow-hidden"
             >
-              <div className="sticky top-0 bg-navy-900 border-b border-navy-700 px-6 py-4 flex items-center justify-between">
-                <h3 className="text-xl font-semibold text-white">
+              <div className="sticky top-0 bg-navy-900 border-b border-navy-700 px-4 sm:px-6 py-4 flex items-center justify-between">
+                <h3 className="text-lg sm:text-xl font-semibold text-white">
                   Update Delivery Status
                 </h3>
                 <button
                   onClick={() => setShowStatusModal(false)}
-                  className="text-yellow-400 hover:text-yellow-300"
+                  className="text-yellow-400 hover:text-yellow-300 p-2 hover:bg-navy-800 rounded-lg transition-colors"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
               
-                            <div className="p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-5rem)]">
-                <div className="bg-navy-800/50 rounded-lg p-3">
+              <div className="p-4 sm:p-6 space-y-4 overflow-y-auto max-h-[calc(90vh-5rem)]">
+                <div className="bg-navy-800/50 rounded-lg p-3 sm:p-4">
                   <p className="text-yellow-300 text-sm">
                     Updating status to: <span className="font-semibold text-white">{statusUpdate.status.replace('_', ' ').toUpperCase()}</span>
                   </p>
@@ -828,10 +844,10 @@ const MyDeliveriesPage = () => {
                 </div>
 
                 {/* Action Buttons */}
-                <div className="flex gap-3 pt-4">
+                <div className="flex flex-col sm:flex-row gap-3 pt-4">
                   <button
                     onClick={() => setShowStatusModal(false)}
-                    className="flex-1 px-4 py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg font-medium transition-colors"
+                    className="flex-1 px-4 py-3 sm:py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg font-medium transition-colors active:scale-95"
                   >
                     Cancel
                   </button>
@@ -841,7 +857,7 @@ const MyDeliveriesPage = () => {
                       (statusUpdate.status === 'accepted' && !statusUpdate.pickup_photo) ||
                       (statusUpdate.status === 'delivered' && !statusUpdate.delivery_photo)
                     }
-                    className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 sm:py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 active:scale-95"
                   >
                     {uploading ? (
                       <>
@@ -870,25 +886,25 @@ const MyDeliveriesPage = () => {
               className="card max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
             >
               {/* Modal Header */}
-              <div className="sticky top-0 bg-navy-900 border-b-2 border-yellow-500/20 px-6 py-4 flex items-center justify-between">
+              <div className="sticky top-0 bg-navy-900 border-b-2 border-yellow-500/20 px-4 sm:px-6 py-4 flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center">
+                  <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
                     <Package className="h-5 w-5 text-yellow-400" />
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Delivery Details</h3>
-                    <p className="text-xs text-gray-400">Complete delivery information</p>
+                  <div className="min-w-0">
+                    <h3 className="text-lg sm:text-xl font-bold text-white">Delivery Details</h3>
+                    <p className="text-xs text-gray-400 hidden sm:block">Complete delivery information</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowDetailsModal(false)}
-                  className="p-2 rounded-lg hover:bg-navy-800 text-gray-400 hover:text-yellow-400 transition-colors"
+                  className="p-2 rounded-lg hover:bg-navy-800 text-gray-400 hover:text-yellow-400 transition-colors flex-shrink-0"
                 >
                   <X className="h-5 w-5" />
                 </button>
               </div>
               
-              <div className="p-6 space-y-5 overflow-y-auto">
+              <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
                 {/* Basic Information */}
                 <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
                   <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">

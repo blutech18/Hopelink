@@ -226,23 +226,23 @@ const LocationPicker = ({
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2">
-      <div className="bg-[#001a5c] rounded-lg shadow-xl max-w-3xl w-full overflow-hidden border border-gray-600">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-3 sm:p-4">
+      <div className="bg-[#001a5c] rounded-lg shadow-xl max-w-3xl w-full overflow-hidden border border-gray-600 max-h-[95vh] overflow-y-auto">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-600">
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-gray-600">
           <div>
-            <h2 className="text-lg font-semibold text-white">{title}</h2>
+            <h2 className="text-base sm:text-lg font-semibold text-white">{title}</h2>
             <p className="text-xs text-yellow-200">Click on the map or search for a location</p>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-yellow-300 transition-colors"
+            className="text-gray-400 hover:text-yellow-300 transition-colors flex-shrink-0"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        <div className="p-4 space-y-3">
+        <div className="p-3 sm:p-4 space-y-3">
           {/* Google Maps is loaded globally in main.jsx */}
           <div className="space-y-3">
               {/* Network Status Indicator */}
@@ -266,7 +266,7 @@ const LocationPicker = ({
                 </div>
               )}
 
-              <div className="flex space-x-2">
+              <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
                 <div className="flex-1 relative">
                   {!isOfflineMode ? (
                     <Autocomplete
@@ -307,7 +307,7 @@ const LocationPicker = ({
                 <button
                   onClick={getCurrentLocation}
                   disabled={isLoadingLocation}
-                  className="px-3 py-2 bg-yellow-500 text-[#00237d] font-semibold rounded-lg hover:bg-yellow-400 transition-colors flex items-center space-x-2 disabled:opacity-50 disabled:bg-gray-600 text-sm"
+                  className="w-full sm:w-auto px-3 py-2 bg-yellow-500 text-[#00237d] font-semibold rounded-lg hover:bg-yellow-400 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 disabled:bg-gray-600 text-sm"
                 >
                   <Navigation className="w-4 h-4" />
                   <span>{isLoadingLocation ? 'Loading...' : 'Use Current'}</span>
@@ -503,19 +503,19 @@ const LocationPicker = ({
             </div>
 
           {/* Action Buttons */}
-          <div className="flex space-x-3 p-4 pt-3 border-t border-gray-600">
+          <div className="flex flex-col sm:flex-row gap-3 p-3 sm:p-4 pt-3 border-t border-gray-600">
             <button
               onClick={onClose}
-              className="flex-1 px-3 py-2 border border-gray-600 text-yellow-200 rounded-lg hover:bg-[#00237d] hover:border-yellow-300 transition-colors text-sm"
+              className="w-full sm:flex-1 px-4 py-2.5 sm:py-2 border border-gray-600 text-yellow-200 rounded-lg hover:bg-[#00237d] hover:border-yellow-300 transition-colors text-sm font-medium order-2 sm:order-1"
             >
               Cancel
             </button>
             <button
               onClick={handleConfirm}
               disabled={!selectedLocation}
-              className="flex-1 bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 disabled:bg-gray-600 flex items-center justify-center space-x-2 text-sm"
+              className="w-full sm:flex-1 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2.5 sm:py-2 rounded-lg transition-all disabled:opacity-50 disabled:bg-gray-600 disabled:from-gray-600 disabled:to-gray-600 flex items-center justify-center space-x-2 text-sm font-semibold shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 disabled:hover:scale-100 order-1 sm:order-2"
             >
-              <CheckCircle className="w-4 h-4" />
+              <CheckCircle className="w-4 h-4 sm:w-5 sm:h-5" />
               <span>Confirm Location</span>
             </button>
           </div>

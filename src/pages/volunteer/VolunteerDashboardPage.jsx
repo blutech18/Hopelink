@@ -220,8 +220,8 @@ const VolunteerDashboardPage = () => {
           transition={{ duration: 0.6 }}
           className="mb-8"
         >
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1">
               <h1 className="text-3xl font-bold text-white">
                 Welcome back, {profile?.name}!
               </h1>
@@ -232,16 +232,19 @@ const VolunteerDashboardPage = () => {
             
             {/* Notification Bell */}
             {volunteerNotifications.length > 0 && (
-              <button
-                onClick={handleViewNotifications}
-                className="relative p-3 text-amber-400 hover:text-amber-300 hover:bg-navy-800 rounded-lg transition-all"
-                title={`${volunteerNotifications.length} new notification(s)`}
-              >
-                <Bell className="h-6 w-6" />
-                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
-                  {volunteerNotifications.length}
-                </span>
-              </button>
+              <div className="flex-shrink-0">
+                <button
+                  onClick={handleViewNotifications}
+                  className="relative p-3 bg-navy-800/50 border border-yellow-500/30 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 hover:border-yellow-500/50 rounded-lg transition-all shadow-lg"
+                  title={`${volunteerNotifications.length} new notification(s)`}
+                  aria-label="View notifications"
+                >
+                  <Bell className="h-6 w-6" />
+                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-semibold rounded-full h-5 w-5 flex items-center justify-center border-2 border-navy-900 shadow-md">
+                    {volunteerNotifications.length}
+                  </span>
+                </button>
+              </div>
             )}
           </div>
         </motion.div>

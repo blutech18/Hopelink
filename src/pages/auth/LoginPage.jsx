@@ -105,9 +105,11 @@ const LoginPage = () => {
           >
             {/* Mobile Logo */}
             <div className="lg:hidden text-center mb-8">
-              <img src="/hopelinklogo.png" alt="HopeLink" className="h-16 rounded mx-auto mb-4" />
-              <h2 className="text-2xl font-bold text-white">Welcome Back</h2>
-              <p className="text-yellow-200 mt-2">Sign in to continue making a difference</p>
+              <div className="inline-block p-3 rounded-lg mb-4" style={{backgroundColor: '#001a5c'}}>
+                <img src="/hopelinklogo.png" alt="HopeLink" className="h-16 rounded mx-auto" />
+              </div>
+              <h2 className="text-2xl font-bold" style={{color: '#001a5c'}}>Welcome Back</h2>
+              <p className="mt-2" style={{color: '#001a5c'}}>Sign in to continue making a difference</p>
             </div>
 
             <div className="py-6 px-6 shadow-xl rounded-2xl" style={{backgroundColor: '#001a5c'}}>
@@ -172,27 +174,27 @@ const LoginPage = () => {
                   )}
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center flex-shrink-0">
                     <input
                       id="remember-me"
                       name="remember-me"
                       type="checkbox"
                       tabIndex={-1}
-                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                      className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded flex-shrink-0"
                     />
-                    <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-300">
+                    <label htmlFor="remember-me" className="ml-2 text-sm text-gray-300 whitespace-nowrap">
                       Remember me
                     </label>
                   </div>
 
-                  <div className="text-sm">
+                  <div className="text-sm flex-shrink-0">
                     <Link
                       to="/reset-password"
                       tabIndex={-1}
-                      className="font-medium text-primary-600 hover:text-primary-500"
+                      className="font-medium text-primary-600 hover:text-primary-500 whitespace-nowrap"
                     >
-                      Forgot your password?
+                      Forgot Password
                     </Link>
                   </div>
                 </div>

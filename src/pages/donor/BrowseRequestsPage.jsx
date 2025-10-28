@@ -13,11 +13,14 @@ import {
   Package,
   Eye,
   ArrowRight,
-  X
+  X,
+  Phone,
+  MessageSquare
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
+import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
 import { db } from '../../lib/supabase'
 import { intelligentMatcher } from '../../lib/matchingAlgorithm'
 
@@ -186,29 +189,14 @@ const BrowseRequestsPage = () => {
 
   const handleViewDetails = async (request) => {
     try {
-      // Set basic request info immediately for better UX
+      console.log('Opening request details:', request)
+      console.log('Requester data:', request.requester)
+      
+      // Set request info - requester data should already be complete from the initial fetch
       setSelectedRequest(request)
       setShowDetailsModal(true)
-      
-      // If requester info exists, fetch detailed profile
-      if (request.requester?.id) {
-        setLoadingProfile(true)
-        const detailedProfile = await db.getProfile(request.requester.id)
-        
-        // Update the selected request with detailed profile info
-        setSelectedRequest(prev => ({
-          ...prev,
-          requester: {
-            ...prev.requester,
-            ...detailedProfile
-          }
-        }))
-      }
     } catch (err) {
-      console.error('Error fetching requester profile:', err)
-      // Don't show error to user as this is an enhancement, not critical functionality
-    } finally {
-      setLoadingProfile(false)
+      console.error('Error viewing request details:', err)
     }
   }
 
@@ -240,7 +228,10 @@ const BrowseRequestsPage = () => {
   }
 
   const handleCreateSmartMatch = async (request) => {
-    if (!request.bestMatchingDonation) return
+    if (!request.bestMatchingDonation) {
+      error('No matching donation found for this request.')
+      return
+    }
     
     try {
       setLoading(true)
@@ -249,7 +240,17 @@ const BrowseRequestsPage = () => {
       await loadRequests() // Refresh the list
     } catch (err) {
       console.error('Error creating smart match:', err)
-      error('Failed to create smart match. Please try again.')
+      
+      // Provide more specific error messages
+      if (err.message?.includes('not sufficiently compatible')) {
+        error('These items are not compatible enough for matching. The compatibility score is too low.')
+      } else if (err.message?.includes('already matched')) {
+        error('This request or donation has already been matched.')
+      } else if (err.message?.includes('not available')) {
+        error('The donation is no longer available for matching.')
+      } else {
+        error('Failed to create match. Please try again or contact support.')
+      }
     } finally {
       setLoading(false)
     }
@@ -276,28 +277,37 @@ const BrowseRequestsPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-3xl font-bold text-white mb-2">Browse Requests</h1>
-              <p className="text-yellow-300">Find recipients who need your help with AI-powered matching</p>
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3">
+            <div className="flex-1">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-2">Browse Requests</h1>
+              <p className="text-xs sm:text-sm text-yellow-300">Find recipients who need your help with smart matching</p>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2 text-yellow-300">
-                <Heart className="h-5 w-5" />
-                <span className="text-sm">{filteredRequests.length} requests available</span>
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+              {/* Request Count Badge */}
+              <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border-2 border-yellow-500/40 rounded-full shadow-lg">
+                <Heart className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 fill-yellow-400 animate-pulse" />
+                <div className="flex items-center gap-1.5">
+                  <span className="text-lg sm:text-xl font-bold text-white">{filteredRequests.length}</span>
+                  <span className="text-xs sm:text-sm font-medium text-yellow-300">Request{filteredRequests.length !== 1 ? 's' : ''}</span>
+                </div>
               </div>
+              
+              {/* Smart Matches Badge */}
               {smartRecommendations.length > 0 && (
-                <div className="flex items-center space-x-2 text-yellow-300">
-                  <span className="h-2 w-2 bg-yellow-400 rounded-full animate-pulse"></span>
-                  <span className="text-sm">{smartRecommendations.length} smart matches</span>
+                <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500/20 to-emerald-600/20 border-2 border-green-500/40 rounded-full shadow-lg">
+                  <span className="h-2 w-2 bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-400/50"></span>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-base sm:text-lg font-bold text-white">{smartRecommendations.length}</span>
+                    <span className="text-xs sm:text-sm font-medium text-green-300">smart match{smartRecommendations.length !== 1 ? 'es' : ''}</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -310,27 +320,27 @@ const BrowseRequestsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="bg-yellow-900/10 border-2 border-yellow-500/30 rounded-lg p-6 mb-8"
+            className="bg-yellow-900/10 border-2 border-yellow-500/30 rounded-lg p-4 sm:p-6 mb-6 sm:mb-8"
           >
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center space-x-3">
-                <div className="h-8 w-8 bg-yellow-500/20 rounded-full flex items-center justify-center">
-                  <span className="text-yellow-400 text-sm font-bold">🤖</span>
+            <div className="flex items-start sm:items-center justify-between mb-4 gap-2">
+              <div className="flex items-start sm:items-center space-x-2 sm:space-x-3 flex-1">
+                <div className="h-6 w-6 sm:h-8 sm:w-8 bg-yellow-500/20 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-yellow-400 text-xs sm:text-sm font-bold">🤖</span>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-white">Smart Match Recommendations</h3>
-                  <p className="text-sm text-yellow-300">High-compatibility matches based on your available donations</p>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-white">Smart Match Recommendations</h3>
+                  <p className="text-xs sm:text-sm text-yellow-300">High-compatibility matches</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowRecommendations(false)}
-                className="text-gray-400 hover:text-white transition-colors"
+                className="text-gray-400 hover:text-white transition-colors flex-shrink-0"
               >
-                <X className="h-5 w-5" />
+                <X className="h-4 w-4 sm:h-5 sm:w-5" />
               </button>
             </div>
             
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               {smartRecommendations.map((request) => (
                 <div key={request.id} className="bg-navy-800 border border-yellow-500/20 rounded-lg p-4">
                   <div className="flex items-start justify-between mb-3">
@@ -365,23 +375,23 @@ const BrowseRequestsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2 }}
-          className="card p-6 mb-8"
+          className="card p-4 sm:p-6 mb-6 sm:mb-8"
         >
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 sm:gap-4">
             {/* Search */}
-            <div className="relative flex-1 min-w-[200px]">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400" />
+            <div className="relative flex-1 min-w-full sm:min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 sm:h-5 sm:w-5 text-yellow-400" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
+                className="w-full pl-9 sm:pl-10 pr-4 py-2 sm:py-3 text-sm sm:text-base bg-navy-800 border-2 border-navy-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
                 placeholder="Search requests..."
               />
             </div>
 
             {/* Category */}
-            <div className="relative min-w-[180px]">
+            <div className="relative w-full sm:w-auto sm:min-w-[180px]">
               <select
                 value={selectedCategory}
                 onChange={(e) => setSelectedCategory(e.target.value)}
@@ -396,11 +406,11 @@ const BrowseRequestsPage = () => {
             </div>
 
             {/* Urgency */}
-            <div className="relative min-w-[180px]">
+            <div className="relative w-full sm:w-auto sm:min-w-[200px]">
               <select
                 value={selectedUrgency}
                 onChange={(e) => setSelectedUrgency(e.target.value)}
-                className="appearance-none w-full px-5 py-3 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
+                className="appearance-none w-full pl-4 sm:pl-5 pr-10 py-2.5 sm:py-3 text-sm sm:text-base bg-navy-800 border-2 border-navy-700 rounded-lg text-white font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600/50"
               >
                 <option value="">All Urgency Levels</option>
                 {urgencyLevels.map(level => (
@@ -417,14 +427,15 @@ const BrowseRequestsPage = () => {
                 setSelectedCategory('')
                 setSelectedUrgency('')
               }}
-              className={`w-[110px] px-4 py-3 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 whitespace-nowrap border-2 ${
+              disabled={!searchTerm && !selectedCategory && !selectedUrgency}
+              className={`w-full sm:w-auto px-4 sm:px-5 py-2.5 sm:py-3 rounded-lg text-sm sm:text-base font-semibold transition-all duration-200 flex items-center justify-center gap-2 whitespace-nowrap border-2 ${
                 searchTerm || selectedCategory || selectedUrgency
-                  ? 'bg-yellow-600 hover:bg-yellow-700 text-white border-yellow-600 hover:border-yellow-700'
-                  : 'bg-navy-800 hover:bg-navy-700 text-gray-400 border-navy-700'
+                  ? 'bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white border-yellow-500 hover:border-yellow-600 shadow-md hover:shadow-lg active:scale-95'
+                  : 'bg-navy-800 text-gray-500 border-navy-700 cursor-not-allowed opacity-50'
               }`}
             >
               <X className="h-4 w-4" />
-              Clear
+              Clear Filters
             </button>
           </div>
         </motion.div>
@@ -434,18 +445,18 @@ const BrowseRequestsPage = () => {
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-center py-12"
+            className="text-center py-8 sm:py-12"
           >
-            <Heart className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-white mb-2">No requests found</h3>
-            <p className="text-yellow-300">
+            <Heart className="h-12 w-12 sm:h-16 sm:w-16 text-yellow-400 mx-auto mb-3 sm:mb-4" />
+            <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">No requests found</h3>
+            <p className="text-sm sm:text-base text-yellow-300 px-4">
               {searchTerm || selectedCategory || selectedUrgency
                 ? 'Try adjusting your filters to see more results.'
                 : 'There are no open requests at the moment.'}
             </p>
           </motion.div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-4 sm:space-y-6">
             <AnimatePresence>
               {filteredRequests.map((request, index) => {
                 const urgencyInfo = getUrgencyInfo(request.urgency)
@@ -456,7 +467,7 @@ const BrowseRequestsPage = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ delay: index * 0.05 }}
-                    className="card hover:shadow-xl hover:border-yellow-500/20 transition-all duration-300 overflow-hidden border-l-4 border-2 border-navy-700 cursor-pointer group"
+                    className="card hover:shadow-xl hover:border-yellow-500/20 transition-all duration-300 overflow-hidden border-l-4 border-2 border-navy-700 cursor-pointer group active:scale-[0.99]"
                     style={{
                       borderLeftColor: request.urgency === 'critical' ? '#ef4444' : 
                                       request.urgency === 'high' ? '#f59e0b' : 
@@ -464,122 +475,126 @@ const BrowseRequestsPage = () => {
                     }}
                     onClick={() => handleViewDetails(request)}
                   >
-                    <div className="p-5">
+                    <div className="p-4 sm:p-5 lg:p-6">
                       {/* Header Section */}
-                      <div className="mb-3">
-                        <div className="flex items-start justify-between gap-3 mb-2">
-                          <div className="flex-1">
-                            <div className="flex flex-wrap items-center gap-2 mb-2">
-                              <h3 className="text-lg font-bold text-white group-hover:text-yellow-300 transition-colors">
-                                {request.title}
-                              </h3>
-                              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
-                                {request.category}
-                              </span>
-                              <div className={`badge ${urgencyInfo.color}`}>
-                                {request.urgency === 'critical' && <AlertCircle className="h-3 w-3 mr-1" />}
-                                {urgencyInfo.label}
-                              </div>
+                      <div className="flex items-start justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+                        {/* Left: Content */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
+                            <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white group-hover:text-yellow-300 transition-colors">
+                              {request.title}
+                            </h3>
+                            <span className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
+                              {request.category}
+                            </span>
+                            <div className={`badge text-[10px] sm:text-xs px-2 py-0.5 ${urgencyInfo.color}`}>
+                              {request.urgency === 'critical' && <AlertCircle className="h-3 w-3 mr-1" />}
+                              {urgencyInfo.label}
                             </div>
-                            <p className="text-gray-300 text-sm line-clamp-2">
-                              {request.description || 'No description provided'}
-                            </p>
                           </div>
+                          <p className="text-gray-300 text-xs sm:text-sm line-clamp-2 mb-3">
+                            {request.description || 'No description provided'}
+                          </p>
                           
-                          {/* Action Buttons */}
-                          <div className="flex items-center gap-2 flex-shrink-0">
-                            {request.matchingScore > 0.6 && request.bestMatchingDonation ? (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleCreateSmartMatch(request)
-                                }}
-                                disabled={loading}
-                                className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-medium rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 shadow-lg hover:shadow-xl whitespace-nowrap"
-                              >
-                                <Heart className="h-3.5 w-3.5" />
-                                Smart Match
-                              </button>
-                            ) : (
-                              <div className="flex items-center gap-1.5 text-yellow-300">
-                                <Eye className="h-4 w-4" />
-                                <span className="text-sm font-medium">View</span>
-                                <ArrowRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                          {/* Compact Details */}
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-yellow-300">
+                            <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+                              <Package className="h-3 w-3 sm:h-4 sm:w-4 text-blue-400 flex-shrink-0" />
+                              <span className="font-medium">Quantity:</span>
+                              <span className="text-white">{request.quantity_needed}</span>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+                              <User className="h-3 w-3 sm:h-4 sm:w-4 text-green-400 flex-shrink-0" />
+                              <span className="font-medium">By:</span>
+                              <span className="text-white">{request.requester?.name || 'Anonymous'}</span>
+                            </div>
+                            
+                            {request.location && (
+                              <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap min-w-0">
+                                <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-purple-400 flex-shrink-0" />
+                                <span className="text-white overflow-hidden text-ellipsis">{request.location}</span>
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+                              <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-orange-400 flex-shrink-0" />
+                              <span className="text-white">{formatDate(request.created_at)}</span>
+                            </div>
+
+                            {request.needed_by && (
+                              <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
+                                <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-red-400 flex-shrink-0" />
+                                <span className="font-medium">Needed:</span>
+                                <span className="text-white">{formatDate(request.needed_by)}</span>
                               </div>
                             )}
                           </div>
                         </div>
+                        
+                        {/* Right: Action Button */}
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          {request.matchingScore > 0.6 && request.bestMatchingDonation ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleCreateSmartMatch(request)
+                              }}
+                              disabled={loading}
+                              className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs sm:text-sm font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 shadow-lg hover:shadow-xl whitespace-nowrap active:scale-95"
+                            >
+                              <Heart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                              <span>Smart Match</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleViewDetails(request)
+                              }}
+                              className="px-3 sm:px-4 py-2 sm:py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 hover:text-white text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 border border-navy-600 hover:border-yellow-500/50 shadow-md hover:shadow-lg active:scale-95"
+                            >
+                              <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                              <span>View Details</span>
+                              <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 group-hover:translate-x-1 transition-transform" />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Compact Details */}
-                      <div className="flex flex-wrap items-center gap-3 mb-3 text-sm text-yellow-300">
-                        <div className="flex items-center gap-1.5">
-                          <Package className="h-4 w-4 text-blue-400" />
-                          <span className="font-medium">Qty:</span>
-                          <span className="text-white">{request.quantity_needed}</span>
-                        </div>
-                        
-                        <div className="flex items-center gap-1.5">
-                          <User className="h-4 w-4 text-green-400" />
-                          <span className="font-medium">By:</span>
-                          <span className="text-white">{request.requester?.name || 'Anonymous'}</span>
-                        </div>
-                        
-                        {request.location && (
-                          <div className="flex items-center gap-1.5">
-                            <MapPin className="h-4 w-4 text-purple-400" />
-                            <span className="text-white truncate max-w-[150px]">{request.location}</span>
-                          </div>
-                        )}
-                        
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="h-4 w-4 text-orange-400" />
-                          <span className="text-white">{formatDate(request.created_at)}</span>
-                        </div>
-
-                        {request.needed_by && (
-                          <div className="flex items-center gap-1.5">
-                            <Clock className="h-4 w-4 text-red-400" />
-                            <span className="font-medium">Needed:</span>
-                            <span className="text-white">{formatDate(request.needed_by)}</span>
-                          </div>
-                        )}
-                      </div>
 
                       {/* Tags */}
                       {request.tags && request.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          {request.tags.slice(0, 3).map((tag, tagIndex) => (
-                            <span key={tagIndex} className="inline-flex items-center text-xs bg-navy-700 text-yellow-300 px-2 py-1 rounded border border-navy-600">
+                        <div className="flex flex-wrap gap-1.5 mb-3 sm:mb-4">
+                          {request.tags.slice(0, 4).map((tag, tagIndex) => (
+                            <span key={tagIndex} className="inline-flex items-center text-[10px] sm:text-xs bg-navy-700 text-yellow-300 px-2 py-1 rounded-md border border-navy-600">
                               <Tag className="h-3 w-3 mr-1" />
                               {tag}
                             </span>
                           ))}
-                          {request.tags.length > 3 && (
-                            <span className="text-xs text-yellow-300">+{request.tags.length - 3}</span>
+                          {request.tags.length > 4 && (
+                            <span className="text-[10px] sm:text-xs text-yellow-300 font-medium">+{request.tags.length - 4} more</span>
                           )}
                         </div>
                       )}
 
                       {/* Matching Score */}
-                      {request.matchingScore !== undefined && (
-                        <div className="mb-3 p-2.5 bg-yellow-900/10 border border-yellow-500/20 rounded-lg">
-                          <div className="flex items-center justify-between mb-1.5">
-                            <span className="text-xs font-medium text-yellow-300">Compatibility</span>
-                            <div className={`badge text-xs border ${getScoreColor(request.matchingScore)}`}>
+                      {request.matchingScore !== undefined && request.matchingScore > 0 && (
+                        <div className="p-3 sm:p-4 bg-gradient-to-r from-yellow-900/10 to-yellow-800/10 border-2 border-yellow-500/30 rounded-lg">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs sm:text-sm font-semibold text-yellow-300">🎯 Compatibility Score</span>
+                            <div className={`badge text-xs sm:text-sm font-bold border-2 ${getScoreColor(request.matchingScore)}`}>
                               {Math.round(request.matchingScore * 100)}%
                             </div>
                           </div>
                           
-                          {request.matchingScore > 0 && (
-                            <div className="text-xs text-yellow-300">
-                              💡 {request.matchReason}
-                            </div>
-                          )}
+                          <div className="text-xs sm:text-sm text-yellow-200 mb-2">
+                            💡 {request.matchReason}
+                          </div>
                           
                           {request.bestMatchingDonation && (
-                            <div className="mt-1.5 p-2 bg-navy-800 border border-yellow-500/20 rounded text-xs">
-                              <div className="text-yellow-300">Match: <span className="text-white font-semibold">{request.bestMatchingDonation.title}</span></div>
+                            <div className="p-2 sm:p-3 bg-navy-800/50 border border-yellow-500/30 rounded-lg">
+                              <div className="text-xs sm:text-sm text-yellow-300">Your matching donation: <span className="text-white font-bold">{request.bestMatchingDonation.title}</span></div>
                             </div>
                           )}
                         </div>
@@ -595,95 +610,97 @@ const BrowseRequestsPage = () => {
         {/* Request Details Modal */}
         <AnimatePresence>
           {showDetailsModal && selectedRequest && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.2 }}
-                className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+                className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
               >
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-500/10 rounded-lg">
-                      <Heart className="h-6 w-6 text-yellow-400" />
+                <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                    <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                      <Heart className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
                     </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">Request Details</h3>
-                      <p className="text-xs text-yellow-300">Complete information</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">Request Details</h3>
+                      <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                     <button
                       onClick={() => handleViewProfile(selectedRequest)}
-                      className="text-yellow-400 hover:text-yellow-300 transition-colors p-2 rounded-lg hover:bg-navy-800"
+                      className="text-yellow-400 hover:text-yellow-300 transition-colors p-1.5 sm:p-2 rounded-lg hover:bg-navy-800 active:scale-95"
                       title="View requester profile"
                     >
-                      <Eye className="h-5 w-5" />
+                      <Eye className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                     <button
                       onClick={() => setShowDetailsModal(false)}
-                      className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                      className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg active:scale-95"
+                      aria-label="Close modal"
                     >
-                      <X className="h-5 w-5" />
+                      <X className="h-4 w-4 sm:h-5 sm:w-5" />
                     </button>
                   </div>
                 </div>
 
                 {/* Content with Custom Scrollbar */}
-                <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-                  <div className="space-y-6">
+                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 custom-scrollbar">
+                  <div className="space-y-4 sm:space-y-6">
                     {/* Title and Status */}
-                    <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-start justify-between gap-4 mb-3">
-                        <h4 className="text-2xl font-bold text-white">{selectedRequest.title}</h4>
-                        <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                    <div className="bg-navy-800/50 rounded-lg p-3 sm:p-4 border border-navy-700">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-4 mb-2 sm:mb-3">
+                        <h4 className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{selectedRequest.title}</h4>
+                        <span className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
                           {selectedRequest.category}
                         </span>
                       </div>
-                      <p className="text-gray-300 leading-relaxed">{selectedRequest.description || 'No description provided'}</p>
+                      <p className="text-sm sm:text-base text-gray-300 leading-relaxed">{selectedRequest.description || 'No description provided'}</p>
                     </div>
 
                     {/* Details Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
                         <div className="flex items-center gap-2 mb-2">
-                          <Package className="h-4 w-4 text-blue-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Quantity Needed</label>
+                          <Package className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Quantity Needed</label>
                         </div>
-                        <p className="text-white text-lg font-medium">{selectedRequest.quantity_needed}</p>
+                        <p className="text-white text-base sm:text-lg font-medium">{selectedRequest.quantity_needed}</p>
                       </div>
                       
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
                         <div className="flex items-center gap-2 mb-2">
-                          <User className="h-4 w-4 text-green-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Requested By</label>
+                          <User className="h-4 w-4 text-green-400 flex-shrink-0" />
+                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Requested By</label>
                         </div>
-                        <p className="text-white text-lg font-medium">{selectedRequest.requester?.name || 'Anonymous'}</p>
+                        <p className="text-white text-base sm:text-lg font-medium">{selectedRequest.requester?.name || 'Anonymous'}</p>
                       </div>
                     </div>
 
                     {/* Location */}
-                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
                       <div className="flex items-center gap-2 mb-2">
-                        <MapPin className="h-4 w-4 text-purple-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Location</label>
+                        <MapPin className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                        <label className="text-xs sm:text-sm font-semibold text-yellow-300">Location</label>
                       </div>
-                      <p className="text-white">{selectedRequest.location || 'Not specified'}</p>
+                      <p className="text-sm sm:text-base text-white">{selectedRequest.location || 'Not specified'}</p>
                     </div>
 
                     {/* Contact Information */}
                     {selectedRequest.requester?.phone_number && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
                         <div className="flex items-center gap-2 mb-2">
-                          <Phone className="h-4 w-4 text-green-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Contact</label>
+                          <Phone className="h-4 w-4 text-green-400 flex-shrink-0" />
+                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Contact</label>
                         </div>
                         <a
                           href={`tel:${selectedRequest.requester.phone_number}`}
-                          className="text-yellow-400 hover:text-yellow-300 font-medium"
+                          className="text-sm sm:text-base text-yellow-400 hover:text-yellow-300 font-medium flex items-center gap-2"
                         >
+                          <Phone className="h-3.5 w-3.5" />
                           {selectedRequest.requester.phone_number}
                         </a>
                       </div>
@@ -751,122 +768,188 @@ const BrowseRequestsPage = () => {
         {/* Profile Modal */}
         <AnimatePresence>
           {showProfileModal && selectedRequest && (
-            <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.2 }}
-                className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-lg w-full max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
                 {/* Header */}
-                <div className="flex justify-between items-start mb-6">
-                  <h3 className="text-xl font-bold text-white">Requester Profile</h3>
+                <div className="flex justify-between items-center mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-yellow-500/20">
+                  <div className="flex items-center gap-2 sm:gap-3">
+                    <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg">
+                      <User className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400" />
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-bold text-white">Requester Profile</h3>
+                  </div>
                   <button
                     onClick={() => setShowProfileModal(false)}
-                    className="text-gray-400 hover:text-white transition-colors"
+                    className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg"
+                    aria-label="Close profile modal"
                   >
-                    <X className="h-6 w-6" />
+                    <X className="h-5 w-5 sm:h-6 sm:w-6" />
                   </button>
                 </div>
 
                 {/* Profile Content */}
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {loadingProfile ? (
-                    <div className="flex justify-center py-8">
-                      <LoadingSpinner />
+                    <div className="flex flex-col items-center justify-center py-8 sm:py-12">
+                      <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-yellow-400 mb-3"></div>
+                      <p className="text-yellow-300 text-sm">Loading profile...</p>
                     </div>
                   ) : (
                     <>
                       {/* Profile Header */}
-                      <div className="flex items-start space-x-4">
+                      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4">
                         <div className="flex-shrink-0">
                           {selectedRequest.requester?.profile_image_url ? (
                             <img 
                               src={selectedRequest.requester.profile_image_url} 
                               alt={selectedRequest.requester?.name || 'User'}
-                              className="h-20 w-20 rounded-full object-cover border-2 border-yellow-500"
+                              className="h-20 w-20 sm:h-24 sm:w-24 rounded-full object-cover border-2 border-yellow-500 shadow-lg"
                             />
                           ) : (
-                            <div className="h-20 w-20 rounded-full bg-navy-700 flex items-center justify-center">
-                              <User className="h-10 w-10 text-yellow-400" />
+                            <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-navy-700 flex items-center justify-center border-2 border-yellow-500/30 shadow-lg">
+                              <User className="h-10 w-10 sm:h-12 sm:w-12 text-yellow-400" />
                             </div>
                           )}
                         </div>
                         
-                        <div className="flex-grow">
-                          <h4 className="text-white font-medium text-xl">
-                            {selectedRequest.requester?.name || 'Anonymous'}
-                          </h4>
-                          <div className="text-yellow-400 text-sm mt-1">
-                            {selectedRequest.requester?.role && (
-                              <span className="inline-flex items-center bg-yellow-900/30 px-2 py-1 rounded text-xs mr-2">
-                                {selectedRequest.requester.role.charAt(0).toUpperCase() + selectedRequest.requester.role.slice(1)}
-                              </span>
-                            )}
-                            <span>Member since {selectedRequest.requester?.created_at ? 
-                              new Date(selectedRequest.requester.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short' }) : 
-                              'Unknown'}
+                        <div className="flex-grow text-center sm:text-left">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                            <h4 className="text-white font-bold text-lg sm:text-xl">
+                              {selectedRequest.requester?.name || selectedRequest.requester?.full_name || 'Anonymous'}
+                            </h4>
+                            <div className="flex justify-center sm:justify-end">
+                              <IDVerificationBadge
+                                idStatus={selectedRequest.requester?.id_verification_status}
+                                hasIdUploaded={selectedRequest.requester?.primary_id_type && selectedRequest.requester?.primary_id_number}
+                                size="sm"
+                                showText={true}
+                                showDescription={false}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs sm:text-sm">
+                            <span className="text-yellow-400 flex items-center gap-1">
+                              <Calendar className="h-3.5 w-3.5" />
+                              {(() => {
+                                const memberDate = selectedRequest.requester?.created_at || 
+                                                   selectedRequest.requester?.user_created_at ||
+                                                   selectedRequest.requester?.joined_at ||
+                                                   selectedRequest.requester?.signup_date;
+                                if (memberDate) {
+                                  try {
+                                    const date = new Date(memberDate);
+                                    if (!isNaN(date.getTime())) {
+                                      return `Member since ${date.toLocaleDateString('en-US', { 
+                                        year: 'numeric', 
+                                        month: 'long', 
+                                        day: 'numeric' 
+                                      })}`;
+                                    }
+                                  } catch (e) {
+                                    console.error('Error parsing date:', e);
+                                  }
+                                }
+                                return 'New member';
+                              })()}
                             </span>
                           </div>
                         </div>
                       </div>
 
                       {/* Contact Information */}
-                      <div>
-                        <h5 className="text-white font-medium mb-3">Contact Information</h5>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-yellow-400">Phone:</span>
-                            {selectedRequest.requester?.phone_number ? (
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
+                        <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
+                          <Phone className="h-4 w-4 text-yellow-400" />
+                          Contact Information
+                        </h5>
+                        <div className="space-y-3 text-sm">
+                          <div className="flex items-start justify-between gap-4">
+                            <span className="text-yellow-400 font-medium">Phone:</span>
+                            {selectedRequest.requester?.phone_number || selectedRequest.requester?.phone ? (
                               <a
-                                href={`tel:${selectedRequest.requester.phone_number}`}
-                                className="text-white hover:text-yellow-300"
+                                href={`tel:${selectedRequest.requester.phone_number || selectedRequest.requester.phone}`}
+                                className="text-white hover:text-yellow-300 transition-colors flex items-center gap-1"
                               >
-                                {selectedRequest.requester.phone_number}
+                                <Phone className="h-3.5 w-3.5" />
+                                {selectedRequest.requester.phone_number || selectedRequest.requester.phone}
                               </a>
                             ) : (
-                              <span className="text-gray-400">Not provided</span>
+                              <span className="text-gray-400 italic">Not provided</span>
                             )}
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-yellow-400">Email:</span>
+                          <div className="flex items-start justify-between gap-4">
+                            <span className="text-yellow-400 font-medium">Email:</span>
                             {selectedRequest.requester?.email ? (
                               <a
                                 href={`mailto:${selectedRequest.requester.email}`}
-                                className="text-white hover:text-yellow-300 truncate"
+                                className="text-white hover:text-yellow-300 transition-colors break-all text-right"
                               >
                                 {selectedRequest.requester.email}
                               </a>
                             ) : (
-                              <span className="text-gray-400">Not provided</span>
+                              <span className="text-gray-400 italic">Not provided</span>
                             )}
                           </div>
                         </div>
                       </div>
 
                       {/* Location Information */}
-                      <div>
-                        <h5 className="text-white font-medium mb-3">Location</h5>
-                        <div className="space-y-2 text-sm">
-                          <div className="flex justify-between">
-                            <span className="text-yellow-400">City:</span>
-                            <span className="text-white">
-                              {selectedRequest.requester?.city || 'Not specified'}
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
+                        <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-yellow-400" />
+                          Location Information
+                        </h5>
+                        <div className="space-y-3 text-sm">
+                          <div className="flex items-start justify-between gap-4">
+                            <span className="text-yellow-400 font-medium">City:</span>
+                            <span className="text-white text-right">
+                              {selectedRequest.requester?.city ? (
+                                selectedRequest.requester.city
+                              ) : (
+                                <span className="text-gray-400 italic">Not specified</span>
+                              )}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-yellow-400">Province:</span>
-                            <span className="text-white">
-                              {selectedRequest.requester?.province || 'Not specified'}
+                          <div className="flex items-start justify-between gap-4">
+                            <span className="text-yellow-400 font-medium">Province:</span>
+                            <span className="text-white text-right">
+                              {selectedRequest.requester?.province ? (
+                                selectedRequest.requester.province
+                              ) : (
+                                <span className="text-gray-400 italic">Not specified</span>
+                              )}
                             </span>
                           </div>
                           {selectedRequest.requester?.address && (
-                            <div className="flex justify-between">
-                              <span className="text-yellow-400">Address:</span>
-                              <span className="text-white text-right">
+                            <div className="flex items-start justify-between gap-4">
+                              <span className="text-yellow-400 font-medium">Address:</span>
+                              <span className="text-white text-right leading-relaxed">
                                 {selectedRequest.requester.address}
                               </span>
+                            </div>
+                          )}
+                          {selectedRequest.requester?.address_barangay && (
+                            <div className="flex items-start justify-between gap-4">
+                              <span className="text-yellow-400 font-medium">Barangay:</span>
+                              <span className="text-white text-right">
+                                {selectedRequest.requester.address_barangay}
+                              </span>
+                            </div>
+                          )}
+                          {(selectedRequest.requester?.city || selectedRequest.requester?.province) && (
+                            <div className="pt-2 border-t border-yellow-500/20">
+                              <div className="flex items-center gap-2 text-yellow-300">
+                                <MapPin className="h-3.5 w-3.5" />
+                                <span>
+                                  {[selectedRequest.requester?.city, selectedRequest.requester?.province].filter(Boolean).join(', ')}
+                                </span>
+                              </div>
                             </div>
                           )}
                         </div>
@@ -874,21 +957,27 @@ const BrowseRequestsPage = () => {
 
                       {/* Recipient-specific information */}
                       {selectedRequest.requester?.role === 'recipient' && (
-                        <div>
-                          <h5 className="text-white font-medium mb-3">Recipient Details</h5>
-                          <div className="space-y-2 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-yellow-400">Household Size:</span>
+                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
+                            <Heart className="h-4 w-4 text-yellow-400" />
+                            Recipient Details
+                          </h5>
+                          <div className="space-y-3 text-sm">
+                            <div className="flex items-start justify-between gap-4">
+                              <span className="text-yellow-400 font-medium">Household Size:</span>
                               <span className="text-white">
-                                {selectedRequest.requester?.household_size || 'Not specified'}
+                                {selectedRequest.requester?.household_size ? 
+                                  `${selectedRequest.requester.household_size} ${selectedRequest.requester.household_size === 1 ? 'person' : 'people'}` : 
+                                  <span className="text-gray-400 italic">Not specified</span>
+                                }
                               </span>
                             </div>
                             {selectedRequest.requester?.assistance_needs?.length > 0 && (
                               <div>
-                                <span className="text-yellow-400 block mb-2">Assistance Needs:</span>
-                                <div className="flex flex-wrap gap-1">
+                                <span className="text-yellow-400 font-medium block mb-2">Assistance Needs:</span>
+                                <div className="flex flex-wrap gap-2">
                                   {selectedRequest.requester.assistance_needs.map((need, i) => (
-                                    <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded text-yellow-300">
+                                    <span key={i} className="bg-navy-700 text-xs px-3 py-1.5 rounded-full text-yellow-300 border border-yellow-500/30 font-medium">
                                       {need}
                                     </span>
                                   ))}
@@ -901,9 +990,12 @@ const BrowseRequestsPage = () => {
 
                       {/* Bio/About */}
                       {selectedRequest.requester?.bio && (
-                        <div>
-                          <h5 className="text-white font-medium mb-3">About</h5>
-                          <p className="text-yellow-300 text-sm leading-relaxed">
+                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
+                            <MessageSquare className="h-4 w-4 text-yellow-400" />
+                            About
+                          </h5>
+                          <p className="text-yellow-200 text-sm leading-relaxed">
                             {selectedRequest.requester.bio}
                           </p>
                         </div>

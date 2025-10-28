@@ -118,19 +118,20 @@ const ProfileCompletionPrompt = () => {
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
-      className="rounded-lg p-4 mb-6 border border-gray-600"
+      className="rounded-lg p-4 sm:p-5 mb-6 border-2 border-yellow-500/30 shadow-lg"
       style={{ backgroundColor: '#001a5c' }}
     >
       <div className="flex items-start space-x-3">
-        <div className="flex-shrink-0">
-          <AlertCircle className="h-5 w-5 text-yellow-300 mt-0.5" />
+        <div className="flex-shrink-0 mt-1">
+          <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between mb-2">
-            <h3 className="text-sm font-medium text-white">
+          {/* Header Section - Responsive */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-3">
+            <h3 className="text-sm sm:text-base font-semibold text-white">
               Complete Your Profile for Verification
             </h3>
-            <div className="flex items-center space-x-2">
+            <div className="flex items-center gap-2 flex-wrap">
               {/* ID Verification Status */}
               <IDVerificationBadge
                 idStatus={profile.id_verification_status}
@@ -139,32 +140,32 @@ const ProfileCompletionPrompt = () => {
                 showText={true}
                 showDescription={false}
               />
-              <span className="text-xs text-yellow-300 bg-navy-800 px-2 py-1 rounded-full">
+              <span className="text-xs font-medium text-yellow-300 bg-navy-800 px-2.5 py-1 rounded-full whitespace-nowrap">
                 {completionPercentage}% Complete
               </span>
             </div>
           </div>
           
-          <p className="text-xs text-yellow-200 mb-3">
+          <p className="text-xs sm:text-sm text-yellow-200 mb-3 leading-relaxed">
             Complete your profile to gain trust from the community and access all features. 
             Verified profiles are prioritized for {profile.role === 'donor' ? 'donation requests' : 
             profile.role === 'recipient' ? 'receiving donations' : 'volunteer opportunities'}.
           </p>
 
           {missingFields.length > 0 && (
-            <div className="mb-3">
-              <p className="text-xs font-medium text-yellow-200 mb-1">Missing Information:</p>
-              <div className="flex flex-wrap gap-1">
+            <div className="mb-4">
+              <p className="text-xs sm:text-sm font-medium text-yellow-200 mb-2">Missing Information:</p>
+              <div className="flex flex-wrap gap-1.5">
                 {missingFields.slice(0, 4).map((field, index) => (
                   <span
                     key={index}
-                    className="inline-flex items-center px-2 py-1 text-xs bg-navy-800 text-yellow-200 rounded"
+                    className="inline-flex items-center px-2.5 py-1 text-xs bg-navy-800 text-yellow-200 rounded-md border border-navy-700"
                   >
                     {field}
                   </span>
                 ))}
                 {missingFields.length > 4 && (
-                  <span className="inline-flex items-center px-2 py-1 text-xs bg-navy-800 text-yellow-200 rounded">
+                  <span className="inline-flex items-center px-2.5 py-1 text-xs bg-navy-800 text-yellow-200 rounded-md border border-navy-700 font-medium">
                     +{missingFields.length - 4} more
                   </span>
                 )}
@@ -172,24 +173,25 @@ const ProfileCompletionPrompt = () => {
             </div>
           )}
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <div className="w-20 bg-navy-800 rounded-full h-2">
+          {/* Progress Bar and Action Button - Responsive */}
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center space-x-3 flex-1">
+              <div className="flex-1 max-w-[200px] bg-navy-800 rounded-full h-2.5">
                 <div
-                  className="bg-yellow-400 h-2 rounded-full transition-all duration-300"
+                  className="bg-gradient-to-r from-yellow-400 to-yellow-500 h-2.5 rounded-full transition-all duration-300 shadow-sm"
                   style={{ width: `${completionPercentage}%` }}
                 />
               </div>
-              <span className="text-xs text-yellow-300">{completionPercentage}%</span>
+              <span className="text-xs sm:text-sm font-semibold text-yellow-300 whitespace-nowrap">{completionPercentage}%</span>
             </div>
             
             <Link
               to="/profile"
-              className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-navy-950 bg-yellow-500 hover:bg-yellow-600 rounded-md transition-colors duration-200"
+              className="inline-flex items-center justify-center px-4 py-2 text-xs sm:text-sm font-semibold text-navy-950 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 rounded-lg transition-all duration-200 shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
             >
-              <Settings className="h-3 w-3 mr-1" />
+              <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5" />
               Complete Profile
-              <ArrowRight className="h-3 w-3 ml-1" />
+              <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 ml-1.5" />
             </Link>
           </div>
         </div>

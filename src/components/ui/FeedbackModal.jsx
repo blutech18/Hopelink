@@ -118,42 +118,43 @@ const FeedbackModal = ({ isOpen, onClose }) => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.95 }}
           transition={{ duration: 0.2 }}
-          className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+          className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
         >
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="p-2 bg-yellow-500/10 rounded-lg">
-                <RoleIcon className="h-6 w-6 text-yellow-400" />
+          <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+              <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                <RoleIcon className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
               </div>
-              <div>
-                <h3 className="text-xl font-bold text-white">{getRoleTitle()}</h3>
-                <p className="text-xs text-yellow-300">{getRoleDescription()}</p>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">{getRoleTitle()}</h3>
+                <p className="text-[10px] sm:text-xs text-yellow-300">{getRoleDescription()}</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+              className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg flex-shrink-0 ml-2"
+              aria-label="Close feedback modal"
             >
-              <X className="h-5 w-5" />
+              <X className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
 
           {/* Content */}
-          <div className="flex-1 overflow-y-auto p-6 custom-scrollbar">
-            <form onSubmit={handleSubmit} className="space-y-6">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 custom-scrollbar">
+            <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
               {/* Overall Rating */}
-              <div className="bg-navy-800/50 rounded-lg p-5 border border-yellow-400/20">
-                <label className="block text-sm font-medium text-white mb-4 text-center">
+              <div className="bg-navy-800/50 rounded-lg p-4 sm:p-5 border border-yellow-400/20">
+                <label className="block text-xs sm:text-sm font-medium text-white mb-3 sm:mb-4 text-center">
                   Overall Experience Rating *
                 </label>
-                <div className="flex items-center justify-center gap-3 mb-3">
+                <div className="flex items-center justify-center gap-2 sm:gap-3 mb-3">
                   {[1, 2, 3, 4, 5].map((star) => (
                     <button
                       key={star}
@@ -161,10 +162,10 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                       onClick={() => setRating(star)}
                       onMouseEnter={() => setHoveredRating(star)}
                       onMouseLeave={() => setHoveredRating(0)}
-                      className="transition-all hover:scale-125 focus:outline-none focus:ring-2 focus:ring-yellow-400 rounded-full p-1"
+                      className="transition-all hover:scale-110 sm:hover:scale-125 focus:outline-none focus:ring-2 focus:ring-yellow-400 rounded-full p-0.5 sm:p-1 active:scale-95"
                     >
                       <Star
-                        className={`h-12 w-12 ${
+                        className={`h-8 w-8 sm:h-10 sm:w-10 lg:h-12 lg:w-12 ${
                           star <= (hoveredRating || rating)
                             ? 'text-yellow-400 fill-yellow-400 drop-shadow-lg'
                             : 'text-gray-600 hover:text-gray-500'
@@ -173,25 +174,25 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                     </button>
                   ))}
                 </div>
-                <p className="text-center text-sm font-semibold text-yellow-300">
+                <p className="text-center text-xs sm:text-sm font-semibold text-yellow-300">
                   {getRatingLabel(hoveredRating || rating)}
                 </p>
               </div>
 
               {/* Role-Specific Questions */}
               {roleQuestions.length > 0 && (
-                <div className="bg-navy-800/30 rounded-lg p-5 border border-yellow-400/10 space-y-5">
-                  <h4 className="text-sm font-semibold text-white text-center border-b border-yellow-400/20 pb-3">
+                <div className="bg-navy-800/30 rounded-lg p-3 sm:p-5 border border-yellow-400/10 space-y-3 sm:space-y-5">
+                  <h4 className="text-xs sm:text-sm font-semibold text-white text-center border-b border-yellow-400/20 pb-2 sm:pb-3">
                     {profile?.role === 'donor' && '📦 Donation Experience Details'}
                     {profile?.role === 'recipient' && '🎁 Receiving Experience Details'}
                     {profile?.role === 'volunteer' && '🚚 Delivery Experience Details'}
                   </h4>
                   {roleQuestions.map((question, index) => (
-                    <div key={question.id} className="bg-navy-900/50 rounded-lg p-4 border border-navy-700">
-                      <label className="block text-sm font-medium text-gray-200 mb-3">
+                    <div key={question.id} className="bg-navy-900/50 rounded-lg p-3 sm:p-4 border border-navy-700">
+                      <label className="block text-xs sm:text-sm font-medium text-gray-200 mb-2 sm:mb-3">
                         {index + 1}. {question.label}
                       </label>
-                      <div className="flex items-center justify-center gap-2">
+                      <div className="flex items-center justify-center gap-1.5 sm:gap-2">
                         {[1, 2, 3, 4, 5].map((star) => (
                           <button
                             key={star}
@@ -200,10 +201,10 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                               ...roleSpecificAnswers,
                               [question.id]: star
                             })}
-                            className="transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 rounded-full p-0.5"
+                            className="transition-all hover:scale-110 focus:outline-none focus:ring-2 focus:ring-yellow-400/50 rounded-full p-0.5 active:scale-95"
                           >
                             <Star
-                              className={`h-8 w-8 ${
+                              className={`h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 ${
                                 star <= (roleSpecificAnswers[question.id] || 0)
                                   ? 'text-yellow-400 fill-yellow-400'
                                   : 'text-gray-600 hover:text-gray-500'
@@ -212,10 +213,10 @@ const FeedbackModal = ({ isOpen, onClose }) => {
                           </button>
                         ))}
                       </div>
-                      <p className="text-center text-xs text-gray-400 mt-2">
+                      <p className="text-center text-[10px] sm:text-xs text-gray-400 mt-2">
                         {roleSpecificAnswers[question.id] 
                           ? `Rating: ${roleSpecificAnswers[question.id]}/5` 
-                          : 'Click to rate'}
+                          : 'Tap to rate'}
                       </p>
                     </div>
                   ))}
@@ -224,50 +225,55 @@ const FeedbackModal = ({ isOpen, onClose }) => {
 
               {/* Feedback Text */}
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label className="block text-xs sm:text-sm font-medium text-white mb-2">
                   Tell us about your experience *
                 </label>
                 <textarea
                   value={feedbackText}
                   onChange={(e) => setFeedbackText(e.target.value)}
                   maxLength={500}
-                  className="input h-32 resize-none"
+                  className="input h-28 sm:h-32 resize-none text-sm"
                   placeholder="What did you like? What could we improve? Any suggestions?"
                   required
                 />
-                <p className="text-xs text-gray-400 mt-1">
+                <p className="text-[10px] sm:text-xs text-gray-400 mt-1">
                   {feedbackText.length} / 500 characters
                 </p>
               </div>
 
               {/* Info Box */}
-              <div className="bg-yellow-900/20 border border-yellow-400/30 rounded-lg p-4">
-                <p className="text-yellow-300 text-xs leading-relaxed">
-                  Your feedback helps us improve HopeLink for everyone. Thank you for taking the time to share your thoughts!
+              <div className="bg-yellow-900/20 border border-yellow-400/30 rounded-lg p-3 sm:p-4">
+                <p className="text-yellow-300 text-[10px] sm:text-xs leading-relaxed">
+                  💡 Your feedback helps us improve HopeLink for everyone. Thank you for taking the time to share your thoughts!
                 </p>
               </div>
             </form>
           </div>
 
           {/* Footer */}
-          <div className="flex items-center justify-end gap-3 p-6 border-t-2 border-yellow-500/20 flex-shrink-0">
+          <div className="flex flex-col-reverse sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3 p-4 sm:p-6 border-t-2 border-yellow-500/20 flex-shrink-0">
             <button
               onClick={onClose}
-              className="px-5 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors font-medium border border-navy-600"
+              type="button"
+              className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors text-sm sm:text-base font-medium border border-navy-600 active:scale-95"
             >
               Cancel
             </button>
             <button
               onClick={handleSubmit}
+              type="submit"
               disabled={submitting || rating === 0 || !feedbackText.trim()}
-              className="px-5 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center gap-2 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full sm:w-auto px-4 sm:px-5 py-2.5 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg transition-all flex items-center justify-center gap-2 text-sm sm:text-base font-semibold disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg active:scale-95"
             >
               {submitting ? (
-                <LoadingSpinner size="sm" />
+                <>
+                  <LoadingSpinner size="sm" />
+                  <span>Submitting...</span>
+                </>
               ) : (
                 <>
                   <Send className="h-4 w-4" />
-                  Submit Feedback
+                  <span>Submit Feedback</span>
                 </>
               )}
             </button>

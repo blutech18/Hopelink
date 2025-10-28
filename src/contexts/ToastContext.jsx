@@ -56,30 +56,31 @@ const Toast = React.forwardRef(({ toast, onRemove }, ref) => {
       initial={{ opacity: 0, x: 300, scale: 0.9 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 300, scale: 0.9, transition: { duration: 0.3 } }}
-      className={`min-w-80 max-w-md w-full border rounded-lg shadow-lg p-4 ${bgColors[toast.type]} ${leftBorderColors[toast.type]}`}
+      className={`w-full max-w-xs sm:min-w-80 sm:max-w-md border rounded-lg shadow-lg p-3 sm:p-4 ${bgColors[toast.type]} ${leftBorderColors[toast.type]}`}
     >
-      <div className="flex items-start space-x-3">
+      <div className="flex items-start space-x-2 sm:space-x-3">
         <div className="flex-shrink-0 mt-0.5">
-          <Icon className={`h-5 w-5 ${iconColors[toast.type]}`} />
+          <Icon className={`h-4 w-4 sm:h-5 sm:w-5 ${iconColors[toast.type]}`} />
         </div>
         <div className="flex-1 min-w-0">
           {toast.title && (
-            <p className={`text-sm font-medium ${textColors[toast.type]} leading-snug`}>
+            <p className={`text-xs sm:text-sm font-medium ${textColors[toast.type]} leading-snug`}>
               {toast.title}
             </p>
           )}
           {toast.message && (
-            <p className={`text-sm ${toast.title ? 'mt-1' : ''} ${textColors[toast.type]} leading-normal opacity-90`}>
+            <p className={`text-xs sm:text-sm ${toast.title ? 'mt-0.5 sm:mt-1' : ''} ${textColors[toast.type]} leading-normal opacity-90`}>
               {toast.message}
             </p>
           )}
         </div>
         <div className="flex-shrink-0">
           <button
-            className={`rounded p-1 hover:bg-navy-800 transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-yellow-400 ${textColors[toast.type]} opacity-70 hover:opacity-100`}
+            className={`rounded p-0.5 sm:p-1 hover:bg-navy-800 transition-colors duration-200 focus:outline-none focus:ring-1 focus:ring-yellow-400 ${textColors[toast.type]} opacity-70 hover:opacity-100`}
             onClick={() => onRemove(toast.id)}
+            aria-label="Close notification"
           >
-            <X className="h-4 w-4" />
+            <X className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
           </button>
         </div>
       </div>
@@ -180,7 +181,7 @@ export const ToastProvider = ({ children }) => {
       {children}
       
       {/* Toast Container */}
-      <div className="fixed top-4 right-4 z-50 space-y-2">
+      <div className="fixed top-20 right-3 left-auto sm:top-4 sm:right-4 z-50 space-y-2 max-w-xs sm:max-w-md">
         <AnimatePresence mode="popLayout">
           {toasts.map((toast) => (
             <Toast

@@ -5,13 +5,13 @@ const TermsContent = () => {
     <div className="space-y-8">
       {/* Terms of Service Section */}
       <div>
-        <h2 className="text-2xl font-bold text-white mb-6 border-b border-navy-700 pb-3">
+        <h2 className="text-2xl font-bold text-yellow-400 mb-6 border-b border-yellow-700 pb-3">
           Terms of Service
         </h2>
         
         <div className="space-y-6">
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">1. Acceptance of Terms</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">1. Acceptance of Terms</h4>
             <p className="mb-3">
               By creating an account and using HopeLink, you acknowledge that you have read, 
               understood, and agree to be bound by these Terms of Service and our Privacy Policy. 
@@ -20,33 +20,33 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">2. User Responsibilities</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">2. User Responsibilities</h4>
             <p className="mb-2">All users are expected to:</p>
-            <ul className="list-disc list-inside ml-4 space-y-1">
+            <ul className="list-disc ml-4 space-y-1.5">
               <li>Provide accurate and truthful information</li>
               <li>Respect other community members</li>
               <li>Use the platform in good faith to help those in need</li>
               <li>Follow all applicable local, state, and federal laws</li>
             </ul>
 
-            <p className="mt-3"><strong>Donors:</strong></p>
-            <ul className="list-disc list-inside ml-4 space-y-1">
+            <p className="mt-3 font-semibold text-yellow-300">Donors:</p>
+            <ul className="list-disc ml-4 space-y-1.5">
               <li>Ensure donated items are safe, clean, and in good condition</li>
               <li>Provide accurate descriptions and photos of items</li>
               <li>Be available for pickup arrangements as committed</li>
               <li>Communicate promptly with recipients and volunteers</li>
             </ul>
 
-            <p className="mt-3"><strong>Recipients:</strong></p>
-            <ul className="list-disc list-inside ml-4 space-y-1">
+            <p className="mt-3 font-semibold text-yellow-300">Recipients:</p>
+            <ul className="list-disc ml-4 space-y-1.5">
               <li>Only request items that are genuinely needed</li>
               <li>Be available to receive donations as scheduled</li>
               <li>Express gratitude and provide feedback when appropriate</li>
               <li>Use received items for their intended purpose</li>
             </ul>
 
-            <p className="mt-3"><strong>Volunteers:</strong></p>
-            <ul className="list-disc list-inside ml-4 space-y-1">
+            <p className="mt-3 font-semibold text-yellow-300">Volunteers:</p>
+            <ul className="list-disc ml-4 space-y-1.5">
               <li>Deliver items safely and on time</li>
               <li>Handle all items with care and respect</li>
               <li>Maintain confidentiality of pickup and delivery addresses</li>
@@ -55,9 +55,9 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">3. Prohibited Activities</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">3. Prohibited Activities</h4>
             <p className="mb-2">Users are strictly prohibited from:</p>
-            <ul className="list-disc list-inside ml-4 space-y-1">
+            <ul className="list-disc ml-4 space-y-1.5">
               <li>Selling or monetizing donations that should be given freely</li>
               <li>Posting false, misleading, or fraudulent information</li>
               <li>Using the platform for commercial or business purposes (unless authorized)</li>
@@ -69,11 +69,11 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">4. Platform Responsibilities and Limitations</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">4. Platform Responsibilities and Limitations</h4>
             <p className="mb-3">
               HopeLink serves as a facilitating platform and is not responsible for:
             </p>
-            <ul className="list-disc list-inside ml-4 space-y-1">
+            <ul className="list-disc ml-4 space-y-1.5">
               <li>The quality, safety, or condition of donated items</li>
               <li>Failed deliveries or scheduling conflicts between users</li>
               <li>Loss, damage, or theft of items during transit</li>
@@ -87,7 +87,7 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">5. Account Management</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">5. Account Management</h4>
             <p className="mb-3">
               HopeLink reserves the right to suspend or terminate user accounts that violate these 
               terms or engage in behavior harmful to the community. Users may delete their accounts 
@@ -96,7 +96,7 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">6. Intellectual Property</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">6. Intellectual Property</h4>
             <p className="mb-3">
               The HopeLink platform, including its design, features, and content, is owned by HopeLink 
               and protected by intellectual property laws. Users retain ownership of content they post 
@@ -105,7 +105,7 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">7. Liability Limitations</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">7. Liability Limitations</h4>
             <p className="mb-3">
               To the fullest extent permitted by law, HopeLink shall not be liable for any indirect, 
               incidental, special, consequential, or punitive damages arising from your use of the platform. 
@@ -114,7 +114,7 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">8. Modifications to Terms</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">8. Modifications to Terms</h4>
             <p className="mb-3">
               HopeLink may update these Terms of Service from time to time. Users will be notified 
               of significant changes, and continued use of the platform constitutes acceptance of 
@@ -123,7 +123,7 @@ const TermsContent = () => {
           </section>
 
           <section>
-            <h4 className="text-lg font-semibold text-white mb-3">9. Governing Law</h4>
+            <h4 className="text-base sm:text-lg font-semibold text-yellow-400 mb-2 sm:mb-3">9. Governing Law</h4>
             <p className="mb-3">
               These Terms of Service are governed by the laws of the Republic of the Philippines. 
               Any disputes will be resolved in the appropriate courts of Misamis Oriental, Philippines.
@@ -134,7 +134,7 @@ const TermsContent = () => {
 
       {/* Privacy Policy Section */}
       <div>
-        <h2 className="text-2xl font-bold text-white mb-6 border-b border-navy-700 pb-3">
+        <h2 className="text-xl sm:text-2xl font-bold text-yellow-400 mb-4 sm:mb-6 border-b-2 border-yellow-500/20 pb-3">
           Privacy Policy
         </h2>
         
@@ -142,23 +142,23 @@ const TermsContent = () => {
           <section>
             <h4 className="text-lg font-semibold text-white mb-3">1. Information We Collect</h4>
             <div className="space-y-3">
-              <p><strong>Personal Information:</strong></p>
+              <p className="font-semibold text-yellow-300">Personal Information:</p>
               <p>When you create an account, we collect:</p>
-              <ul className="list-disc list-inside ml-4 space-y-1">
+              <ul className="list-disc ml-4 space-y-1.5">
                 <li>Name, email address, phone number, and address</li>
                 <li>Profile information specific to your role (donor, recipient, or volunteer)</li>
                 <li>Communication preferences and settings</li>
               </ul>
 
-              <p className="mt-3"><strong>Role-Specific Information:</strong></p>
-              <ul className="list-disc list-inside ml-4 space-y-1">
-                <li><strong>Donors:</strong> Donation types, organization details (if applicable), bio</li>
-                <li><strong>Recipients:</strong> Household size, assistance needs, emergency contacts</li>
-                <li><strong>Volunteers:</strong> Vehicle information, availability, experience, background check consent</li>
+              <p className="mt-3 font-semibold text-yellow-300">Role-Specific Information:</p>
+              <ul className="list-disc ml-4 space-y-1.5">
+                <li><span className="font-semibold text-yellow-300">Donors:</span> Donation types, organization details (if applicable), bio</li>
+                <li><span className="font-semibold text-yellow-300">Recipients:</span> Household size, assistance needs, emergency contacts</li>
+                <li><span className="font-semibold text-yellow-300">Volunteers:</span> Vehicle information, availability, experience, background check consent</li>
               </ul>
 
-              <p className="mt-3"><strong>Usage Information:</strong></p>
-              <ul className="list-disc list-inside ml-4 space-y-1">
+              <p className="mt-3 font-semibold text-yellow-300">Usage Information:</p>
+              <ul className="list-disc ml-4 space-y-1.5">
                 <li>Donation posts, requests, and delivery activities</li>
                 <li>Messages and communications between users</li>
                 <li>Platform usage patterns and preferences</li>
@@ -183,16 +183,16 @@ const TermsContent = () => {
           <section>
             <h4 className="text-lg font-semibold text-white mb-3">3. Information Sharing</h4>
             <div className="space-y-3">
-              <p><strong>Within the Platform:</strong></p>
-              <ul className="list-disc list-inside ml-4 space-y-1">
+              <p className="font-semibold text-yellow-300">Within the Platform:</p>
+              <ul className="list-disc ml-4 space-y-1.5">
                 <li>Your profile information is visible to other users as needed for donations and deliveries</li>
                 <li>Contact information is shared only when coordinating specific transactions</li>
                 <li>Donation posts and requests are visible to relevant community members</li>
               </ul>
 
-              <p className="mt-3"><strong>With Third Parties:</strong></p>
+              <p className="mt-3 font-semibold text-yellow-300">With Third Parties:</p>
               <p>We do not sell personal information. We may share information with:</p>
-              <ul className="list-disc list-inside ml-4 space-y-1">
+              <ul className="list-disc ml-4 space-y-1.5">
                 <li>Service providers who help us operate the platform</li>
                 <li>Law enforcement when required by law or to protect safety</li>
                 <li>Emergency contacts (only when explicitly provided and in emergency situations)</li>
@@ -221,12 +221,12 @@ const TermsContent = () => {
             <h4 className="text-lg font-semibold text-white mb-3">5. Your Rights and Choices</h4>
             <p className="mb-3">You have the right to:</p>
             <ul className="list-disc list-inside ml-4 space-y-1">
-              <li><strong>Access:</strong> Request copies of your personal information</li>
-              <li><strong>Correct:</strong> Update or correct inaccurate information</li>
-              <li><strong>Delete:</strong> Request deletion of your account and personal data</li>
-              <li><strong>Restrict:</strong> Limit how we process your information</li>
-              <li><strong>Object:</strong> Opt out of certain types of data processing</li>
-              <li><strong>Portability:</strong> Receive your data in a machine-readable format</li>
+              <li><span className="font-semibold text-yellow-300">Access:</span> Request copies of your personal information</li>
+              <li><span className="font-semibold text-yellow-300">Correct:</span> Update or correct inaccurate information</li>
+              <li><span className="font-semibold text-yellow-300">Delete:</span> Request deletion of your account and personal data</li>
+              <li><span className="font-semibold text-yellow-300">Restrict:</span> Limit how we process your information</li>
+              <li><span className="font-semibold text-yellow-300">Object:</span> Opt out of certain types of data processing</li>
+              <li><span className="font-semibold text-yellow-300">Portability:</span> Receive your data in a machine-readable format</li>
             </ul>
             <p className="mt-3">
               To exercise these rights, contact us at support@hopelink.ph
@@ -253,9 +253,9 @@ const TermsContent = () => {
               We use cookies and similar technologies to improve your experience:
             </p>
             <ul className="list-disc list-inside ml-4 space-y-1">
-              <li><strong>Essential cookies:</strong> Required for platform functionality</li>
-              <li><strong>Analytics cookies:</strong> Help us understand how users interact with the platform</li>
-              <li><strong>Preference cookies:</strong> Remember your settings and preferences</li>
+              <li><span className="font-semibold text-yellow-300">Essential cookies:</span> Required for platform functionality</li>
+              <li><span className="font-semibold text-yellow-300">Analytics cookies:</span> Help us understand how users interact with the platform</li>
+              <li><span className="font-semibold text-yellow-300">Preference cookies:</span> Remember your settings and preferences</li>
             </ul>
             <p className="mt-3">
               You can control cookie settings through your browser, though this may affect platform functionality.
@@ -287,22 +287,6 @@ const TermsContent = () => {
               applicable laws. We will notify users of significant changes through the platform or 
               email. Your continued use of HopeLink after such changes constitutes acceptance of the 
               updated policy.
-            </p>
-          </section>
-
-          <section>
-            <h4 className="text-lg font-semibold text-white mb-3">11. Contact Information</h4>
-            <p className="mb-3">
-              For questions about these Terms of Service or Privacy Policy, please contact us:
-            </p>
-            <div className="ml-4 p-4 bg-navy-800 rounded-lg">
-              <p className="text-white font-medium">HopeLink Support</p>
-              <p className="text-skyblue-300">Email: support@hopelink.ph</p>
-              <p className="text-skyblue-300">Privacy: privacy@hopelink.ph</p>
-              <p className="text-skyblue-300">Address: Cagayan de Oro City, Misamis Oriental, Philippines</p>
-            </div>
-            <p className="mt-3">
-              We will respond to your inquiry within 30 days of receipt.
             </p>
           </section>
         </div>

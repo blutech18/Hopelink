@@ -45,6 +45,7 @@ const ProfilePage = () => {
   const [profileImage, setProfileImage] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [savingImage, setSavingImage] = useState(false)
   const [idImagePreview, setIdImagePreview] = useState(null)
   const [uploadingIdImage, setUploadingIdImage] = useState(false)
   const [secondaryIdImagePreview, setSecondaryIdImagePreview] = useState(null)
@@ -253,7 +254,7 @@ const ProfilePage = () => {
     if (!profileImage) return
 
     try {
-      setUploadingImage(true)
+      setSavingImage(true)
       await updateProfile({ profile_image_url: profileImage })
       success('Profile picture updated successfully!')
       setProfileImage(null) // Clear the pending image
@@ -261,7 +262,7 @@ const ProfilePage = () => {
       console.error('Error updating profile image:', err)
       error('Failed to update profile picture. Please try again.')
     } finally {
-      setUploadingImage(false)
+      setSavingImage(false)
     }
   }
 
@@ -833,70 +834,70 @@ const ProfilePage = () => {
   const RoleIcon = getRoleIcon(profile.role)
 
   return (
-    <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 xl:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-4 sm:mb-6 lg:mb-8"
         >
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4 mb-4">
             <div>
-              <h1 className="text-3xl font-bold text-white mb-2">Profile Settings</h1>
-              <p className="text-yellow-300">Manage your account information and preferences</p>
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-1 sm:mb-2">Profile Settings</h1>
+              <p className="text-sm sm:text-base text-yellow-300">Manage your account information and preferences</p>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
               {/* Profile completion only shown for non-admin users */}
               {profile.role !== 'admin' && (
-                <div className="text-right">
-                  <div className="text-sm text-yellow-300">Profile Completion</div>
-                  <div className="flex items-center space-x-2">
-                    <div className="w-20 bg-navy-800 rounded-full h-2">
+                <div className="w-full sm:w-auto text-left sm:text-right bg-navy-800/50 sm:bg-transparent p-3 sm:p-0 rounded-lg sm:rounded-none border border-navy-700 sm:border-0">
+                  <div className="text-xs sm:text-sm text-yellow-300 mb-1">Profile Completion</div>
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 sm:w-20 bg-navy-700 sm:bg-navy-800 rounded-full h-2">
                       <div
                         className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full transition-all duration-300"
                         style={{ width: `${completionPercentage}%` }}
                       />
                     </div>
-                    <span className="text-sm font-medium text-white">{completionPercentage}%</span>
+                    <span className="text-xs sm:text-sm font-medium text-white">{completionPercentage}%</span>
                   </div>
                 </div>
               )}
               {!isEditing && (
                 <button
                   onClick={() => setIsEditing(true)}
-                  className="btn btn-primary flex items-center"
+                  className="btn btn-primary flex items-center justify-center w-full sm:w-auto text-sm sm:text-base px-4 py-2.5 active:scale-95"
                 >
-                  <Edit3 className="h-4 w-4 mr-2" />
-                  Edit Profile
+                  <Edit3 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                  <span>Edit Profile</span>
                 </button>
               )}
             </div>
           </div>
 
           {/* Role Badge */}
-          <div className="flex items-center space-x-3">
-            <div className={`flex items-center space-x-2 px-3 py-1 rounded-full bg-navy-800 border border-navy-700`}>
-              <RoleIcon className={`h-4 w-4 ${getRoleColor(profile.role)}`} />
-              <span className="text-sm font-medium text-white capitalize">{profile.role}</span>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700`}>
+              <RoleIcon className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${getRoleColor(profile.role)}`} />
+              <span className="text-xs sm:text-sm font-medium text-white capitalize">{profile.role}</span>
             </div>
             {profile.account_type === 'business' && (
-              <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
-                <Building2 className="h-4 w-4 text-yellow-400" />
-                <span className="text-sm font-medium text-white">Business Account</span>
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                <Building2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400" />
+                <span className="text-xs sm:text-sm font-medium text-white">Business Account</span>
               </div>
             )}
             {/* Verification Status Badge */}
             <div className="flex items-center">
               {profile.is_verified ? (
-                <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-green-500/20 border border-green-500/30">
-                  <CheckCircle className="h-4 w-4 text-green-300" />
-                  <span className="text-sm font-medium text-green-300">Verified</span>
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-green-500/20 border border-green-500/30">
+                  <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-300" />
+                  <span className="text-xs sm:text-sm font-medium text-green-300">Verified</span>
                 </div>
               ) : (
-                <div className="flex items-center space-x-2 px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/30">
-                  <AlertCircle className="h-4 w-4 text-orange-300" />
-                  <span className="text-sm font-medium text-orange-300">Unverified</span>
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/30">
+                  <AlertCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-300" />
+                  <span className="text-xs sm:text-sm font-medium text-orange-300">Unverified</span>
                 </div>
               )}
             </div>
@@ -908,17 +909,17 @@ const ProfilePage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="card p-6 mb-8"
+          className="card p-4 sm:p-5 lg:p-6 mb-4 sm:mb-6 lg:mb-8"
         >
-          <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-            <Camera className="h-5 w-5 text-yellow-400 mr-2" />
+          <h2 className="text-lg sm:text-xl font-semibold text-white mb-4 sm:mb-6 flex items-center justify-center sm:justify-start">
+            <Camera className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 mr-2" />
             Profile Picture
           </h2>
 
-          <div className="flex items-start space-x-6">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
             {/* Current Profile Picture */}
             <div className="relative">
-              <div className="w-32 h-32 rounded-full overflow-hidden bg-navy-800 border-4 border-navy-700 flex items-center justify-center">
+              <div className="w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full overflow-hidden bg-navy-800 border-2 sm:border-4 border-navy-700 flex items-center justify-center">
                 {imagePreview ? (
                   <img
                     src={imagePreview}
@@ -926,7 +927,7 @@ const ProfilePage = () => {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <User className="h-16 w-16 text-yellow-400" />
+                  <User className="h-12 w-12 sm:h-14 sm:w-14 lg:h-16 lg:w-16 text-yellow-400" />
                 )}
               </div>
               
@@ -935,33 +936,33 @@ const ProfilePage = () => {
                 type="button"
                 onClick={handleImageUpload}
                 disabled={uploadingImage}
-                className="absolute inset-0 w-32 h-32 rounded-full bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity"
+                className="absolute inset-0 w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity active:scale-95"
               >
                 {uploadingImage ? (
                   <LoadingSpinner size="sm" />
                 ) : (
-                  <Camera className="h-6 w-6 text-white" />
+                  <Camera className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                 )}
               </button>
             </div>
 
             {/* Upload Controls */}
-            <div className="flex-1">
-              <div className="mb-4">
-                <p className="text-white font-medium mb-2">Upload a profile picture</p>
-                <p className="text-yellow-300 text-sm mb-4">
+            <div className="flex-1 w-full text-center sm:text-left">
+              <div className="mb-3 sm:mb-4">
+                <p className="text-white font-medium mb-1 sm:mb-2 text-sm sm:text-base">Upload a profile picture</p>
+                <p className="text-yellow-300 text-xs sm:text-sm mb-3 sm:mb-4">
                   Choose a clear photo that represents you. Accepted formats: JPG, PNG, GIF. Max size: 5MB.
                 </p>
               </div>
 
-              <div className="flex items-center space-x-3">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap items-stretch sm:items-center gap-2 sm:gap-3">
                 <button
                   type="button"
                   onClick={handleImageUpload}
                   disabled={uploadingImage}
-                  className="btn btn-secondary flex items-center"
+                  className="btn btn-secondary flex items-center justify-center w-full sm:w-auto text-sm px-3 py-2 active:scale-95"
                 >
-                  <Upload className="h-4 w-4 mr-2" />
+                  <Upload className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                   {uploadingImage ? 'Processing...' : 'Choose Image'}
                 </button>
 
@@ -970,7 +971,7 @@ const ProfilePage = () => {
                     type="button"
                     onClick={handleRemoveImage}
                     disabled={uploadingImage}
-                    className="btn btn-outline-danger flex items-center"
+                    className="btn btn-outline-danger flex items-center justify-center w-full sm:w-auto text-sm px-3 py-2 active:scale-95"
                   >
                     {uploadingImage ? (
                       <>
@@ -979,7 +980,7 @@ const ProfilePage = () => {
                       </>
                     ) : (
                       <>
-                        <Trash2 className="h-4 w-4 mr-2" />
+                        <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                         Remove Photo
                       </>
                     )}
@@ -990,11 +991,20 @@ const ProfilePage = () => {
                   <button
                     type="button"
                     onClick={saveProfileImage}
-                    disabled={uploadingImage}
-                    className="btn btn-primary flex items-center"
+                    disabled={savingImage}
+                    className="btn btn-primary flex items-center justify-center w-full sm:w-auto text-sm px-3 py-2 active:scale-95"
                   >
-                    <Save className="h-4 w-4 mr-2" />
-                    Save Picture
+                    {savingImage ? (
+                      <>
+                        <LoadingSpinner size="sm" />
+                        <span className="ml-2">Saving...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                        Save Picture
+                      </>
+                    )}
                   </button>
                 )}
               </div>
@@ -1012,22 +1022,22 @@ const ProfilePage = () => {
         </motion.div>
 
         <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
             {/* Main Profile Section */}
-            <div className="lg:col-span-2 space-y-8">
+            <div className="lg:col-span-2 space-y-4 sm:space-y-6 lg:space-y-8">
               {/* Basic Information */}
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
-                className="card p-6"
+                className="card p-4 sm:p-5 lg:p-6"
               >
-                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                  <User className="h-5 w-5 text-yellow-400 mr-2" />
+                <h2 className="text-lg sm:text-xl font-semibold text-white mb-4 sm:mb-6 flex items-center">
+                  <User className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 mr-2" />
                   Basic Information
                 </h2>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       Full Name
@@ -1142,16 +1152,16 @@ const ProfilePage = () => {
                 transition={{ delay: 0.2 }}
                 className="card p-6"
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-xl font-semibold text-white flex items-center">
-                    <MapPin className="h-5 w-5 text-yellow-400 mr-2" />
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
+                  <h2 className="text-lg sm:text-xl font-semibold text-white flex items-center">
+                    <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 mr-2" />
                     Address Information
                   </h2>
                   {isEditing && (
                     <button
                       type="button"
                       onClick={() => setShowLocationPicker(true)}
-                      className="flex items-center gap-2 px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-navy-950 rounded-lg transition-colors"
+                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-navy-950 rounded-lg transition-colors font-medium text-sm active:scale-95 w-full sm:w-auto"
                     >
                       <Navigation className="h-4 w-4" />
                       Select on Map
@@ -1162,7 +1172,7 @@ const ProfilePage = () => {
                 {/* Matching Algorithm Info Banner */}
                 {(profile.role === 'donor' || profile.role === 'recipient' || profile.role === 'volunteer') && (
                   <div className="mb-6 p-4 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg">
-                    <div className="flex items-start gap-3">
+                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
                       <div className="flex-shrink-0 w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
                         <Globe className="h-5 w-5 text-yellow-400" />
                       </div>
@@ -1394,39 +1404,45 @@ const ProfilePage = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.25 }}
-                  className="card p-6"
+                  className="card p-4 sm:p-5 lg:p-6"
                 >
-                <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                  <Shield className="h-5 w-5 text-amber-400 mr-2" />
-                  Valid ID Requirements
-                  {profile.role !== 'admin' && (
-                    <span className="ml-2 text-xs bg-amber-500/20 text-amber-300 px-2 py-1 rounded-full">
-                      Required
-                    </span>
-                  )}
-                  {profile.role === 'admin' && (
-                    <span className="ml-2 text-xs bg-blue-500/20 text-blue-300 px-2 py-1 rounded-full">
-                      Optional
-                    </span>
-                  )}
-                  {/* ID Verification Status Badge */}
-                  <div className="ml-auto flex items-center">
-                    {(() => {
-                      const hasIdUploaded = profile.primary_id_type && profile.primary_id_number && 
-                        (profile.primary_id_image_url || true) // Consider ID uploaded if type and number exist
-                      
-                      return (
-                        <IDVerificationBadge
-                          idStatus={profile.id_verification_status}
-                          hasIdUploaded={hasIdUploaded}
-                          size="sm"
-                          showText={true}
-                          showDescription={false}
-                        />
-                      )
-                    })()}
+                <div className="mb-4 sm:mb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3 sm:mb-0">
+                    <h2 className="text-lg sm:text-xl font-semibold text-white flex items-center">
+                      <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400 mr-2" />
+                      Valid ID Requirements
+                    </h2>
+                    <div className="flex flex-wrap items-center gap-2 sm:ml-3">
+                      {profile.role !== 'admin' && (
+                        <span className="text-xs bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-full border border-amber-500/30">
+                          Required
+                        </span>
+                      )}
+                      {profile.role === 'admin' && (
+                        <span className="text-xs bg-blue-500/20 text-blue-300 px-2.5 py-1 rounded-full border border-blue-500/30">
+                          Optional
+                        </span>
+                      )}
+                      {/* ID Verification Status Badge */}
+                      <div className="sm:ml-auto">
+                        {(() => {
+                          const hasIdUploaded = profile.primary_id_type && profile.primary_id_number && 
+                            (profile.primary_id_image_url || true) // Consider ID uploaded if type and number exist
+                          
+                          return (
+                            <IDVerificationBadge
+                              idStatus={profile.id_verification_status}
+                              hasIdUploaded={hasIdUploaded}
+                              size="sm"
+                              showText={true}
+                              showDescription={false}
+                            />
+                          )
+                        })()}
+                      </div>
+                    </div>
                   </div>
-                </h2>
+                </div>
 
                 {/* Get valid ID options based on role and account type */}
                 {(() => {
@@ -1531,17 +1547,17 @@ const ProfilePage = () => {
                   return (
                     <div className="space-y-6">
                       {/* Role-specific ID requirements info */}
-                      <div className="bg-navy-800/50 border border-skyblue-500/20 rounded-lg p-4">
-                        <div className="flex items-start space-x-3">
-                          <AlertCircle className="h-5 w-5 text-yellow-400 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <h4 className="text-sm font-medium text-white mb-2">
+                      <div className="bg-navy-800/50 border border-yellow-500/20 rounded-lg p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row items-start gap-3 text-center sm:text-left">
+                          <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mx-auto sm:mx-0 sm:mt-0.5" />
+                          <div className="flex-1">
+                            <h4 className="text-xs sm:text-sm font-medium text-white mb-2">
                               {profile.role === 'donor' && 'Donor ID Requirements'}
                               {profile.role === 'recipient' && 'Recipient ID Requirements'}
                               {profile.role === 'volunteer' && 'Volunteer ID Requirements'}
                               {profile.role === 'admin' && 'Admin ID Requirements'}
                             </h4>
-                            <p className="text-xs text-yellow-300">
+                            <p className="text-xs text-yellow-300 leading-relaxed">
                               {profile.role === 'donor' && (
                                 (isEditing ? watchedAccountType : profile.account_type) === 'business' || 
                                 (isEditing ? watchedAccountType : profile.account_type) === 'organization'
@@ -1561,11 +1577,11 @@ const ProfilePage = () => {
                       </div>
 
                       {/* ID Verification Status Summary */}
-                      <div className="bg-navy-800/30 border border-navy-600 rounded-lg p-4">
-                        <div className="flex items-center justify-between">
-                          <div>
-                            <h4 className="text-sm font-medium text-white mb-1">Verification Status</h4>
-                            <p className="text-xs text-yellow-300">
+                      <div className="bg-navy-800/30 border border-navy-600 rounded-lg p-3 sm:p-4">
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between">
+                          <div className="flex-1">
+                            <h4 className="text-xs sm:text-sm font-medium text-white mb-1">Verification Status</h4>
+                            <p className="text-xs text-yellow-300 leading-relaxed">
                               {(() => {
                                 const hasIdUploaded = profile.primary_id_type && profile.primary_id_number
                                 const idStatus = profile.id_verification_status
@@ -1584,7 +1600,7 @@ const ProfilePage = () => {
                               })()}
                             </p>
                           </div>
-                          <div>
+                          <div className="w-full sm:w-auto flex justify-center sm:justify-end">
                             <IDVerificationBadge
                               idStatus={profile.id_verification_status}
                               hasIdUploaded={profile.primary_id_type && profile.primary_id_number}
@@ -1735,10 +1751,10 @@ const ProfilePage = () => {
                             <input
                               {...register('primary_id_expiry')}
                               type="date"
-                              className="input max-w-xs"
+                              className="input w-full"
                             />
                           ) : (
-                            <div className="input bg-navy-800 max-w-xs">
+                            <div className="input bg-navy-800">
                               <span className={profile.primary_id_expiry ? 'text-yellow-200' : 'text-gray-400 italic'}>
                                 {profile.primary_id_expiry ? 
                                   new Date(profile.primary_id_expiry).toLocaleDateString() : 
@@ -3007,18 +3023,18 @@ const ProfilePage = () => {
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className="flex space-x-4"
+                  className="flex flex-col sm:flex-row gap-3 sm:gap-4"
                 >
                   <button
                     type="submit"
                     disabled={isLoading}
-                    className="btn btn-primary flex items-center flex-1"
+                    className="btn btn-primary flex items-center justify-center flex-1 text-sm sm:text-base px-4 py-2.5 active:scale-95"
                   >
                     {isLoading ? (
                       <LoadingSpinner size="sm" />
                     ) : (
                       <>
-                        <Save className="h-4 w-4 mr-2" />
+                        <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                         Save Changes
                       </>
                     )}
@@ -3026,9 +3042,9 @@ const ProfilePage = () => {
                   <button
                     type="button"
                     onClick={cancelEdit}
-                    className="btn btn-secondary flex items-center flex-1"
+                    className="btn btn-secondary flex items-center justify-center flex-1 text-sm sm:text-base px-4 py-2.5 active:scale-95"
                   >
-                    <X className="h-4 w-4 mr-2" />
+                    <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                     Cancel
                   </button>
                 </motion.div>
@@ -3036,28 +3052,29 @@ const ProfilePage = () => {
             </div>
 
             {/* Sidebar */}
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {/* Account Security */}
               <motion.div
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.4 }}
-                className="card p-6"
+                className="card p-4 sm:p-5 lg:p-6"
               >
-                <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                  <Shield className="h-5 w-5 text-yellow-400 mr-2" />
+                <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
+                  <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 mr-2" />
                   Account Security
                 </h3>
 
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-navy-800 rounded-lg">
                     <div>
-                      <p className="text-sm font-medium text-white">Password</p>
+                      <p className="text-xs sm:text-sm font-medium text-white">Password</p>
                       <p className="text-xs text-yellow-400">Last updated: Never</p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => setShowPasswordSection(!showPasswordSection)}
-                      className="text-yellow-400 hover:text-yellow-300 text-sm"
+                      className="text-yellow-400 hover:text-yellow-300 text-xs sm:text-sm font-medium active:scale-95"
                     >
                       {showPasswordSection ? 'Cancel' : 'Change'}
                     </button>
@@ -3124,7 +3141,7 @@ const ProfilePage = () => {
                         <button
                           type="submit"
                           disabled={isLoading}
-                          className="btn btn-primary w-full"
+                          className="btn btn-primary w-full text-sm sm:text-base py-2.5 active:scale-95"
                         >
                           {isLoading ? <LoadingSpinner size="sm" /> : 'Update Password'}
                         </button>
@@ -3132,9 +3149,9 @@ const ProfilePage = () => {
                     )}
                   </AnimatePresence>
 
-                  <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
+                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-navy-800 rounded-lg">
                     <div>
-                      <p className="text-sm font-medium text-white">Two-Factor Authentication</p>
+                      <p className="text-xs sm:text-sm font-medium text-white">Two-Factor Authentication</p>
                       <p className="text-xs text-yellow-400">Coming soon</p>
                     </div>
                     <span className="text-xs text-amber-400 bg-amber-900/20 px-2 py-1 rounded">
@@ -3150,9 +3167,9 @@ const ProfilePage = () => {
                   initial={{ opacity: 0, x: 20 }}
                   animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 }}
-                  className="card p-6"
+                  className="card p-4 sm:p-5 lg:p-6"
                 >
-                  <h3 className="text-lg font-semibold text-white mb-4">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">
                     Profile Verification
                   </h3>
 
@@ -3170,14 +3187,14 @@ const ProfilePage = () => {
                     </div>
 
                     {completionPercentage === 100 ? (
-                      <div className="flex items-center space-x-2 text-green-400">
-                        <CheckCircle className="h-4 w-4" />
-                        <span className="text-sm">Profile Complete</span>
+                      <div className="flex items-center gap-2 text-green-400">
+                        <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        <span className="text-xs sm:text-sm">Profile Complete</span>
                       </div>
                     ) : (
-                      <div className="flex items-center space-x-2 text-amber-400">
-                        <AlertCircle className="h-4 w-4" />
-                        <span className="text-sm">Complete your profile for verification</span>
+                      <div className="flex items-center gap-2 text-amber-400">
+                        <AlertCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        <span className="text-xs sm:text-sm">Complete your profile for verification</span>
                       </div>
                     )}
                   </div>
@@ -3189,15 +3206,15 @@ const ProfilePage = () => {
                 initial={{ opacity: 0, x: 20 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ delay: 0.6 }}
-                className="card p-6"
+                className="card p-4 sm:p-5 lg:p-6"
               >
-                <h3 className="text-lg font-semibold text-white mb-4">
+                <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">
                   Account Summary
                 </h3>
 
                 {/* Mini Profile Card */}
-                <div className="flex items-center space-x-3 p-3 bg-navy-800 rounded-lg mb-4">
-                  <div className="w-12 h-12 rounded-full overflow-hidden bg-navy-700 border-2 border-navy-600 flex items-center justify-center flex-shrink-0">
+                <div className="flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 bg-navy-800 rounded-lg mb-3 sm:mb-4">
+                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-navy-700 border-2 border-navy-600 flex items-center justify-center flex-shrink-0">
                     {imagePreview || profile.profile_image_url ? (
                       <img
                         src={imagePreview || profile.profile_image_url}
@@ -3205,11 +3222,11 @@ const ProfilePage = () => {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <User className="h-6 w-6 text-yellow-400" />
+                      <User className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">
+                    <p className="text-xs sm:text-sm font-medium text-white truncate">
                       {profile.name || 'Name not set'}
                     </p>
                     <p className="text-xs text-yellow-400 truncate">
@@ -3218,7 +3235,7 @@ const ProfilePage = () => {
                   </div>
                 </div>
 
-                <div className="space-y-3">
+                <div className="space-y-2.5 sm:space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="text-sm text-yellow-300">Member Since</span>
                     <span className="text-sm text-white">

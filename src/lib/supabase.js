@@ -264,7 +264,22 @@ export const db = {
       .from('donation_requests')
       .select(`
         *,
-        requester:users!donation_requests_requester_id_fkey(name, email, profile_image_url)
+        requester:users!donation_requests_requester_id_fkey(
+          id,
+          name,
+          email,
+          phone_number,
+          profile_image_url,
+          role,
+          city,
+          province,
+          address,
+          address_barangay,
+          bio,
+          household_size,
+          assistance_needs,
+          created_at
+        )
       `)
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -296,7 +311,22 @@ export const db = {
       .insert(request)
       .select(`
         *,
-        requester:users!donation_requests_requester_id_fkey(name, email, profile_image_url)
+        requester:users!donation_requests_requester_id_fkey(
+          id,
+          name,
+          email,
+          phone_number,
+          profile_image_url,
+          role,
+          city,
+          province,
+          address,
+          address_barangay,
+          bio,
+          household_size,
+          assistance_needs,
+          created_at
+        )
       `)
       .single()
     
@@ -531,6 +561,28 @@ export const db = {
       ...request,
       claims_count: request.claims?.[0]?.count || 0
     }))
+  },
+
+  async updateDonationRequest(requestId, updates) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    const { data, error } = await supabase
+      .from('donation_requests')
+      .update({
+        ...updates,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', requestId)
+      .select(`
+        *,
+        requester:users!donation_requests_requester_id_fkey(name, email, profile_image_url)
+      `)
+      .single()
+
+    if (error) throw error
+    return data
   },
 
   async deleteDonationRequest(requestId, userId) {
@@ -1357,9 +1409,9 @@ export const db = {
         query = query.eq('request_id', requestId)
       }
 
-      const { data, error } = await query.single()
+      const { data, error } = await query.maybeSingle()
       
-      if (error && error.code !== 'PGRST116') { // PGRST116 means no rows found
+      if (error) {
         throw error
       }
 
@@ -3007,68 +3059,84 @@ export const db = {
       const request = requestResult.data
       const donation = donationResult.data
 
-      // Verify compatibility
+      // Verify basic compatibility - use a low threshold since UI already filtered
+      // The UI shows Smart Match button only for items with > 60% total compatibility score
+      // Here we just do a basic sanity check to ensure items are somewhat related
       const { intelligentMatcher } = await import('./matchingAlgorithm.js')
-      const compatibility = intelligentMatcher.calculateItemCompatibility(
+      const itemCompatibility = intelligentMatcher.calculateItemCompatibility(
         request.category, donation.category,
         request.title, donation.title,
         request.quantity_needed, donation.quantity
       )
 
-      if (compatibility < 0.5) {
+      // Very low threshold (30%) since UI already validated the match
+      if (itemCompatibility < 0.3) {
         throw new Error('Items are not sufficiently compatible for matching')
       }
 
-      // Create the match by having the requester claim the donation
-      const claim = await this.claimDonation(donationId, request.requester_id)
+      // Update donation status to claimed
+      const { data: updatedDonation, error: donationError } = await supabase
+        .from('donations')
+        .update({ 
+          status: 'claimed',
+          claimed_by: request.requester_id,
+          claimed_at: new Date().toISOString()
+        })
+        .eq('id', donationId)
+        .select()
+        .single()
 
-      // If volunteer is specified, assign them
-      if (volunteerId && (request.delivery_mode === 'volunteer' || donation.delivery_mode === 'volunteer')) {
-        await this.assignVolunteerToDelivery(claim.id, volunteerId)
+      if (donationError) throw donationError
+
+      // Update request status to matched
+      const { data: updatedRequest, error: requestError } = await supabase
+        .from('donation_requests')
+        .update({ 
+          status: 'matched',
+          matched_donation_id: donationId,
+          matched_at: new Date().toISOString()
+        })
+        .eq('id', requestId)
+        .select()
+        .single()
+
+      if (requestError) throw requestError
+
+      // Create success notifications (using valid notification types)
+      try {
+        await this.createNotification({
+          user_id: request.requester_id,
+          type: 'donation_claimed',
+          title: 'Match Created!',
+          message: `Your request "${request.title}" has been matched with a donation.`,
+          data: {
+            request_id: requestId,
+            donation_id: donationId,
+            match_type: 'smart_match'
+          }
+        })
+
+        await this.createNotification({
+          user_id: donation.donor_id,
+          type: 'donation_claimed',
+          title: 'Your Donation Was Matched!',
+          message: `Your donation "${donation.title}" was matched with someone in need.`,
+          data: {
+            request_id: requestId,
+            donation_id: donationId,
+            match_type: 'smart_match'
+          }
+        })
+      } catch (notifError) {
+        console.error('Error creating notifications:', notifError)
+        // Don't fail the match if notifications fail
       }
-
-      // Update request status
-      await this.updateRequest(requestId, { 
-        status: 'matched',
-        matched_donation_id: donationId,
-        matched_at: new Date().toISOString()
-      })
-
-      // Create success notifications
-      await this.createNotification({
-        user_id: request.requester_id,
-        type: 'smart_match',
-        title: 'Smart Match Found!',
-        message: `We found a perfect match for your request: "${request.title}". The donation has been automatically claimed for you.`,
-        data: {
-          request_id: requestId,
-          donation_id: donationId,
-          claim_id: claim.id,
-          compatibility_score: compatibility,
-          match_type: 'smart_match'
-        }
-      })
-
-      await this.createNotification({
-        user_id: donation.donor_id,
-        type: 'smart_match',
-        title: 'Your Donation Was Matched!',
-        message: `Great news! Your donation "${donation.title}" was intelligently matched with someone in need.`,
-        data: {
-          request_id: requestId,
-          donation_id: donationId,
-          claim_id: claim.id,
-          compatibility_score: compatibility,
-          match_type: 'smart_match'
-        }
-      })
 
       return {
         success: true,
         match: {
-          request,
-          donation,
-          claim,
+          request: updatedRequest,
+          donation: updatedDonation,
           volunteer_id: volunteerId,
           compatibility_score: compatibility,
           match_algorithm: 'Weighted Sum Model (WSM)',

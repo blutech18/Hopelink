@@ -243,34 +243,34 @@ const Navbar = () => {
 
   return (
     <nav className="shadow-sm border-b border-navy-800 sticky top-0 z-40" style={{backgroundColor: '#000f3d'}}>
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between h-16">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+        <div className="flex justify-between h-14 sm:h-16">
           {/* Logo and Hamburger Container */}
           <div className="flex items-center relative">
             {/* Left: Desktop Sidebar Toggle for authenticated users */}
             {shouldShowProfile && (
               <button
                 onClick={() => setIsSideMenuOpen(true)}
-                className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800 mr-2"
+                className="p-1.5 sm:p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800 mr-1 sm:mr-2 transition-colors"
                 aria-label="Open menu"
               >
-                <Menu className="h-6 w-6" />
+                <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
               </button>
             )}
             {shouldShowProfile ? (
-              <Link to="/" className="flex items-center space-x-2">
-                <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 rounded" />
+              <Link to="/" className="flex items-center space-x-1.5 sm:space-x-2">
+                <img src="/hopelinklogo.png" alt="HopeLink" className="h-8 sm:h-10 md:h-12 rounded" />
                 <div className="flex flex-col">
-                  <span className="text-xl font-bold text-white">HopeLink</span>
-                  <span className="text-[10px] text-yellow-300">CFC-GK</span>
+                  <span className="text-base sm:text-lg md:text-xl font-bold text-white">HopeLink</span>
+                  <span className="text-[8px] sm:text-[9px] md:text-[10px] text-yellow-300">CFC-GK</span>
                 </div>
               </Link>
             ) : (
-              <Link to="/" className="flex items-center space-x-2">
-                <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 rounded" />
+              <Link to="/" className="flex items-center space-x-1.5 sm:space-x-2">
+                <img src="/hopelinklogo.png" alt="HopeLink" className="h-8 sm:h-10 md:h-12 rounded" />
                 <div className="flex flex-col">
-                  <span className="text-xl font-bold text-white">HopeLink</span>
-                  <span className="text-[10px] text-yellow-300">CFC-GK</span>
+                  <span className="text-base sm:text-lg md:text-xl font-bold text-white">HopeLink</span>
+                  <span className="text-[8px] sm:text-[9px] md:text-[10px] text-yellow-300">CFC-GK</span>
                 </div>
               </Link>
             )}
@@ -476,15 +476,15 @@ const Navbar = () => {
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-2">
             {/* Mobile Feedback Button */}
-            {shouldShowProfile && (
-              <Link
-                to="/dashboard"
-                state={{ scrollToFeedback: true }}
-                className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800 transition-colors"
+            {shouldShowProfile && profile?.role !== 'admin' && (
+              <button
+                onClick={() => setShowFeedbackModal(true)}
+                className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800 transition-colors active:scale-95"
                 title="Help Us Improve"
+                aria-label="Open Feedback Modal"
               >
                 <MessageSquare className="h-5 w-5" />
-              </Link>
+              </button>
             )}
 
             {/* Mobile Profile Dropdown - for authenticated users */}
@@ -623,6 +623,22 @@ const Navbar = () => {
                       <span>{link.label}</span>
                     </Link>
                   ))}
+                </div>
+              )}
+
+              {/* Feedback Button in Side Menu */}
+              {profile?.role !== 'admin' && (
+                <div className="mt-2">
+                  <button
+                    onClick={() => {
+                      setShowFeedbackModal(true)
+                      setIsSideMenuOpen(false)
+                    }}
+                    className="w-full flex items-center justify-center space-x-2 px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400"
+                  >
+                    <MessageSquare className="h-4 w-4" />
+                    <span>Share Feedback</span>
+                  </button>
                 </div>
               )}
 

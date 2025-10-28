@@ -14,7 +14,8 @@ import {
   MessageSquare,
   Award,
   AlertCircle,
-  Navigation
+  Navigation,
+  ArrowLeft
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -302,18 +303,38 @@ const MyApprovedDonationsPage = () => {
   }
 
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-8"
+          className="mb-6 sm:mb-8"
         >
-          <h1 className="text-3xl font-bold text-white mb-2">My Approved Requests</h1>
-          <p className="text-yellow-300">
-            Track your approved donation requests and manage pickups or deliveries
-          </p>
+          {/* Back Button */}
+          <button
+            onClick={() => window.history.back()}
+            className="mb-4 flex items-center gap-2 text-yellow-300 hover:text-yellow-400 transition-colors group"
+          >
+            <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5 group-hover:-translate-x-1 transition-transform" />
+            <span className="text-sm sm:text-base font-medium">Back</span>
+          </button>
+
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3">
+            <div className="flex-1">
+              <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-2">My Approved Requests</h1>
+              <p className="text-xs sm:text-sm text-yellow-300">
+                Track your approved donation requests and manage pickups or deliveries
+              </p>
+            </div>
+            <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-yellow-500/20 to-yellow-600/20 border-2 border-yellow-500/40 rounded-full shadow-lg">
+              <Package className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 fill-yellow-400 animate-pulse" />
+              <div className="flex items-center gap-1.5">
+                <span className="text-lg sm:text-xl font-bold text-white">{approvedDonations.length}</span>
+                <span className="text-xs sm:text-sm font-medium text-yellow-300">Request{approvedDonations.length !== 1 ? 's' : ''}</span>
+              </div>
+            </div>
+          </div>
         </motion.div>
 
         {/* Delivery Confirmations */}
@@ -322,12 +343,12 @@ const MyApprovedDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="mb-8"
+            className="mb-6 sm:mb-8"
           >
-            <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-6">
-              <div className="flex items-center mb-4">
-                <AlertCircle className="h-6 w-6 text-amber-500 mr-3" />
-                <h2 className="text-lg font-semibold text-white">
+            <div className="bg-amber-500/10 border-2 border-amber-500/30 rounded-lg sm:rounded-xl p-4 sm:p-6">
+              <div className="flex items-center mb-3 sm:mb-4">
+                <AlertCircle className="h-5 w-5 sm:h-6 sm:w-6 text-amber-400 mr-2 sm:mr-3 flex-shrink-0" />
+                <h2 className="text-base sm:text-lg font-semibold text-white">
                   Delivery Confirmations Needed ({deliveryConfirmationNotifications.length})
                 </h2>
               </div>
@@ -335,21 +356,21 @@ const MyApprovedDonationsPage = () => {
                 {deliveryConfirmationNotifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                    className="bg-navy-800/50 rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                   >
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="h-5 w-5 text-amber-500" />
-                      <div>
-                        <p className="text-white font-medium">{notification.title}</p>
-                        <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                        <p className="text-skyblue-400 text-xs mt-1">
+                    <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">{notification.title}</p>
+                        <p className="text-yellow-300 text-xs sm:text-sm">{notification.message}</p>
+                        <p className="text-yellow-400 text-xs mt-1">
                           Volunteer: {notification.data?.volunteer_name}
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={() => handleConfirmDelivery(notification)}
-                      className="btn btn-primary text-sm px-4 py-2"
+                      className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white text-sm font-semibold rounded-lg transition-all shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
                     >
                       Confirm Delivery
                     </button>
@@ -366,12 +387,12 @@ const MyApprovedDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.15 }}
-            className="mb-8"
+            className="mb-6 sm:mb-8"
           >
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-6">
-              <div className="flex items-center mb-4">
-                <Navigation className="h-6 w-6 text-emerald-500 mr-3" />
-                <h2 className="text-lg font-semibold text-white">
+            <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-lg sm:rounded-xl p-4 sm:p-6">
+              <div className="flex items-center mb-3 sm:mb-4">
+                <Navigation className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-400 mr-2 sm:mr-3 flex-shrink-0" />
+                <h2 className="text-base sm:text-lg font-semibold text-white">
                   Pickup Confirmations Needed ({pickupConfirmationNotifications.length})
                 </h2>
               </div>
@@ -379,21 +400,21 @@ const MyApprovedDonationsPage = () => {
                 {pickupConfirmationNotifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                    className="bg-navy-800/50 rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                   >
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="h-5 w-5 text-emerald-500" />
-                      <div>
-                        <p className="text-white font-medium">{notification.title}</p>
-                        <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                        <p className="text-skyblue-400 text-xs mt-1">
+                    <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-emerald-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">{notification.title}</p>
+                        <p className="text-yellow-300 text-xs sm:text-sm">{notification.message}</p>
+                        <p className="text-yellow-400 text-xs mt-1">
                           Completed by: {notification.data?.completed_by_name}
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={() => handleConfirmPickup(notification)}
-                      className="btn btn-success text-sm px-4 py-2"
+                      className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-sm font-semibold rounded-lg transition-all shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
                     >
                       Confirm Pickup
                     </button>
@@ -410,12 +431,12 @@ const MyApprovedDonationsPage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.2 }}
-            className="mb-8"
+            className="mb-6 sm:mb-8"
           >
-            <div className="bg-purple-500/10 border border-purple-500/20 rounded-xl p-6">
-              <div className="flex items-center mb-4">
-                <Truck className="h-6 w-6 text-purple-500 mr-3" />
-                <h2 className="text-lg font-semibold text-white">
+            <div className="bg-purple-500/10 border-2 border-purple-500/30 rounded-lg sm:rounded-xl p-4 sm:p-6">
+              <div className="flex items-center mb-3 sm:mb-4">
+                <Truck className="h-5 w-5 sm:h-6 sm:w-6 text-purple-400 mr-2 sm:mr-3 flex-shrink-0" />
+                <h2 className="text-base sm:text-lg font-semibold text-white">
                   Direct Delivery Confirmations Needed ({directDeliveryConfirmationNotifications.length})
                 </h2>
               </div>
@@ -423,21 +444,21 @@ const MyApprovedDonationsPage = () => {
                 {directDeliveryConfirmationNotifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className="bg-navy-800/50 rounded-lg p-4 flex items-center justify-between"
+                    className="bg-navy-800/50 rounded-lg p-3 sm:p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
                   >
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="h-5 w-5 text-purple-500" />
-                      <div>
-                        <p className="text-white font-medium">{notification.title}</p>
-                        <p className="text-skyblue-300 text-sm">{notification.message}</p>
-                        <p className="text-skyblue-400 text-xs mt-1">
+                    <div className="flex items-start gap-2 sm:gap-3 flex-1 min-w-0">
+                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-white font-medium text-sm sm:text-base">{notification.title}</p>
+                        <p className="text-yellow-300 text-xs sm:text-sm">{notification.message}</p>
+                        <p className="text-yellow-400 text-xs mt-1">
                           Direct delivery by donor
                         </p>
                       </div>
                     </div>
                     <button
                       onClick={() => handleConfirmDirectDelivery(notification)}
-                      className="btn btn-success text-sm px-4 py-2"
+                      className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white text-sm font-semibold rounded-lg transition-all shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
                     >
                       Confirm Receipt
                     </button>
@@ -455,15 +476,15 @@ const MyApprovedDonationsPage = () => {
           transition={{ duration: 0.6, delay: 0.4 }}
         >
           {approvedDonations.length === 0 ? (
-            <div className="text-center py-12">
-              <Package className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-white mb-2">No approved requests yet</h3>
-              <p className="text-yellow-400 mb-6">
+            <div className="text-center py-8 sm:py-12">
+              <Package className="h-12 w-12 sm:h-16 sm:w-16 text-yellow-400 mx-auto mb-3 sm:mb-4" />
+              <h3 className="text-lg sm:text-xl font-semibold text-white mb-2">No approved requests yet</h3>
+              <p className="text-sm sm:text-base text-yellow-300 px-4 mb-4 sm:mb-6">
                 Once donors approve your requests, they will appear here for tracking.
               </p>
             </div>
           ) : (
-            <div className="space-y-6">
+            <div className="space-y-4 sm:space-y-6">
               {approvedDonations.map((claim, index) => {
                 const StatusIcon = getStatusIcon(claim.status)
                 const delivery = claim.delivery?.[0]
@@ -479,17 +500,21 @@ const MyApprovedDonationsPage = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6, delay: index * 0.1 }}
-                    className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-6 hover:border-yellow-500/30 transition-colors"
+                    className="card hover:shadow-xl hover:border-yellow-500/20 transition-all duration-300 overflow-hidden border-l-4 border-2 border-navy-700"
+                    style={{
+                      borderLeftColor: claim.status === 'completed' ? '#10b981' : claim.status === 'delivered' ? '#fbbf24' : '#3b82f6'
+                    }}
                   >
-                    {/* Header */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
-                        <h3 className="text-lg font-semibold text-white mb-2">
-                          {claim.donation?.title}
-                        </h3>
-                        <p className="text-yellow-300 text-sm mb-3">
-                          {claim.donation?.description}
-                        </p>
+                    <div className="p-4 sm:p-5 lg:p-6">
+                      {/* Header */}
+                      <div className="flex flex-col lg:flex-row items-start justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
+                        <div className="flex-1 min-w-0 w-full">
+                          <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white mb-2">
+                            {claim.donation?.title}
+                          </h3>
+                          <p className="text-gray-300 text-xs sm:text-sm mb-3">
+                            {claim.donation?.description}
+                          </p>
                         
                         {/* Status Badges */}
                         <div className="flex items-center gap-3 mb-3">
@@ -524,14 +549,14 @@ const MyApprovedDonationsPage = () => {
                         </div>
                       </div>
                       
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {/* Self-Pickup Management Button */}
                         {isSelfPickup && claim.status !== 'completed' && (
                           <button
                             onClick={() => handleManagePickup(claim)}
-                            className="btn btn-primary text-sm flex items-center"
+                            className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 shadow-lg hover:shadow-xl active:scale-95"
                           >
-                            <Navigation className="h-4 w-4 mr-2" />
+                            <Navigation className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             Manage Pickup
                           </button>
                         )}
@@ -540,9 +565,9 @@ const MyApprovedDonationsPage = () => {
                         {isDirectDelivery && claim.status !== 'completed' && (
                           <button
                             onClick={() => handleManageDirectDelivery(claim)}
-                            className="btn btn-primary text-sm flex items-center"
+                            className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 shadow-lg hover:shadow-xl active:scale-95"
                           >
-                            <Truck className="h-4 w-4 mr-2" />
+                            <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             Manage Delivery
                           </button>
                         )}
@@ -551,75 +576,76 @@ const MyApprovedDonationsPage = () => {
                         {isVolunteerDelivery && claim.status === 'delivered' && (
                           <button
                             onClick={() => handleConfirmReceipt(claim)}
-                            className="btn btn-success text-sm flex items-center"
+                            className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 shadow-lg hover:shadow-xl active:scale-95"
                           >
-                            <CheckCircle className="h-4 w-4 mr-2" />
+                            <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                             Received
                           </button>
                         )}
                         
                         <button
                           onClick={() => handleViewDetails(claim)}
-                          className="btn btn-secondary text-sm flex items-center"
+                          className="px-3 sm:px-4 py-2 sm:py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 hover:text-white text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 border border-navy-600 hover:border-yellow-500/50 shadow-md hover:shadow-lg active:scale-95"
                         >
-                          <Eye className="h-4 w-4 mr-2" />
+                          <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                           View Details
                         </button>
                       </div>
                     </div>
+                    </div>
                     
                     {/* Details Grid */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
-                      <div className="flex items-center text-skyblue-300">
-                        <User className="h-4 w-4 mr-2 text-blue-400" />
-                        <div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-sm p-4 sm:p-5 lg:p-6 bg-navy-800/30 rounded-lg border-t border-navy-700">
+                      <div className="flex items-start text-yellow-300 min-w-0">
+                        <User className="h-4 w-4 mr-2 text-blue-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
                           <p className="font-medium">Donor</p>
-                          <p>{claim.donation?.donor?.name || 'Anonymous'}</p>
+                          <p className="text-white truncate">{claim.donation?.donor?.name || 'Anonymous'}</p>
                         </div>
                       </div>
                       
-                      <div className="flex items-center text-skyblue-300">
-                        <Package className="h-4 w-4 mr-2 text-green-400" />
-                        <div>
+                      <div className="flex items-start text-yellow-300 min-w-0">
+                        <Package className="h-4 w-4 mr-2 text-green-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
                           <p className="font-medium">Quantity</p>
-                          <p>{claim.quantity_claimed || claim.donation?.quantity}</p>
+                          <p className="text-white truncate">{claim.quantity_claimed || claim.donation?.quantity}</p>
                         </div>
                       </div>
                       
-                      <div className="flex items-center text-skyblue-300">
-                        <Calendar className="h-4 w-4 mr-2 text-purple-400" />
-                        <div>
+                      <div className="flex items-start text-yellow-300 min-w-0">
+                        <Calendar className="h-4 w-4 mr-2 text-purple-400 flex-shrink-0 mt-0.5" />
+                        <div className="min-w-0 flex-1">
                           <p className="font-medium">Approved</p>
-                          <p>{formatTimeAgo(claim.claimed_at)}</p>
+                          <p className="text-white truncate">{formatTimeAgo(claim.claimed_at)}</p>
                         </div>
                       </div>
                       
                       {/* Show delivery method and relevant info */}
-                      <div className="flex items-center text-skyblue-300">
+                      <div className="flex items-start text-yellow-300 min-w-0">
                         {isVolunteerDelivery ? (
                           <>
-                            <Truck className="h-4 w-4 mr-2 text-orange-400" />
-                            <div>
+                            <Truck className="h-4 w-4 mr-2 text-orange-400 flex-shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
                               <p className="font-medium">Volunteer</p>
-                              <p>{delivery?.volunteer?.name || 'TBD'}</p>
+                              <p className="text-white truncate">{delivery?.volunteer?.name || 'TBD'}</p>
                             </div>
                           </>
                         ) : isSelfPickup ? (
                           <>
-                            <MapPin className="h-4 w-4 mr-2 text-blue-400" />
-                            <div>
+                            <MapPin className="h-4 w-4 mr-2 text-blue-400 flex-shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
                               <p className="font-medium">Self Pickup</p>
-                              <p className="text-xs text-skyblue-400 truncate">
+                              <p className="text-xs text-white truncate" title={pickup?.pickup_location || claim.donation.pickup_location || 'Location TBD'}>
                                 {pickup?.pickup_location || claim.donation.pickup_location || 'Location TBD'}
                               </p>
                             </div>
                           </>
                         ) : (
                           <>
-                            <MessageSquare className="h-4 w-4 mr-2 text-green-400" />
-                            <div>
+                            <MessageSquare className="h-4 w-4 mr-2 text-green-400 flex-shrink-0 mt-0.5" />
+                            <div className="min-w-0 flex-1">
                               <p className="font-medium">Direct Delivery</p>
-                              <p className="text-xs text-skyblue-400">
+                              <p className="text-xs text-white truncate" title={directDelivery?.delivery_address || 'Coordination needed'}>
                                 {directDelivery?.delivery_address ? directDelivery.delivery_address : 'Coordination needed'}
                               </p>
                             </div>
@@ -637,38 +663,38 @@ const MyApprovedDonationsPage = () => {
         {/* Details Modal */}
         <AnimatePresence>
           {showDetailsModal && selectedDonation && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.95 }}
-                className="bg-navy-900 rounded-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
+                className="bg-navy-900 border-2 border-yellow-500/30 rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto custom-scrollbar"
               >
-                <div className="space-y-6">
+                <div className="space-y-4 sm:space-y-6">
                   {/* Basic Info */}
                   <div>
-                    <h3 className="text-lg font-medium text-white mb-3">{selectedDonation.donation?.title}</h3>
-                    <p className="text-skyblue-300 mb-4">{selectedDonation.donation?.description}</p>
+                    <h3 className="text-base sm:text-lg font-medium text-white mb-3">{selectedDonation.donation?.title}</h3>
+                    <p className="text-yellow-300 text-sm sm:text-base mb-4">{selectedDonation.donation?.description}</p>
                     
-                    <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div className="grid grid-cols-2 gap-3 sm:gap-4 text-xs sm:text-sm">
                       <div>
-                        <span className="text-skyblue-400">Category:</span>
+                        <span className="text-yellow-400">Category:</span>
                         <span className="text-white ml-2">{selectedDonation.donation?.category}</span>
                       </div>
                       <div>
-                        <span className="text-skyblue-400">Condition:</span>
+                        <span className="text-yellow-400">Condition:</span>
                         <span className="text-white ml-2">{selectedDonation.donation?.condition}</span>
                       </div>
                       <div>
-                        <span className="text-skyblue-400">Quantity:</span>
+                        <span className="text-yellow-400">Quantity:</span>
                         <span className="text-white ml-2">{selectedDonation.quantity_claimed}</span>
                       </div>
                       <div>
-                        <span className="text-skyblue-400">Approved:</span>
+                        <span className="text-yellow-400">Approved:</span>
                         <span className="text-white ml-2">{formatDate(selectedDonation.claimed_at)}</span>
                       </div>
                       <div>
-                        <span className="text-skyblue-400">Delivery Mode:</span>
+                        <span className="text-yellow-400">Delivery Mode:</span>
                         <span className="text-white ml-2 capitalize">{selectedDonation.donation?.delivery_mode?.replace('_', ' ')}</span>
                       </div>
                     </div>
@@ -676,7 +702,7 @@ const MyApprovedDonationsPage = () => {
 
                   {/* Donor Info */}
                   <div className="border-t border-navy-700 pt-4">
-                    <h4 className="text-md font-medium text-white mb-3">Donor Information</h4>
+                    <h4 className="text-sm sm:text-base font-medium text-white mb-3">Donor Information</h4>
                     <div className="flex items-center gap-3">
                       <User className="h-5 w-5 text-blue-400" />
                       <div>
@@ -684,7 +710,7 @@ const MyApprovedDonationsPage = () => {
                         {selectedDonation.donation?.donor?.phone_number && (
                           <a
                             href={`tel:${selectedDonation.donation.donor.phone_number}`}
-                            className="text-skyblue-400 hover:text-skyblue-300 text-sm flex items-center gap-1"
+                            className="text-yellow-400 hover:text-yellow-300 text-sm flex items-center gap-1"
                           >
                             <Phone className="h-3 w-3" />
                             {selectedDonation.donation.donor.phone_number}
@@ -697,13 +723,13 @@ const MyApprovedDonationsPage = () => {
                   {/* Pickup Info for Self-Pickup */}
                   {selectedDonation.donation?.delivery_mode === 'pickup' && (
                     <div className="border-t border-navy-700 pt-4">
-                      <h4 className="text-md font-medium text-white mb-3">Pickup Information</h4>
+                      <h4 className="text-sm sm:text-base font-medium text-white mb-3">Pickup Information</h4>
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
                           <MapPin className="h-5 w-5 text-blue-400" />
                           <div>
                             <p className="text-white">Pickup Location</p>
-                            <p className="text-skyblue-300 text-sm">
+                            <p className="text-yellow-300 text-sm">
                               {selectedDonation.pickup?.[0]?.pickup_location || selectedDonation.donation.pickup_location}
                             </p>
                           </div>
@@ -711,10 +737,10 @@ const MyApprovedDonationsPage = () => {
                         
                         {(selectedDonation.pickup?.[0]?.pickup_instructions || selectedDonation.donation.pickup_instructions) && (
                           <div className="flex items-start gap-3">
-                            <MessageCircle className="h-5 w-5 text-green-400 mt-0.5" />
+                            <MessageSquare className="h-5 w-5 text-green-400 mt-0.5" />
                             <div>
                               <p className="text-white">Pickup Instructions</p>
-                              <p className="text-skyblue-300 text-sm">
+                              <p className="text-yellow-300 text-sm">
                                 {selectedDonation.pickup?.[0]?.pickup_instructions || selectedDonation.donation.pickup_instructions}
                               </p>
                             </div>
@@ -724,11 +750,11 @@ const MyApprovedDonationsPage = () => {
                         {selectedDonation.pickup?.[0] && (
                           <div className="grid grid-cols-2 gap-4 text-sm">
                             <div>
-                              <span className="text-skyblue-400">Status:</span>
+                              <span className="text-yellow-400">Status:</span>
                               <span className="text-white ml-2">{selectedDonation.pickup[0].status.replace('_', ' ')}</span>
                             </div>
                             <div>
-                              <span className="text-skyblue-400">Scheduled:</span>
+                              <span className="text-yellow-400">Scheduled:</span>
                               <span className="text-white ml-2">{formatDate(selectedDonation.pickup[0].created_at)}</span>
                             </div>
                           </div>
@@ -740,7 +766,7 @@ const MyApprovedDonationsPage = () => {
                   {/* Delivery Info for Volunteer Deliveries */}
                   {selectedDonation.delivery?.[0] && (
                     <div className="border-t border-navy-700 pt-4">
-                      <h4 className="text-md font-medium text-white mb-3">Delivery Information</h4>
+                      <h4 className="text-sm sm:text-base font-medium text-white mb-3">Delivery Information</h4>
                       <div className="space-y-3">
                         <div className="flex items-center gap-3">
                           <Truck className="h-5 w-5 text-orange-400" />
@@ -749,7 +775,7 @@ const MyApprovedDonationsPage = () => {
                             {selectedDonation.delivery[0].volunteer?.phone_number && (
                               <a
                                 href={`tel:${selectedDonation.delivery[0].volunteer.phone_number}`}
-                                className="text-skyblue-400 hover:text-skyblue-300 text-sm flex items-center gap-1"
+                                className="text-yellow-400 hover:text-yellow-300 text-sm flex items-center gap-1"
                               >
                                 <Phone className="h-3 w-3" />
                                 {selectedDonation.delivery[0].volunteer.phone_number}
@@ -760,11 +786,11 @@ const MyApprovedDonationsPage = () => {
                         
                         <div className="grid grid-cols-2 gap-4 text-sm">
                           <div>
-                            <span className="text-skyblue-400">Status:</span>
+                            <span className="text-yellow-400">Status:</span>
                             <span className="text-white ml-2">{selectedDonation.delivery[0].status.replace('_', ' ')}</span>
                           </div>
                           <div>
-                            <span className="text-skyblue-400">Assigned:</span>
+                            <span className="text-yellow-400">Assigned:</span>
                             <span className="text-white ml-2">{formatDate(selectedDonation.delivery[0].created_at)}</span>
                           </div>
                         </div>
@@ -773,10 +799,10 @@ const MyApprovedDonationsPage = () => {
                   )}
                 </div>
 
-                <div className="flex justify-end mt-6">
+                <div className="flex justify-end mt-4 sm:mt-6">
                   <button
                     onClick={() => setShowDetailsModal(false)}
-                    className="btn btn-secondary"
+                    className="px-4 sm:px-6 py-2 sm:py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
                   >
                     Close
                   </button>

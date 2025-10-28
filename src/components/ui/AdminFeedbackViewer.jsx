@@ -142,7 +142,7 @@ const AdminFeedbackViewer = () => {
   return (
     <div className="space-y-6">
       {/* Statistics Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Feedback */}
         <div className="card p-4 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
           <div className="flex items-center gap-2 mb-2">
@@ -197,18 +197,20 @@ const AdminFeedbackViewer = () => {
       </div>
 
       {/* Filter */}
-      <div className="card p-4 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
-        <div className="flex items-center gap-3">
-          <Filter className="h-5 w-5 text-yellow-400" />
-          <span className="text-sm font-medium text-white">Filter by Role:</span>
-          <div className="flex gap-2">
+      <div className="card p-4 sm:p-5 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Filter className="h-5 w-5 text-yellow-400" />
+            <span className="text-sm font-medium text-white whitespace-nowrap">Filter by Role:</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
             {['all', 'donor', 'recipient', 'volunteer'].map((role) => (
               <button
                 key={role}
                 onClick={() => setRoleFilter(role)}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all active:scale-95 ${
                   roleFilter === role
-                    ? 'bg-yellow-600 text-white'
+                    ? 'bg-yellow-600 text-white shadow-lg'
                     : 'bg-navy-700 text-gray-300 hover:bg-navy-600'
                 }`}
               >
@@ -235,12 +237,12 @@ const AdminFeedbackViewer = () => {
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.05 }}
-                className="card p-5 border border-gray-600" 
+                className="card p-4 sm:p-5 border border-gray-600" 
                 style={{backgroundColor: '#001a5c'}}
               >
                 {/* Header */}
-                <div className="flex items-start justify-between mb-4">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row items-start justify-between gap-3 mb-4">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className={`p-2 rounded-lg border ${getRoleBgColor(feedback.user_role)}`}>
                       <RoleIcon className={`h-5 w-5 ${getRoleColor(feedback.user_role)}`} />
                     </div>
@@ -275,18 +277,18 @@ const AdminFeedbackViewer = () => {
 
                 {/* Feedback Text */}
                 <div className="mb-4">
-                  <p className="text-gray-300 text-sm leading-relaxed">
+                  <p className="text-gray-300 text-sm leading-relaxed break-words">
                     {feedback.feedback}
                   </p>
                 </div>
 
                 {/* Role-Specific Answers */}
                 {feedback.role_specific_answers && Object.keys(feedback.role_specific_answers).length > 0 && (
-                  <div className="bg-navy-900/50 rounded-lg p-4 border border-navy-700">
+                  <div className="bg-navy-900/50 rounded-lg p-3 sm:p-4 border border-navy-700">
                     <h4 className="text-xs font-semibold text-yellow-400 mb-3 uppercase">
                       Detailed Ratings
                     </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                       {Object.entries(feedback.role_specific_answers).map(([key, value]) => (
                         <div key={key} className="flex items-center justify-between">
                           <span className="text-xs text-gray-400">
