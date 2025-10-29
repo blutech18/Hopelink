@@ -38,6 +38,7 @@ const PostDonationPage = () => {
   const [imageFiles, setImageFiles] = useState([])
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(null)
+  const [donationDestination, setDonationDestination] = useState('organization') // 'organization' or 'recipients'
   const formTopRef = useRef(null)
 
   const {
@@ -60,6 +61,7 @@ const PostDonationPage = () => {
   const watchedCategory = watch('category')
   const watchedCondition = watch('condition')
   const watchedIsUrgent = watch('is_urgent')
+  const watchedDeliveryMode = watch('delivery_mode')
 
   const categories = [
     'Food & Beverages',
@@ -93,7 +95,7 @@ const PostDonationPage = () => {
     if (currentStep === 1) {
       fieldsToValidate = ['title', 'description', 'category', 'quantity']
     } else if (currentStep === 2) {
-      fieldsToValidate = ['condition', 'pickup_location']
+      fieldsToValidate = ['condition', 'pickup_location', 'delivery_mode']
     }
 
     console.log('Current step:', currentStep, 'Fields to validate:', fieldsToValidate)
@@ -167,6 +169,8 @@ const PostDonationPage = () => {
         expiry_date: data.expiry_date || null,
         tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [],
         images: uploadedImages.length > 0 ? uploadedImages.map(img => img.preview) : [], // Save all images as base64 array
+        donation_destination: donationDestination, // Add donation destination
+        delivery_mode: data.delivery_mode, // Always include delivery mode
         created_at: new Date().toISOString()
       }
 
@@ -455,6 +459,101 @@ const PostDonationPage = () => {
                     </div>
                   </div>
 
+                  {/* Donation Destination Selection */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-3">
+                      Where to send this donation? *
+                    </label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                      {/* Direct to Organization */}
+                      <label
+                        className={`cursor-pointer p-5 rounded-lg border-2 transition-all ${
+                          donationDestination === 'organization'
+                            ? 'border-yellow-500 bg-yellow-900/20 shadow-lg shadow-yellow-500/20'
+                            : 'border-navy-700 bg-navy-800 hover:border-navy-600'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="donationDestination"
+                          value="organization"
+                          checked={donationDestination === 'organization'}
+                          onChange={(e) => {
+                            setDonationDestination(e.target.value)
+                          }}
+                          className="sr-only"
+                        />
+                        <div className="flex items-start space-x-3">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                            donationDestination === 'organization'
+                              ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg'
+                              : 'bg-navy-700 border-2 border-navy-600'
+                          }`}>
+                            <Package className={`h-6 w-6 ${
+                              donationDestination === 'organization' ? 'text-white' : 'text-yellow-400'
+                            }`} />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className={`text-base font-semibold mb-1 ${
+                              donationDestination === 'organization' ? 'text-white' : 'text-gray-300'
+                            }`}>
+                              Direct to Organization
+                            </h3>
+                            <p className="text-sm text-yellow-400 leading-relaxed">
+                              Send directly to organization (CFC-GK) for distribution
+                            </p>
+                          </div>
+                          {donationDestination === 'organization' && (
+                            <CheckCircle className="h-5 w-5 text-yellow-500 mt-1" />
+                          )}
+                        </div>
+                      </label>
+
+                      {/* To Recipients with Options */}
+                      <label
+                        className={`cursor-pointer p-5 rounded-lg border-2 transition-all ${
+                          donationDestination === 'recipients'
+                            ? 'border-yellow-500 bg-yellow-900/20 shadow-lg shadow-yellow-500/20'
+                            : 'border-navy-700 bg-navy-800 hover:border-navy-600'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="donationDestination"
+                          value="recipients"
+                          checked={donationDestination === 'recipients'}
+                          onChange={(e) => setDonationDestination(e.target.value)}
+                          className="sr-only"
+                        />
+                        <div className="flex items-start space-x-3">
+                          <div className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${
+                            donationDestination === 'recipients'
+                              ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg'
+                              : 'bg-navy-700 border-2 border-navy-600'
+                          }`}>
+                            <Users className={`h-6 w-6 ${
+                              donationDestination === 'recipients' ? 'text-white' : 'text-yellow-400'
+                            }`} />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className={`text-base font-semibold mb-1 ${
+                              donationDestination === 'recipients' ? 'text-white' : 'text-gray-300'
+                            }`}>
+                              To Recipients
+                            </h3>
+                            <p className="text-sm text-yellow-400 leading-relaxed">
+                              Let recipients choose how to receive (pickup/delivery)
+                            </p>
+                          </div>
+                          {donationDestination === 'recipients' && (
+                            <CheckCircle className="h-5 w-5 text-yellow-500 mt-1" />
+                          )}
+                        </div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Mode of Delivery */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       Mode of Delivery *
@@ -466,17 +565,42 @@ const PostDonationPage = () => {
                       className="input"
                     >
                       <option value="">Select delivery mode</option>
-                      <option value="pickup">Self Pickup</option>
-                      <option value="volunteer">Volunteer Delivery</option>
-                      <option value="direct">Direct Delivery (by donor)</option>
+                      {donationDestination === 'organization' ? (
+                        <>
+                          <option value="donor_delivery">I will deliver to organization</option>
+                          <option value="volunteer">Use volunteer to deliver to organization</option>
+                          <option value="organization_pickup">Organization will pick up at my location</option>
+                        </>
+                      ) : (
+                        <>
+                          <option value="pickup">Self Pickup</option>
+                          <option value="volunteer">Volunteer Delivery</option>
+                          <option value="direct">Direct Delivery (by donor)</option>
+                        </>
+                      )}
                     </select>
                     {errors.delivery_mode && (
                       <p className="mt-1 text-sm text-danger-600">{errors.delivery_mode.message}</p>
                     )}
                     <p className="mt-1 text-xs text-yellow-400">
-                      Choose how recipients can receive this donation
+                      {donationDestination === 'organization' 
+                        ? 'Choose how to deliver your donation to the organization' 
+                        : 'Choose how recipients can receive this donation'}
                     </p>
                   </div>
+
+                  {/* Info message when organization is selected */}
+                  {donationDestination === 'organization' && (
+                    <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 flex items-start space-x-3">
+                      <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-yellow-400" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-yellow-300">Sending to Organization</p>
+                        <p className="text-xs text-yellow-400 mt-1">
+                          Your donation will be sent directly to the organization (CFC-GK) for distribution to those in need.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
@@ -734,6 +858,24 @@ const PostDonationPage = () => {
                         <div className="flex items-center text-yellow-400 mb-2">
                           <MapPin className="h-3 w-3 sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
                           <span className="truncate">{watch('pickup_location') || 'Pickup location'}</span>
+                        </div>
+                        <div className="flex items-center text-yellow-400 mb-2">
+                          {donationDestination === 'organization' ? (
+                            <>
+                              <Package className="h-3 w-3 sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
+                              <span>Direct to Organization - {
+                                watchedDeliveryMode === 'donor_delivery' ? 'I will deliver to organization' : 
+                                watchedDeliveryMode === 'volunteer' ? 'Volunteer delivery to organization' : 
+                                watchedDeliveryMode === 'organization_pickup' ? 'Organization pickup' : 
+                                'Delivery mode'}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              <Users className="h-3 w-3 sm:h-4 sm:w-4 mr-1 flex-shrink-0" />
+                              <span>To Recipients - {watchedDeliveryMode === 'pickup' ? 'Self Pickup' : watchedDeliveryMode === 'volunteer' ? 'Volunteer Delivery' : watchedDeliveryMode === 'direct' ? 'Direct Delivery' : 'Delivery mode'}</span>
+                            </>
+                          )}
                         </div>
                         {uploadedImages.length > 0 && (
                           <div className="flex items-center text-yellow-400">

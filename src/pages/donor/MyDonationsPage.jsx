@@ -29,7 +29,8 @@ import {
   Award,
   Heart,
   RefreshCw,
-  Upload
+  Upload,
+  Building
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -677,14 +678,27 @@ const MyDonationsPage = () => {
     return matchesSearch && matchesStatus && matchesCategory
   })
 
-  const getStatusColor = (status) => {
+  const getStatusColor = (status, donation) => {
+    // Special handling for direct donations
+    if (donation?.donation_destination === 'organization') {
+      const directStatusColors = {
+        available: donation?.delivery_mode === 'donor_delivery' ? 'bg-blue-900/20 text-blue-300' :
+                    donation?.delivery_mode === 'organization_pickup' ? 'bg-purple-900/20 text-purple-300' :
+                    'bg-yellow-900/20 text-yellow-300', // volunteer delivery waiting
+        delivered: 'bg-green-900/20 text-green-300',
+        claimed: 'bg-emerald-900/20 text-emerald-300'
+      }
+      return directStatusColors[status] || colors[status]
+    }
+    
+    // Regular donations
     const colors = {
       available: 'bg-success-900/20 text-success-300',
       matched: 'bg-yellow-900/20 text-yellow-300',
       claimed: 'bg-amber-900/20 text-amber-300',
       in_transit: 'bg-purple-900/20 text-purple-300',
       delivered: 'bg-emerald-900/20 text-emerald-300',
-      completed: 'bg-green-500/30 text-green-200 border border-green-500/50', // More prominent for completed
+      completed: 'bg-green-500/30 text-green-200 border border-green-500/50',
       cancelled: 'bg-danger-900/20 text-danger-300',
       expired: 'bg-gray-900/20 text-gray-300'
     }
@@ -1249,7 +1263,7 @@ const MyDonationsPage = () => {
                             />
                             {/* Status Badge on Image */}
                             <div className="absolute top-2 right-2">
-                              <span className={`px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold backdrop-blur-sm border ${getStatusColor(donation.status)}`}>
+                              <span className={`px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold backdrop-blur-md bg-black/50 border-2 shadow-lg ${getStatusColor(donation.status, donation)}`}>
                                 {donation.status.replace('_', ' ').toUpperCase()}
                               </span>
                             </div>
@@ -1285,7 +1299,7 @@ const MyDonationsPage = () => {
                           <div className="w-full sm:w-48 lg:w-56 h-40 sm:h-48 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600 shadow-lg">
                             <Gift className="h-12 w-12 sm:h-16 sm:w-16 text-yellow-400 mb-2" />
                             <span className="text-[10px] sm:text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
-                            <span className={`mt-2 px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold ${getStatusColor(donation.status)}`}>
+                            <span className={`mt-2 px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold ${getStatusColor(donation.status, donation)}`}>
                               {donation.status.replace('_', ' ').toUpperCase()}
                             </span>
                           </div>
@@ -1302,6 +1316,16 @@ const MyDonationsPage = () => {
                               <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
                                 {donation.category}
                               </span>
+                              {/* Status Badge */}
+                              <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold border whitespace-nowrap ${getStatusColor(donation.status, donation)}`}>
+                                {donation.status.replace('_', ' ').toUpperCase()}
+                              </span>
+                              {donation.donation_destination === 'organization' && (
+                                <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30 whitespace-nowrap">
+                                  <Building className="h-3 w-3" />
+                                  Direct
+                                </span>
+                              )}
                               {donation.is_urgent && (
                                 <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold text-red-400 bg-red-500/20 border border-red-500/30 uppercase whitespace-nowrap">
                                   ⚡ URGENT

@@ -366,6 +366,8 @@ export const db = {
         donor:users!donations_donor_id_fkey(id, name, email, profile_image_url, city)
       `)
       .eq('status', 'available')
+      // Exclude donations destined for organization (CFC-GK) - only show donations for recipients
+      .or('donation_destination.is.null,donation_destination.eq.recipients')
       .order('is_urgent', { ascending: false })
       .order('created_at', { ascending: false })
 

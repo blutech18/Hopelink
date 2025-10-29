@@ -150,6 +150,11 @@ const BrowseDonationsPage = () => {
   }
 
   const filteredDonations = donations.filter(donation => {
+    // Exclude donations that are destined for organization only (CFC-GK)
+    if (donation.donation_destination === 'organization') {
+      return false
+    }
+    
     const matchesSearch = donation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          donation.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          donation.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))

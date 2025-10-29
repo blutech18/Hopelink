@@ -1,58 +1,61 @@
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
 import { 
-  Package, 
+  Building, 
+  Package,
   Search, 
   Filter,
   Eye,
-  Edit,
-  Archive,
+  CheckCircle,
+  Clock,
+  Truck,
   MapPin,
   Calendar,
   User,
-  CheckCircle,
-  Clock,
   XCircle,
-  X,
-  Building,
-  Users
+  AlertCircle,
+  Phone,
+  Mail,
+  RefreshCw,
+  X
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/supabase'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
-import ConfirmationModal from '../../components/ui/ConfirmationModal'
+import LoadingSpinner from '../../components/ui/LoadingSpinner'
 
-const AdminDonationsPage = () => {
+const AdminCFCDonationsPage = () => {
   const { user } = useAuth()
-  const navigate = useNavigate()
   const [donations, setDonations] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
-  const [categoryFilter, setCategoryFilter] = useState('all')
   const [selectedDonation, setSelectedDonation] = useState(null)
   const [showModal, setShowModal] = useState(false)
-  const [showArchiveConfirmation, setShowArchiveConfirmation] = useState(false)
-  const [donationToArchive, setDonationToArchive] = useState(null)
   const [updatingStatus, setUpdatingStatus] = useState(false)
   const [selectedImage, setSelectedImage] = useState(null)
   const [showImageModal, setShowImageModal] = useState(false)
 
   useEffect(() => {
-    loadDonations()
+    loadCFCDonations()
   }, [])
 
-  const loadDonations = async () => {
+  const loadCFCDonations = async () => {
     try {
       setLoading(true)
       
-      // Fetch recent donations with limit for better performance
-      const donationsData = await db.getDonations({ limit: 100 })
-      setDonations(donationsData || [])
+      // Fetch all donations and filter for CFC-GK donations
+      const donationsData = await db.getDonations({ limit: 500 })
+      
+      // Filter for CFC-GK donations
+      const cfcDonations = donationsData.filter(donation => 
+        donation.donation_destination === 'organization'
+      )
+      
+      setDonations(cfcDonations || [])
     } catch (error) {
-      console.error('Error loading donations:', error)
-      setDonations([]) // Fallback to empty array on error
+      console.error('Error loading CFC-GK donations:', error)
+      setDonations([])
     } finally {
       setLoading(false)
     }
@@ -63,9 +66,8 @@ const AdminDonationsPage = () => {
     const matchesSearch = donation.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          donorName.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || donation.status === statusFilter
-    const matchesCategory = categoryFilter === 'all' || donation.category === categoryFilter
     
-    return matchesSearch && matchesStatus && matchesCategory
+    return matchesSearch && matchesStatus
   })
 
   const getStatusColor = (status) => {
@@ -82,9 +84,18 @@ const AdminDonationsPage = () => {
     switch (status) {
       case 'available': return CheckCircle
       case 'claimed': return Clock
-      case 'delivered': return Package
+      case 'delivered': return Truck
       case 'expired': return XCircle
       default: return Clock
+    }
+  }
+
+  const getDeliveryModeLabel = (mode) => {
+    switch (mode) {
+      case 'donor_delivery': return 'Donor will deliver to CFC-GK'
+      case 'volunteer': return 'Volunteer delivery to CFC-GK'
+      case 'organization_pickup': return 'CFC-GK will pick up'
+      default: return mode || 'Not specified'
     }
   }
 
@@ -93,30 +104,11 @@ const AdminDonationsPage = () => {
     setShowModal(true)
   }
 
-  const handleArchiveDonation = async (donationId) => {
-    setDonationToArchive(donationId)
-    setShowArchiveConfirmation(true)
-  }
-
-  const confirmArchiveDonation = async () => {
-    if (!donationToArchive) return
-    
-    try {
-      await db.updateDonation(donationToArchive, { status: 'archived' })
-      await loadDonations()
-      setShowArchiveConfirmation(false)
-      setDonationToArchive(null)
-    } catch (error) {
-      console.error('Error archiving donation:', error)
-      alert('Failed to archive donation. Please try again.')
-    }
-  }
-
   const handleStatusUpdate = async (donationId, newStatus) => {
     try {
       setUpdatingStatus(true)
       await db.updateDonation(donationId, { status: newStatus })
-      await loadDonations()
+      await loadCFCDonations()
       
       // Update selected donation if modal is open
       if (selectedDonation && selectedDonation.id === donationId) {
@@ -144,12 +136,12 @@ const AdminDonationsPage = () => {
           className="mb-6 sm:mb-8"
         >
           <div className="flex items-center gap-3 sm:gap-4 mb-6">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
-              <Package className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg flex-shrink-0">
+              <Building className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
             </div>
             <div className="min-w-0">
-              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Donations Management</h1>
-              <p className="text-yellow-300 text-xs sm:text-sm">Monitor and manage all platform donations</p>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Direct Donations</h1>
+              <p className="text-yellow-300 text-xs sm:text-sm">Manage donations directly to organization</p>
             </div>
           </div>
 
@@ -157,9 +149,9 @@ const AdminDonationsPage = () => {
           <div className="flex flex-col gap-3 sm:gap-4 mb-6">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-yellow-400 flex-shrink-0" />
-              <input
+                <input
                 type="text"
-                placeholder="Search donations by title or donor..."
+                placeholder="Search direct donations..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-10 pr-4 py-3 sm:py-2.5 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm sm:text-base placeholder-gray-400 focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200"
@@ -175,28 +167,19 @@ const AdminDonationsPage = () => {
                 >
                   <option value="all">All Statuses</option>
                   <option value="available">Available</option>
-                  <option value="claimed">Claimed</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="expired">Expired</option>
+                  <option value="delivered">Delivered (Pending Admin Approval)</option>
+                  <option value="claimed">Claimed (Completed)</option>
                 </select>
                 <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
               </div>
-
-              <div className="relative flex-1">
-                <select
-                  value={categoryFilter}
-                  onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="appearance-none w-full px-5 py-3 sm:py-2.5 pr-10 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm sm:text-base font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all duration-200 cursor-pointer hover:border-yellow-600"
-                >
-                  <option value="all">All Categories</option>
-                  <option value="Food">Food</option>
-                  <option value="Clothing">Clothing</option>
-                  <option value="Education">Education</option>
-                  <option value="Healthcare">Healthcare</option>
-                  <option value="Household">Household</option>
-                </select>
-                <Filter className="absolute right-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400 pointer-events-none" />
-              </div>
+              
+              <button
+                onClick={loadCFCDonations}
+                className="w-full sm:w-auto px-5 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg text-sm sm:text-base font-medium transition-all border-2 border-navy-700 hover:border-yellow-500 flex items-center justify-center gap-2"
+              >
+                <RefreshCw className="h-4 w-4" />
+                Refresh
+              </button>
             </div>
           </div>
         </motion.div>
@@ -206,14 +189,14 @@ const AdminDonationsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8"
+          className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8"
         >
           <div className="card p-4 sm:p-6">
             <div className="flex items-center space-x-3">
-              <Package className="h-6 w-6 sm:h-8 sm:w-8 text-green-400" />
+              <Building className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
               <div className="flex flex-col">
                 <p className="text-xl sm:text-2xl font-bold text-white">{donations.length}</p>
-                <p className="text-yellow-300 text-xs sm:text-sm">Total Donations</p>
+                <p className="text-yellow-300 text-xs sm:text-sm">Total Direct Donations</p>
               </div>
             </div>
           </div>
@@ -232,19 +215,7 @@ const AdminDonationsPage = () => {
           
           <div className="card p-4 sm:p-6">
             <div className="flex items-center space-x-3">
-              <Clock className="h-6 w-6 sm:h-8 sm:w-8 text-yellow-400" />
-              <div className="flex flex-col">
-                <p className="text-xl sm:text-2xl font-bold text-white">
-                  {donations.filter(d => d.status === 'claimed').length}
-                </p>
-                <p className="text-yellow-300 text-xs sm:text-sm">Claimed</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="card p-4 sm:p-6">
-            <div className="flex items-center space-x-3">
-              <Package className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
+              <Truck className="h-6 w-6 sm:h-8 sm:w-8 text-blue-400" />
               <div className="flex flex-col">
                 <p className="text-xl sm:text-2xl font-bold text-white">
                   {donations.filter(d => d.status === 'delivered').length}
@@ -267,22 +238,22 @@ const AdminDonationsPage = () => {
             <table className="w-full">
               <thead className="bg-navy-800">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Donation
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Donor
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
-                    Category
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
+                    Delivery
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Posted
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -299,82 +270,73 @@ const AdminDonationsPage = () => {
                       transition={{ delay: index * 0.05 }}
                       className="hover:bg-navy-800/50"
                     >
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <div className="text-sm font-medium text-white">{donation.title}</div>
-                            {donation.donation_destination === 'organization' && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                              <Building className="h-3 w-3" />
-                              Direct
-                            </span>
-                            )}
-                          </div>
-                          <div className="text-sm text-yellow-400 truncate max-w-xs">
-                            {donation.description}
-                          </div>
-                          <div className="flex items-center mt-1 text-xs text-yellow-500">
-                            <MapPin className="h-3 w-3 mr-1" />
-                            {donation.pickup_location || donation.city || 'Location not specified'}
-                          </div>
+                      <td className="px-4 py-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                            <Building className="h-2.5 w-2.5" />
+                            Direct
+                          </span>
+                          <span className="text-sm font-medium text-white truncate max-w-xs">{donation.title}</span>
                         </div>
                       </td>
                       
-                      <td className="px-6 py-4">
-                        <div>
-                          <div className="text-sm font-medium text-white">{donation.donor?.name || 'Unknown'}</div>
-                          <div className="text-sm text-yellow-400">{donation.donor?.email || 'No email'}</div>
-                        </div>
+                      <td className="px-4 py-2.5">
+                        <div className="text-xs text-white truncate max-w-xs">{donation.donor?.name || 'Unknown'}</div>
                       </td>
                       
-                      <td className="px-6 py-4">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
-                          {donation.category}
+                      <td className="px-4 py-2.5">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 truncate max-w-[120px]">
+                          {getDeliveryModeLabel(donation.delivery_mode)}
                         </span>
                       </td>
                       
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(donation.status)}`}>
-                          <StatusIcon className="h-3 w-3 mr-1" />
+                      <td className="px-4 py-2.5">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(donation.status)}`}>
+                          <StatusIcon className="h-2.5 w-2.5 mr-1" />
                           {donation.status}
                         </span>
                       </td>
                       
-                      <td className="px-6 py-4">
-                        <div className="flex items-center text-sm text-yellow-400">
-                          <Calendar className="h-4 w-4 mr-1" />
+                      <td className="px-4 py-2.5">
+                        <div className="text-xs text-yellow-400">
                           {new Date(donation.created_at).toLocaleDateString()}
                         </div>
                       </td>
                       
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          <select
-                            value={donation.status}
-                            onChange={(e) => handleStatusUpdate(donation.id, e.target.value)}
-                            disabled={updatingStatus}
-                            className="px-3 py-1 text-xs bg-navy-800 border border-navy-700 rounded-lg text-white focus:outline-none focus:border-yellow-500 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <option value="available">Available</option>
-                            <option value="claimed">Claimed</option>
-                            <option value="delivered">Delivered</option>
-                            <option value="expired">Expired</option>
-                          </select>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => handleViewDonation(donation)}
-                            className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
+                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded transition-all active:scale-95"
                             title="View Details"
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          <button
-                            onClick={() => handleArchiveDonation(donation.id)}
-                            className="p-2 text-orange-400 hover:text-orange-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
-                            title="Archive"
-                          >
-                            <Archive className="h-4 w-4" />
-                          </button>
+                          
+                          {/* Status Update Button */}
+                          {/* For volunteer delivery: only show after volunteer marks as delivered */}
+                          {donation.status === 'delivered' && donation.delivery_mode === 'volunteer' && (
+                            <button
+                              onClick={() => handleStatusUpdate(donation.id, 'claimed')}
+                              disabled={updatingStatus}
+                              className="px-2 py-1 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center"
+                              title="Mark as Claimed"
+                            >
+                              <CheckCircle className="h-3 w-3" />
+                            </button>
+                          )}
+                          
+                          {/* For donor delivery or organization pickup: can mark as claimed directly */}
+                          {donation.status === 'available' && (donation.delivery_mode === 'donor_delivery' || donation.delivery_mode === 'organization_pickup') && (
+                            <button
+                              onClick={() => handleStatusUpdate(donation.id, 'claimed')}
+                              disabled={updatingStatus}
+                              className="px-2 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center"
+                              title="Mark as Claimed"
+                            >
+                              <CheckCircle className="h-3 w-3" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>
@@ -387,13 +349,12 @@ const AdminDonationsPage = () => {
           
           {filteredDonations.length === 0 && (
             <div className="text-center py-12">
-              <Package className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
-              <p className="text-yellow-300">No donations found</p>
+              <Building className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
+              <p className="text-yellow-300">No direct donations found</p>
               <p className="text-yellow-400 text-sm">
-                {searchTerm || statusFilter !== 'all' || categoryFilter !== 'all'
+                {searchTerm || statusFilter !== 'all'
                   ? 'Try adjusting your filters'
-                  : 'Donations will appear here as they are posted'
-                }
+                  : 'Direct donations will appear here as they are posted'}
               </p>
             </div>
           )}
@@ -410,13 +371,13 @@ const AdminDonationsPage = () => {
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="sticky top-0 bg-navy-900 border-b-2 border-yellow-500/20 px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
+            <div className="sticky top-0 bg-navy-900 border-b-2 border-blue-500/20 px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
               <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
-                  <Package className="h-5 w-5 text-yellow-400" />
+                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                  <Building className="h-5 w-5 text-blue-400" />
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-lg sm:text-xl font-bold text-white">Donation Details</h3>
+                  <h3 className="text-lg sm:text-xl font-bold text-white">Direct Donation Details</h3>
                   <p className="text-xs text-gray-400 hidden sm:block">Complete donation information</p>
                 </div>
               </div>
@@ -436,7 +397,7 @@ const AdminDonationsPage = () => {
                   <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
                     <Package className="h-4 w-4 text-blue-400" />
                   </div>
-                  <h4 className="text-sm font-semibold text-white">Basic Information</h4>
+                  <h4 className="text-sm font-semibold text-white">Donation Information</h4>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -449,40 +410,16 @@ const AdminDonationsPage = () => {
                       {selectedDonation.category}
                     </span>
                   </div>
-                  <div className="md:col-span-2">
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
                     <p className="text-sm text-gray-300 leading-relaxed">{selectedDonation.description}</p>
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Destination</label>
-                    <div className="flex items-center gap-2">
-                      {selectedDonation.donation_destination === 'organization' ? (
-                        <div className="flex flex-col gap-1">
-                          <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30 w-fit">
-                            <Building className="h-4 w-4" />
-                            Direct to Organization
-                          </span>
-                          {selectedDonation.delivery_mode && (
-                            <span className="text-xs text-yellow-400 ml-1">
-                              {selectedDonation.delivery_mode === 'donor_delivery' ? 'Donor will deliver to organization' : 
-                               selectedDonation.delivery_mode === 'volunteer' ? 'Volunteer delivery to organization' : 
-                               selectedDonation.delivery_mode === 'organization_pickup' ? 'Organization will pick up' :
-                               selectedDonation.delivery_mode}
-                            </span>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/30">
-                          <Users className="h-4 w-4" />
-                          To Recipients
-                          {selectedDonation.delivery_mode && (
-                            <span className="ml-1 text-xs">
-                              ({selectedDonation.delivery_mode === 'pickup' ? 'Pickup' : selectedDonation.delivery_mode === 'volunteer' ? 'Volunteer Delivery' : 'Direct Delivery'})
-                            </span>
-                          )}
-                        </span>
-                      )}
-                    </div>
+                    <label className="block text-xs font-medium text-gray-400 mb-1">Delivery Mode</label>
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                      <Building className="h-4 w-4" />
+                      {getDeliveryModeLabel(selectedDonation.delivery_mode)}
+                    </span>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
@@ -514,6 +451,12 @@ const AdminDonationsPage = () => {
                     <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
                     <p className="text-sm text-white">{selectedDonation.donor?.email || 'Not provided'}</p>
                   </div>
+                  {selectedDonation.donor?.phone_number && (
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-gray-400 mb-1">Phone</label>
+                      <p className="text-sm text-white">{selectedDonation.donor.phone_number}</p>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -566,51 +509,141 @@ const AdminDonationsPage = () => {
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-navy-900 border-t border-navy-700 px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3 flex-1">
-                <label className="text-xs font-medium text-gray-400">Update Status:</label>
-                <select
-                  value={selectedDonation.status}
-                  onChange={(e) => handleStatusUpdate(selectedDonation.id, e.target.value)}
-                  disabled={updatingStatus}
-                  className="px-4 py-2 bg-navy-800 border-2 border-navy-700 rounded-lg text-white text-sm font-medium focus:outline-none focus:border-yellow-500 focus:ring-2 focus:ring-yellow-500/20 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <option value="available">Available</option>
-                  <option value="claimed">Claimed</option>
-                  <option value="delivered">Delivered</option>
-                  <option value="expired">Expired</option>
-                </select>
-                {updatingStatus && (
-                  <span className="text-xs text-yellow-400">Updating...</span>
+            <div className="sticky bottom-0 bg-navy-900 border-t border-navy-700 px-4 sm:px-6 py-4 flex flex-col gap-4">
+              {/* Status Update Section */}
+              <div className="flex flex-col gap-3">
+                {/* For volunteer delivery - waiting for volunteer */}
+                {selectedDonation.status === 'available' && selectedDonation.delivery_mode === 'volunteer' && (
+                  <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
+                    <div className="flex items-center gap-3">
+                      <Clock className="h-5 w-5 text-yellow-400 flex-shrink-0" />
+                      <div>
+                        <p className="text-sm font-medium text-yellow-300">Waiting for volunteer to deliver</p>
+                        <p className="text-xs text-yellow-400 mt-1">Admin can only mark as 'Claimed' after volunteer marks as 'Delivered'</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* For volunteer delivery - volunteer has delivered */}
+                {selectedDonation.status === 'delivered' && selectedDonation.delivery_mode === 'volunteer' && (
+                  <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-green-300 mb-2">Volunteer has marked this as delivered</p>
+                        <button
+                          onClick={() => {
+                            handleStatusUpdate(selectedDonation.id, 'claimed')
+                            setShowModal(false)
+                          }}
+                          disabled={updatingStatus}
+                          className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-lg flex items-center gap-2"
+                        >
+                          {updatingStatus ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="h-4 w-4" />
+                              Mark as Claimed
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* For donor delivery - can mark as claimed */}
+                {selectedDonation.status === 'available' && selectedDonation.delivery_mode === 'donor_delivery' && (
+                  <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <Truck className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-blue-300 mb-2">Donor will deliver directly to organization</p>
+                        <button
+                          onClick={() => {
+                            handleStatusUpdate(selectedDonation.id, 'claimed')
+                            setShowModal(false)
+                          }}
+                          disabled={updatingStatus}
+                          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-lg flex items-center gap-2"
+                        >
+                          {updatingStatus ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="h-4 w-4" />
+                              Mark as Claimed (Donor Delivered)
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* For organization pickup - can mark as claimed */}
+                {selectedDonation.status === 'available' && selectedDonation.delivery_mode === 'organization_pickup' && (
+                  <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
+                    <div className="flex items-start gap-3">
+                      <MapPin className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium text-purple-300 mb-2">Organization will pick up from donor location</p>
+                        <button
+                          onClick={() => {
+                            handleStatusUpdate(selectedDonation.id, 'claimed')
+                            setShowModal(false)
+                          }}
+                          disabled={updatingStatus}
+                          className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-lg flex items-center gap-2"
+                        >
+                          {updatingStatus ? (
+                            <>
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                              Updating...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="h-4 w-4" />
+                              Mark as Claimed (Picked Up)
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Claimed/Completed status */}
+                {selectedDonation.status === 'claimed' && (
+                  <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
+                    <div className="flex items-center gap-3">
+                      <CheckCircle className="h-5 w-5 text-blue-400 flex-shrink-0" />
+                      <p className="text-sm font-medium text-blue-300">This donation has been claimed and completed.</p>
+                    </div>
+                  </div>
                 )}
               </div>
+              
+              {/* Close Button */}
               <button
                 onClick={() => setShowModal(false)}
-                className="w-full sm:w-auto px-6 py-3 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white rounded-lg font-bold transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                className="w-full px-6 py-3 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white rounded-lg font-bold transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg flex items-center justify-center gap-2"
               >
-                <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                <X className="h-4 w-4 flex-shrink-0" />
                 Close
               </button>
             </div>
           </motion.div>
         </div>
       )}
-
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showArchiveConfirmation}
-        onClose={() => {
-          setShowArchiveConfirmation(false)
-          setDonationToArchive(null)
-        }}
-        onConfirm={confirmArchiveDonation}
-        title="Archive Donation"
-        message="Are you sure you want to archive this donation? This action will move the donation to archived status."
-        confirmText="Yes, Archive"
-        cancelText="Cancel"
-        type="warning"
-        confirmButtonVariant="danger"
-      />
 
       {/* Image View Modal */}
       {showImageModal && selectedImage && (
@@ -638,4 +671,5 @@ const AdminDonationsPage = () => {
   )
 }
 
-export default AdminDonationsPage 
+export default AdminCFCDonationsPage
+

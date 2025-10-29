@@ -16,7 +16,8 @@ import {
   Bell,
   Clock,
   ChevronDown,
-  MessageSquare
+  MessageSquare,
+  Building
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -230,6 +231,7 @@ const Navbar = () => {
       { path: '/admin', label: 'Dashboard', icon: Shield },
       { path: '/admin/users', label: 'Users', icon: Users },
       { path: '/admin/donations', label: 'Donations', icon: Gift },
+      { path: '/admin/cfc-donations', label: 'Direct Donations', icon: Building },
       { path: '/admin/volunteers', label: 'Volunteers', icon: Truck },
       { path: '/admin/requests', label: 'Requests', icon: Heart },
       { path: '/admin/events', label: 'Events', icon: Calendar },

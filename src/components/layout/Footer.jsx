@@ -51,6 +51,7 @@ const Footer = ({ userRole = null }) => {
         { name: 'Admin Dashboard', href: '/admin' },
         { name: 'User Management', href: '/admin/users' },
         { name: 'Donation Management', href: '/admin/donations' },
+        { name: 'Direct Donations', href: '/admin/cfc-donations' },
         { name: 'Request Management', href: '/admin/requests' },
       ],
       secondaryLinks: [

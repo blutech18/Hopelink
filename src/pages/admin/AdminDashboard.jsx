@@ -11,7 +11,8 @@ import {
   AlertTriangle,
   CheckCircle,
   Clock,
-  BarChart3
+  BarChart3,
+  Building
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db, supabase } from '../../lib/supabase'
@@ -327,6 +328,13 @@ const AdminDashboard = () => {
                >
                  <Package className="h-4 w-4 mr-2 flex-shrink-0" />
                  <span className="text-sm sm:text-base">Review Donations</span>
+               </button>
+               <button 
+                 onClick={() => navigate('/admin/cfc-donations')}
+                 className="w-full btn btn-secondary text-left flex items-center border border-gray-600 py-3 active:scale-95 transition-transform"
+               >
+                 <Building className="h-4 w-4 mr-2 flex-shrink-0" />
+                 <span className="text-sm sm:text-base">Direct Donations</span>
                </button>
                <button 
                  onClick={() => navigate('/admin/volunteers')}

@@ -48,6 +48,7 @@ const AdminDashboard = React.lazy(() => import('./pages/admin/AdminDashboard'))
 const UserManagementPage = React.lazy(() => import('./pages/admin/UserManagementPage'))
 const AdminSettingsPage = React.lazy(() => import('./pages/admin/AdminSettingsPage'))
 const AdminDonationsPage = React.lazy(() => import('./pages/admin/AdminDonationsPage'))
+const AdminCFCDonationsPage = React.lazy(() => import('./pages/admin/AdminCFCDonationsPage'))
 const AdminVolunteersPage = React.lazy(() => import('./pages/admin/AdminVolunteersPage'))
 const AdminRequestsPage = React.lazy(() => import('./pages/admin/AdminRequestsPage'))
 const AdminEventsPage = React.lazy(() => import('./pages/admin/AdminEventsPage'))
@@ -269,6 +270,11 @@ function AppContent() {
               <Route path="/admin/donations" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AdminDonationsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/cfc-donations" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminCFCDonationsPage />
                 </ProtectedRoute>
               } />
               <Route path="/admin/volunteers" element={

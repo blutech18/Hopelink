@@ -20,7 +20,9 @@ import {
   X,
   Check,
   FileImage,
-  Eye
+  Eye,
+  Building,
+  Users
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -481,6 +483,12 @@ const MyDeliveriesPage = () => {
                                 {delivery.claim?.donation?.is_urgent && (
                                   <span className="px-3 py-1 rounded-full text-xs font-semibold text-red-400 bg-red-500/20 border border-red-500/30 uppercase">
                                     ⚡ URGENT
+                                  </span>
+                                )}
+                                {delivery.claim?.donation?.donation_destination === 'organization' && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                                    <Building className="h-3 w-3" />
+                                    Direct
                                   </span>
                                 )}
                               </div>
