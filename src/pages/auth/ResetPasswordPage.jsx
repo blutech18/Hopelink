@@ -146,7 +146,7 @@ const ResetPasswordPage = () => {
 
     setIsSendingEmail(true)
     try {
-      const redirectTo = `${window.location.origin}/reset-password`
+      const redirectTo = `${window.location.origin}/reset-password?recover=1`
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
       if (error) throw error
       setHasSentEmail(true)
@@ -173,7 +173,8 @@ const ResetPasswordPage = () => {
     typeParamForRender === 'recovery' ||
     !!mergedParamsForRender.get('token_hash') ||
     !!mergedParamsForRender.get('access_token') ||
-    !!mergedParamsForRender.get('code')
+    !!mergedParamsForRender.get('code') ||
+    mergedParamsForRender.get('recover') === '1'
   )
 
   return (
