@@ -33,10 +33,13 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import VolunteerProfileSettings from '../../components/ui/VolunteerProfileSettings'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
 import LocationPicker from '../../components/ui/LocationPicker'
+import { db } from '../../lib/supabase'
 
 const ProfilePage = () => {
   const { user, profile, updateProfile, updatePassword } = useAuth()
   const { success, error } = useToast()
+  const [badges, setBadges] = useState([])
+  const [donorStats, setDonorStats] = useState(null)
   const [isEditing, setIsEditing] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [showPasswordSection, setShowPasswordSection] = useState(false)
@@ -170,6 +173,34 @@ const ProfilePage = () => {
       }
     }
   }, [profile, reset])
+
+  // Load derived badges
+  useEffect(() => {
+    let mounted = true
+    async function load() {
+      if (!user?.id) return
+      try {
+        const b = await db.getUserBadges(user.id)
+        if (mounted) setBadges(b || [])
+      } catch (_) {}
+    }
+    load()
+    return () => { mounted = false }
+  }, [user?.id])
+
+  // Load donor stats
+  useEffect(() => {
+    let mounted = true
+    async function loadStats() {
+      if (!profile?.id || profile?.role !== 'donor') return
+      try {
+        const stats = await db.getDonorStats(profile.id)
+        if (mounted) setDonorStats(stats)
+      } catch (_) {}
+    }
+    loadStats()
+    return () => { mounted = false }
+  }, [profile?.id, profile?.role])
 
   // Image handling functions
   const convertToBase64 = (file) => {
@@ -901,6 +932,34 @@ const ProfilePage = () => {
                 </div>
               )}
             </div>
+            {/* Derived Badges */}
+            {Array.isArray(badges) && badges.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2">
+                {badges.map((b) => (
+                  <div key={b} className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                    <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400" />
+                    <span className="text-xs sm:text-sm font-medium text-yellow-200">{b}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Donor stats: rating and totals */}
+            {profile.role === 'donor' && donorStats && (
+              <div className="flex items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                  <span className="text-xs sm:text-sm font-medium text-yellow-200">
+                    ⭐ {donorStats.averageRating?.toFixed(2) || '0.00'} ({donorStats.totalRatings || 0})
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                  <Gift className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400" />
+                  <span className="text-xs sm:text-sm font-medium text-yellow-200">
+                    {donorStats.totalCompletedDonations || 0} Donations
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
         </motion.div>
 

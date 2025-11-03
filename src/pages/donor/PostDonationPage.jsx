@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation, Link } from 'react-router-dom'
 import { 
   Gift, 
   Package, 
@@ -32,6 +32,7 @@ const PostDonationPage = () => {
   const { user, profile } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
   const [currentStep, setCurrentStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [uploadedImages, setUploadedImages] = useState([])
@@ -57,6 +58,19 @@ const PostDonationPage = () => {
       quantity: 1
     }
   })
+
+  // Apply prefill if coming from a request
+  useEffect(() => {
+    const prefill = location.state?.prefill
+    if (prefill) {
+      if (prefill.title) setValue('title', prefill.title)
+      if (prefill.description) setValue('description', prefill.description)
+      if (prefill.category) setValue('category', prefill.category)
+      if (prefill.quantity) setValue('quantity', prefill.quantity)
+      // Default to recipients flow when fulfilling a request
+      setDonationDestination('recipients')
+    }
+  }, [location.state, setValue])
 
   const watchedCategory = watch('category')
   const watchedCondition = watch('condition')
@@ -206,6 +220,16 @@ const PostDonationPage = () => {
           <Gift className="h-12 w-12 sm:h-14 sm:w-14 lg:h-16 lg:w-16 text-yellow-500 mx-auto mb-3 sm:mb-4" />
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white mb-2">Post a Donation</h1>
           <p className="text-sm sm:text-base text-yellow-300">Share your generosity with those in need</p>
+          {location.state?.fromRequestId && (
+            <div className="mt-4 bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-4 py-3 inline-block text-left">
+              <p className="text-sm text-yellow-300">
+                You are fulfilling a recipient's request. You can adjust the details if needed.
+              </p>
+              <div className="text-xs text-yellow-400 mt-1">
+                <Link to="/browse-requests" className="underline hover:text-yellow-300">Back to Browse Requests</Link>
+              </div>
+            </div>
+          )}
         </motion.div>
 
         {/* Progress Steps */}

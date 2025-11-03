@@ -17,7 +17,9 @@ import {
   ArrowLeft,
   ArrowRight,
   CheckCircle,
-  Truck
+  Truck,
+  Upload,
+  Image as ImageIcon
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -36,6 +38,7 @@ const CreateRequestPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(null)
+  const [sampleImage, setSampleImage] = useState(null)
   const formTopRef = React.useRef(null)
   
   // Check if we're in edit mode
@@ -82,6 +85,10 @@ const CreateRequestPage = () => {
           : [{ value: '' }]
       }
       reset(formData)
+      // Load existing image if available
+      if (requestData.sample_image) {
+        setSampleImage(requestData.sample_image)
+      }
     }
   }, [editMode, requestData, reset])
 
@@ -159,6 +166,7 @@ const CreateRequestPage = () => {
         needed_by: data.needed_by || null,
         delivery_mode: data.delivery_mode,
         tags: tags.length > 0 ? tags : null,
+        sample_image: sampleImage || null,
         requester_id: user.id
       }
 
@@ -398,6 +406,90 @@ const CreateRequestPage = () => {
                       <div className="mt-1 text-xs text-yellow-400 text-right">
                         {watch('description')?.length || 0}/1000 characters
                       </div>
+                    </div>
+
+                    {/* Sample Image Upload */}
+                    <div className="md:col-span-2">
+                      <label className="block text-sm font-medium text-white mb-2">
+                        Sample Image (Optional)
+                      </label>
+                      <div className="border-2 border-dashed border-yellow-500/30 bg-navy-800/50 rounded-lg p-4">
+                        {!sampleImage ? (
+                          <>
+                            <div className="text-center">
+                              <div className="p-3 bg-yellow-500/10 rounded-full inline-block mb-3">
+                                <ImageIcon className="h-8 w-8 text-yellow-400" />
+                              </div>
+                              <p className="text-white font-medium mb-1">Upload Sample Image</p>
+                              <p className="text-yellow-300 text-xs mb-4">Help donors understand what you need by showing a reference image</p>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                id="sampleImageUpload"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) {
+                                    const reader = new FileReader()
+                                    reader.onload = () => setSampleImage(reader.result)
+                                    reader.readAsDataURL(file)
+                                  }
+                                }}
+                              />
+                              <label
+                                htmlFor="sampleImageUpload"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white text-sm font-medium rounded-lg cursor-pointer transition-colors"
+                              >
+                                <Upload className="h-4 w-4" />
+                                Choose Image
+                              </label>
+                              <p className="text-gray-400 text-xs mt-3">Supported: JPG, PNG, GIF (Max 5MB)</p>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="relative">
+                            <img
+                              src={sampleImage}
+                              alt="Sample"
+                              className="max-h-64 mx-auto rounded-lg border-2 border-yellow-500/30 shadow-lg"
+                            />
+                            <button
+                              type="button"
+                              className="absolute top-2 right-2 p-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors shadow-lg"
+                              onClick={() => setSampleImage(null)}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                            <div className="flex justify-center gap-3 mt-4">
+                              <label
+                                htmlFor="sampleImageUpload"
+                                className="inline-flex items-center gap-2 px-4 py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 text-sm font-medium rounded-lg cursor-pointer transition-colors"
+                              >
+                                <Upload className="h-4 w-4" />
+                                Change Image
+                              </label>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                id="sampleImageUpload"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0]
+                                  if (file) {
+                                    const reader = new FileReader()
+                                    reader.onload = () => setSampleImage(reader.result)
+                                    reader.readAsDataURL(file)
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-yellow-400 flex items-start gap-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 flex-shrink-0 mt-0.5" />
+                        <span>Optional: Upload a reference image to help donors understand what you're looking for</span>
+                      </p>
                     </div>
                   </div>
 

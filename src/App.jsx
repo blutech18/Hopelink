@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom'
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import Navbar from './components/layout/Navbar'
 import Footer from './components/layout/Footer'
@@ -9,6 +9,7 @@ import ScrollToTop from './components/ui/ScrollToTop'
 import { useAuth } from './contexts/AuthContext'
 import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
+import { supabase } from './lib/supabase'
 
 // Import public pages directly (avoiding lazy loading for these specific pages due to Vercel build issues)
 import HomePage from './pages/HomePage.jsx'
@@ -24,6 +25,7 @@ const ProfilePage = React.lazy(() => import('./pages/profile/ProfilePage'))
 
 // Donor pages
 const PostDonationPage = React.lazy(() => import('./pages/donor/PostDonationPage'))
+const FulfillRequestPage = React.lazy(() => import('./pages/donor/FulfillRequestPage'))
 const MyDonationsPage = React.lazy(() => import('./pages/donor/MyDonationsPage'))
 const BrowseRequestsPage = React.lazy(() => import('./pages/donor/BrowseRequestsPage'))
 
@@ -85,6 +87,8 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
 // Public Route component (redirect if already logged in)
 const PublicRoute = ({ children }) => {
   const { user, loading, isSigningIn } = useAuth()
+  const location = useLocation()
+  const isPasswordRecoveryRoute = location?.pathname === '/reset-password'
   
   if (loading) {
     return (
@@ -95,7 +99,7 @@ const PublicRoute = ({ children }) => {
   }
   
   // Don't redirect if user is signing in - let the auth flow complete smoothly
-  if (user && !isSigningIn) {
+  if (user && !isSigningIn && !isPasswordRecoveryRoute) {
     return <Navigate to="/dashboard" replace />
   }
   
@@ -105,6 +109,7 @@ const PublicRoute = ({ children }) => {
 // Component to conditionally render Footer
 function AppContent() {
   const location = useLocation()
+  const navigate = useNavigate()
   const { loading, profile } = useAuth()
   const { showToast } = useToast()
   const [showSetupGuide, setShowSetupGuide] = useState(false)
@@ -123,6 +128,35 @@ function AppContent() {
       }
     }
   }, [showToast])
+
+  // Ensure recovery links always land on the reset password page
+  useEffect(() => {
+    // If Supabase redirected us to Site URL with ?redirect_to=<absolute-url>, forward immediately
+    const params = new URLSearchParams(window.location.search)
+    const redirectTo = params.get('redirect_to')
+    if (redirectTo) {
+      try {
+        // Use a hard navigation to preserve any subsequent token appends from Supabase
+        window.location.replace(redirectTo)
+        return
+      } catch {
+        navigate(new URL(redirectTo).pathname + (new URL(redirectTo).search || '') + (new URL(redirectTo).hash || ''), { replace: true })
+        return
+      }
+    }
+
+    const { data: subscription } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        const hash = window.location.hash || ''
+        const search = window.location.search || ''
+        // Preserve tokens when navigating
+        navigate(`/reset-password${hash || search ? '' : ''}${hash}${!hash && search ? search : ''}`, { replace: true })
+      }
+    })
+    return () => {
+      subscription.subscription?.unsubscribe()
+    }
+  }, [navigate])
 
   if (loading) {
     return (
@@ -169,11 +203,7 @@ function AppContent() {
                 </PublicRoute>
               } />
 
-              <Route path="/reset-password" element={
-                <PublicRoute>
-                  <ResetPasswordPage />
-                </PublicRoute>
-              } />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
               
               {/* OAuth callback route */}
               <Route path="/auth/callback" element={<CallbackPage />} />
@@ -194,6 +224,11 @@ function AppContent() {
               <Route path="/post-donation" element={
                 <ProtectedRoute allowedRoles={['donor']}>
                   <PostDonationPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/donate-request/:requestId" element={
+                <ProtectedRoute allowedRoles={['donor']}>
+                  <FulfillRequestPage />
                 </ProtectedRoute>
               } />
               <Route path="/my-donations" element={

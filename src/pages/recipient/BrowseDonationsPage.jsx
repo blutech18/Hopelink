@@ -402,144 +402,144 @@ const BrowseDonationsPage = () => {
                   }}
                   onClick={() => handleViewDetails(donation)}
                 >
-                  <div className="p-4 sm:p-5 lg:p-6">
-                    {/* Header Section */}
-                    <div className="flex items-start justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
-                      {/* Left: Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 mb-2">
-                          <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white group-hover:text-yellow-300 transition-colors">
-                            {donation.title}
-                          </h3>
-                          <span className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
-                            {donation.category}
-                          </span>
-                          <div className={`badge text-[10px] sm:text-xs px-2 py-0.5 ${getConditionColor(donation.condition)}`}>
-                            {donation.condition?.replace('_', ' ') || 'Unknown'}
-                          </div>
-                          {donation.is_urgent && (
-                            <div className="badge text-[10px] sm:text-xs px-2 py-0.5 text-red-400 bg-red-900/20">
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              Urgent
-                            </div>
-                          )}
+                  <div className="flex flex-col sm:flex-row gap-4 p-4">
+                    {/* Sample Image or Placeholder */}
+                    <div className="flex-shrink-0">
+                      {donation.images && donation.images.length > 0 ? (
+                        <div className="relative w-full sm:w-56 lg:w-64 h-36 sm:h-40 rounded-lg overflow-hidden border-2 border-yellow-500/30">
+                          <img 
+                            src={donation.images[0]} 
+                            alt={donation.title}
+                            className="w-full h-full object-cover"
+                          />
                         </div>
-                        <p className="text-gray-300 text-xs sm:text-sm line-clamp-2 mb-3">
-                          {donation.description || 'No description provided'}
-                        </p>
-                        
-                        {/* Compact Details */}
-                        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-yellow-300">
-                          <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
-                            <Package className="h-3 w-3 sm:h-4 sm:w-4 text-blue-400 flex-shrink-0" />
-                            <span className="font-medium">Qty:</span>
-                            <span className="text-white">{donation.quantity}</span>
-                          </div>
-                          
-                          <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
-                            <User className="h-3 w-3 sm:h-4 sm:w-4 text-green-400 flex-shrink-0" />
-                            <span className="font-medium">By:</span>
-                            <span className="text-white">{donation.donor?.name || 'Anonymous'}</span>
-                          </div>
-                          
-                          {donation.pickup_location && (
-                            <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap min-w-0">
-                              <MapPin className="h-3 w-3 sm:h-4 sm:w-4 text-purple-400 flex-shrink-0" />
-                              <span className="text-white overflow-hidden text-ellipsis">{donation.pickup_location}</span>
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
-                            <Calendar className="h-3 w-3 sm:h-4 sm:w-4 text-orange-400 flex-shrink-0" />
-                            <span className="text-white">{formatDate(donation.created_at)}</span>
-                          </div>
-
-                          {donation.expiry_date && (
-                            <div className="flex items-center gap-1 sm:gap-1.5 whitespace-nowrap">
-                              <Clock className="h-3 w-3 sm:h-4 sm:w-4 text-red-400 flex-shrink-0" />
-                              <span className="font-medium">Expires:</span>
-                              <span className="text-white">{formatDate(donation.expiry_date)}</span>
-                            </div>
-                          )}
+                      ) : (
+                        <div className="w-full sm:w-56 lg:w-64 h-36 sm:h-40 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600">
+                          <Gift className="h-12 w-12 text-yellow-400 mb-2" />
+                          <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
                         </div>
-                      </div>
-                      
-                      {/* Right: Action Button */}
-                      <div className="flex flex-col items-end gap-2 flex-shrink-0">
-                        {requestedDonations.has(donation.id) ? (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                            }}
-                            disabled
-                            className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gray-600 text-gray-300 text-xs sm:text-sm font-semibold rounded-lg flex items-center gap-1.5 sm:gap-2 cursor-not-allowed opacity-70 whitespace-nowrap"
-                          >
-                            <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                            <span>Request Sent</span>
-                          </button>
-                        ) : (
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              handleRequestDonation(donation)
-                            }}
-                            disabled={claimingId === donation.id}
-                            className="px-3 sm:px-4 py-2 sm:py-2.5 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs sm:text-sm font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5 sm:gap-2 shadow-lg hover:shadow-xl whitespace-nowrap active:scale-95"
-                          >
-                            {claimingId === donation.id ? (
-                              <LoadingSpinner size="sm" />
-                            ) : (
-                              <>
-                                <Heart className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                                <span>Request</span>
-                              </>
-                            )}
-                          </button>
-                        )}
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleViewDetails(donation)
-                          }}
-                          className="px-3 sm:px-4 py-2 sm:py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 hover:text-white text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 border border-navy-600 hover:border-yellow-500/50 shadow-md hover:shadow-lg active:scale-95"
-                        >
-                          <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                          <span>Details</span>
-                        </button>
-                      </div>
+                      )}
                     </div>
-
-                    {/* Tags */}
-                    {donation.tags && donation.tags.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mb-3 sm:mb-4">
-                        {donation.tags.slice(0, 4).map((tag, tagIndex) => (
-                          <span key={tagIndex} className="inline-flex items-center text-[10px] sm:text-xs bg-navy-700 text-yellow-300 px-2 py-1 rounded-md border border-navy-600">
-                            <Tag className="h-3 w-3 mr-1" />
-                            {tag}
-                          </span>
-                        ))}
-                        {donation.tags.length > 4 && (
-                          <span className="text-[10px] sm:text-xs text-yellow-300 font-medium">+{donation.tags.length - 4} more</span>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Delivery Mode Info */}
-                    <div className="p-3 sm:p-4 bg-gradient-to-r from-yellow-900/10 to-yellow-800/10 border-2 border-yellow-500/30 rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-xs sm:text-sm font-semibold text-yellow-300">🚚 Delivery Mode</span>
-                        <div className={`badge text-xs sm:text-sm font-bold border-2 ${getDeliveryModeColor(donation.delivery_mode)}`}>
-                          {getDeliveryModeLabel(donation.delivery_mode)}
+                    
+                    <div className="flex-1 min-w-0">
+                      {/* Header with Title and Badges */}
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Heart className="h-5 w-5 flex-shrink-0 text-yellow-400" />
+                            <h3 className="text-base sm:text-lg font-bold text-white truncate">
+                              {donation.title}
+                            </h3>
+                          </div>
+                          
+                          {/* Badges Row */}
+                          <div className="flex flex-wrap gap-1.5 mb-3">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
+                              {donation.category}
+                            </span>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${getConditionColor(donation.condition)}`}>
+                              {donation.condition?.replace('_', ' ').split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ') || 'Unknown'}
+                            </span>
+                            {donation.is_urgent && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold text-red-400 bg-red-500/20 border border-red-500/30">
+                                ⚡ Urgent
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleViewDetails(donation)
+                            }}
+                            className="px-3 py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 hover:text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 border border-navy-600 hover:border-yellow-500/50 shadow-md hover:shadow-lg active:scale-95"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span>View</span>
+                          </button>
+                          {requestedDonations.has(donation.id) ? (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                              }}
+                              disabled
+                              className="px-3 py-2 bg-gray-700 text-gray-400 text-xs font-semibold rounded-lg cursor-not-allowed flex items-center gap-1.5"
+                            >
+                              <CheckCircle className="h-3.5 w-3.5" />
+                              <span>Requested</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleRequestDonation(donation)
+                              }}
+                              className="px-3 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95"
+                            >
+                              <Heart className="h-3.5 w-3.5" />
+                              <span>Request</span>
+                            </button>
+                          )}
                         </div>
                       </div>
-                      
-                      <div className="text-xs sm:text-sm text-yellow-200">
-                        💡 {getDeliveryInstructions(donation.delivery_mode)}
+
+                      {/* Description */}
+                      <p className="text-gray-300 text-sm mb-3 line-clamp-1">
+                        {donation.description || 'No description provided'}
+                      </p>
+
+                      {/* Compact Info Grid */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <Package className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                          <span className="text-yellow-400 font-medium">Quantity:</span>
+                          <span className="text-white font-semibold">{donation.quantity}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5">
+                          <User className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                          <span className="text-yellow-400 font-medium">By:</span>
+                          <span className="text-white">{donation.donor?.name || 'Anonymous'}</span>
+                        </div>
+                        
+                        <div className="flex items-center gap-1.5">
+                          <Calendar className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                          <span className="text-yellow-400 font-medium">Posted:</span>
+                          <span className="text-gray-300">{formatDate(donation.created_at)}</span>
+                        </div>
+
+                        {donation.expiry_date && (
+                          <div className="flex items-center gap-1.5">
+                            <Clock className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
+                            <span className="text-red-400 font-medium">Expires:</span>
+                            <span className="text-red-300 font-semibold">{formatDate(donation.expiry_date)}</span>
+                          </div>
+                        )}
+                        
+                        {donation.pickup_location && (
+                          <div className="flex items-center gap-1.5 col-span-2">
+                            <MapPin className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            <span className="text-yellow-400 font-medium">Location:</span>
+                            <span className="text-gray-300 truncate">{donation.pickup_location}</span>
+                          </div>
+                        )}
                       </div>
-                      
-                      {donation.estimated_value && (
-                        <div className="mt-2 pt-2 border-t border-yellow-500/30">
-                          <div className="text-xs sm:text-sm text-yellow-300">Estimated Value: <span className="text-white font-bold">₱{parseInt(donation.estimated_value).toLocaleString()}</span></div>
+
+                      {/* Tags */}
+                      {donation.tags && donation.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mb-3">
+                          {donation.tags.slice(0, 4).map((tag, tagIndex) => (
+                            <span key={tagIndex} className="inline-flex items-center text-[10px] sm:text-xs bg-navy-700 text-yellow-300 px-2 py-1 rounded-md border border-navy-600">
+                              <Tag className="h-3 w-3 mr-1" />
+                              {tag}
+                            </span>
+                          ))}
+                          {donation.tags.length > 4 && (
+                            <span className="text-[10px] sm:text-xs text-yellow-300 font-medium">+{donation.tags.length - 4} more</span>
+                          )}
                         </div>
                       )}
                     </div>

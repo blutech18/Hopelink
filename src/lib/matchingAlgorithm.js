@@ -47,6 +47,9 @@ const normalizationFunctions = {
    * @returns {number} Normalized score (0-1)
    */
   normalizeDistance(distance, maxDistance = 50) {
+    if (distance === null || distance === undefined || Number.isNaN(distance) || !Number.isFinite(distance)) {
+      return 0.5 // Neutral score if distance is unknown
+    }
     if (distance <= 0) return 1.0
     if (distance >= maxDistance) return 0.0
     return Math.max(0, 1 - (distance / maxDistance))
@@ -98,7 +101,8 @@ const normalizationFunctions = {
     const level2 = urgencyLevels[urgency2] || 2
     
     const difference = Math.abs(level1 - level2)
-    return Math.max(0, 1 - (difference / 3))
+    // Exponential decay penalizes larger gaps more strongly
+    return Math.exp(-(difference / 1.5))
   },
 
   /**
@@ -150,10 +154,17 @@ const normalizationFunctions = {
  * @param {number} lon1 - Longitude of first point
  * @param {number} lat2 - Latitude of second point
  * @param {number} lon2 - Longitude of second point
- * @returns {number} Distance in kilometers
+ * @returns {number|null} Distance in kilometers or null if insufficient data
  */
 function calculateDistance(lat1, lon1, lat2, lon2) {
-  if (!lat1 || !lon1 || !lat2 || !lon2) return 50 // Default high distance if coordinates missing
+  if (
+    lat1 === null || lat1 === undefined ||
+    lon1 === null || lon1 === undefined ||
+    lat2 === null || lat2 === undefined ||
+    lon2 === null || lon2 === undefined
+  ) {
+    return null // Unknown distance when coordinates are missing
+  }
   
   const R = 6371 // Earth's radius in kilometers
   const dLat = (lat2 - lat1) * Math.PI / 180
@@ -172,6 +183,11 @@ class IntelligentMatcher {
   constructor() {
     this.weights = MATCHING_WEIGHTS
     this.normalize = normalizationFunctions
+    // Simple in-memory caches with TTL to avoid redundant heavy computations
+    this.distanceCache = new Map()
+    this.reliabilityCache = new Map()
+    this.distanceTtlMs = 5 * 60 * 1000 // 5 minutes
+    this.reliabilityTtlMs = 15 * 60 * 1000 // 15 minutes
   }
 
   /**
@@ -188,45 +204,31 @@ class IntelligentMatcher {
         availableDonations = await db.getAvailableDonations()
       }
 
-      const matches = []
-      const weights = this.weights.DONOR_RECIPIENT
+      // 1) Pre-filter to eliminate incompatible donations quickly
+      const candidates = this.preFilterDonations(request, availableDonations)
 
-      for (const donation of availableDonations) {
-        // Calculate individual criterion scores
-        const scores = {
-          geographic_proximity: this.calculateGeographicScore(
-            request.requester?.latitude, request.requester?.longitude,
-            donation.donor?.latitude, donation.donor?.longitude
-          ),
-          item_compatibility: this.calculateItemCompatibility(
-            request.category, donation.category,
-            request.title, donation.title,
-            request.quantity_needed, donation.quantity
-          ),
-          urgency_alignment: this.normalize.normalizeUrgencyAlignment(
-            request.urgency, donation.is_urgent ? 'high' : 'medium'
-          ),
-          user_reliability: await this.calculateUserReliability(donation.donor_id, 'donor'),
-          delivery_compatibility: this.calculateDeliveryCompatibility(
-            request.delivery_mode, donation.delivery_mode
-          )
-        }
+      // 2) Quick scoring (fast, synchronous) for coarse ranking
+      const quickRanked = candidates.map(donation => ({
+        donation,
+        quickScore: this.calculateQuickScore(request, donation)
+      }))
+        .sort((a, b) => b.quickScore - a.quickScore)
+        .slice(0, Math.min(maxResults * 2, candidates.length)) // keep 2x for safety
 
-        // Calculate weighted sum
-        const totalScore = Object.keys(weights).reduce((sum, criterion) => {
-          return sum + (scores[criterion] * weights[criterion])
-        }, 0)
-
-        matches.push({
+      // 3) Detailed scoring in parallel for top candidates
+      const detailedMatches = await Promise.all(quickRanked.map(async ({ donation }) => {
+        const weights = this.getContextualWeights(request, donation)
+        const scores = await this.calculateDetailedScores(request, donation)
+        const totalScore = Object.keys(weights).reduce((sum, criterion) => sum + ((scores[criterion] || 0) * (weights[criterion] || 0)), 0)
+        return {
           donation,
           score: totalScore,
           criteriaScores: scores,
           matchReason: this.generateMatchReason(scores, weights)
-        })
-      }
+        }
+      }))
 
-      // Sort by score and return top matches
-      return matches
+      return detailedMatches
         .sort((a, b) => b.score - a.score)
         .slice(0, maxResults)
     } catch (error) {
@@ -298,52 +300,61 @@ class IntelligentMatcher {
 
       const optimalMatches = []
 
+      // Process each request; parallelize volunteer matching inside per-request loop
       for (const request of requests) {
-        // Find best donor matches for this request
         const donorMatches = await this.matchDonorsToRequest(request, donations, 3)
-        
-        for (const donorMatch of donorMatches) {
-          // For each donor match, find best volunteer if volunteer delivery is needed
-          if (request.delivery_mode === 'volunteer' || donorMatch.donation.delivery_mode === 'volunteer') {
-            const task = {
+
+        // For donor matches that need volunteers, build tasks
+        const tasksNeedingVolunteers = donorMatches
+          .filter(dm => request.delivery_mode === 'volunteer' || dm.donation.delivery_mode === 'volunteer')
+          .map(dm => ({
+            donorMatch: dm,
+            task: {
               type: 'delivery',
               request,
-              donation: donorMatch.donation,
+              donation: dm.donation,
               urgency: request.urgency,
-              pickup_location: donorMatch.donation.pickup_location,
+              pickup_location: dm.donation.pickup_location,
               delivery_location: request.location
             }
+          }))
 
-            const volunteerMatches = await this.matchVolunteersToTask(task, volunteers, 2)
-            
-            for (const volunteerMatch of volunteerMatches) {
-              const combinedScore = (donorMatch.score * 0.6) + (volunteerMatch.score * 0.4)
-              
-              optimalMatches.push({
-                request,
-                donation: donorMatch.donation,
-                volunteer: volunteerMatch.volunteer,
-                combinedScore,
-                donorScore: donorMatch.score,
-                volunteerScore: volunteerMatch.score,
-                matchType: 'three_way',
-                estimatedDeliveryTime: this.estimateDeliveryTime(task, volunteerMatch.volunteer)
-              })
-            }
-          } else {
-            // Direct delivery or pickup - no volunteer needed
+        // Parallel volunteer matching for tasks
+        const volunteerResults = await Promise.all(tasksNeedingVolunteers.map(async ({ donorMatch, task }) => {
+          const vols = await this.matchVolunteersToTask(task, volunteers, 2)
+          return vols.map(volMatch => ({ donorMatch, task, volMatch }))
+        }))
+
+        // Flatten and build three-way matches
+        volunteerResults.flat().forEach(({ donorMatch, task, volMatch }) => {
+          const combinedScore = (donorMatch.score * 0.6) + (volMatch.score * 0.4)
+          optimalMatches.push({
+            request,
+            donation: donorMatch.donation,
+            volunteer: volMatch.volunteer,
+            combinedScore,
+            donorScore: donorMatch.score,
+            volunteerScore: volMatch.score,
+            matchType: 'three_way',
+            estimatedDeliveryTime: this.estimateDeliveryTime(task, volMatch.volunteer)
+          })
+        })
+
+        // Add direct matches (no volunteer needed)
+        donorMatches
+          .filter(dm => !(request.delivery_mode === 'volunteer' || dm.donation.delivery_mode === 'volunteer'))
+          .forEach(dm => {
             optimalMatches.push({
               request,
-              donation: donorMatch.donation,
+              donation: dm.donation,
               volunteer: null,
-              combinedScore: donorMatch.score,
-              donorScore: donorMatch.score,
+              combinedScore: dm.score,
+              donorScore: dm.score,
               volunteerScore: null,
               matchType: 'direct',
               estimatedDeliveryTime: null
             })
-          }
-        }
+          })
       }
 
       return optimalMatches
@@ -365,7 +376,7 @@ class IntelligentMatcher {
     const categoryScore = this.normalize.normalizeCategoryMatch(category1, category2)
     const quantityScore = this.normalize.normalizeQuantityMatch(available, needed)
     
-    // Simple text similarity for titles
+    // Improved text similarity (Jaccard)
     const titleSimilarity = this.calculateTextSimilarity(title1, title2)
     
     return (categoryScore * 0.5) + (quantityScore * 0.3) + (titleSimilarity * 0.2)
@@ -373,14 +384,13 @@ class IntelligentMatcher {
 
   calculateTextSimilarity(text1, text2) {
     if (!text1 || !text2) return 0
-    
-    const words1 = text1.toLowerCase().split(/\s+/)
-    const words2 = text2.toLowerCase().split(/\s+/)
-    
-    const commonWords = words1.filter(word => words2.includes(word))
-    const totalWords = new Set([...words1, ...words2]).size
-    
-    return commonWords.length / totalWords
+    const set1 = new Set(text1.toLowerCase().split(/\s+/).filter(Boolean))
+    const set2 = new Set(text2.toLowerCase().split(/\s+/).filter(Boolean))
+    if (set1.size === 0 || set2.size === 0) return 0
+    let intersection = 0
+    set1.forEach(w => { if (set2.has(w)) intersection += 1 })
+    const union = new Set([...set1, ...set2]).size
+    return intersection / union
   }
 
   calculateDeliveryCompatibility(mode1, mode2) {
@@ -433,7 +443,9 @@ class IntelligentMatcher {
       task.delivery_latitude, task.delivery_longitude
     )
     
-    const averageDistance = (pickupDistance + deliveryDistance) / 2
+    const distances = [pickupDistance, deliveryDistance].filter(d => d !== null && d !== undefined)
+    if (distances.length === 0) return 0.5
+    const averageDistance = distances.reduce((a, b) => a + b, 0) / distances.length
     return this.normalize.normalizeDistance(averageDistance)
   }
 
@@ -542,10 +554,119 @@ class IntelligentMatcher {
     )
     
     // Base time: 30 minutes + 2 minutes per km + volunteer efficiency factor
-    const baseTime = 30 + (distance * 2)
+    const km = (distance === null || distance === undefined) ? 10 : distance
+    const baseTime = 30 + (km * 2)
     const volunteerEfficiency = 1.0 // Could be based on volunteer's past performance
     
     return Math.round(baseTime / volunteerEfficiency)
+  }
+
+  // ------------------------------
+  // Performance and accuracy helpers
+  // ------------------------------
+
+  preFilterDonations(request, donations) {
+    return (donations || []).filter(donation => {
+      if (!donation) return false
+      if (donation.status && donation.status !== 'available') return false
+      // Category must match or be related
+      const categoryScore = this.normalize.normalizeCategoryMatch(request.category, donation.category)
+      if (categoryScore <= 0) return false
+      // Quantity sufficient
+      if (typeof request.quantity_needed === 'number' && typeof donation.quantity === 'number') {
+        if (donation.quantity < request.quantity_needed) return false
+      }
+      return true
+    })
+  }
+
+  calculateQuickScore(request, donation) {
+    const categoryScore = this.normalize.normalizeCategoryMatch(request.category, donation.category)
+    const quantityScore = this.normalize.normalizeQuantityMatch(donation.quantity, request.quantity_needed)
+    return (categoryScore * 0.6) + (quantityScore * 0.4)
+  }
+
+  async calculateDetailedScores(request, donation) {
+    // Geographic score using cached distance when possible
+    const dist = this.getCachedDistance(
+      request.requester?.latitude, request.requester?.longitude,
+      donation.donor?.latitude, donation.donor?.longitude
+    )
+    const geographic_proximity = this.normalize.normalizeDistance(dist)
+
+    const item_compatibility = this.calculateItemCompatibility(
+      request.category, donation.category,
+      request.title, donation.title,
+      request.quantity_needed, donation.quantity
+    )
+
+    const urgency_alignment = this.normalize.normalizeUrgencyAlignment(
+      request.urgency, donation.is_urgent ? 'high' : 'medium'
+    )
+
+    const user_reliability = await this.getCachedReliability(donation.donor_id, 'donor')
+
+    const delivery_compatibility = this.calculateDeliveryCompatibility(
+      request.delivery_mode, donation.delivery_mode
+    )
+
+    return {
+      geographic_proximity,
+      item_compatibility,
+      urgency_alignment,
+      user_reliability,
+      delivery_compatibility
+    }
+  }
+
+  getContextualWeights(request, donation) {
+    const base = { ...this.weights.DONOR_RECIPIENT }
+    const category = (donation?.category || '').toLowerCase()
+    const perishableCategories = new Set(['food', 'groceries', 'meals'])
+
+    if (perishableCategories.has(category)) {
+      base.geographic_proximity = 0.35
+      base.item_compatibility = 0.30
+      base.urgency_alignment = 0.20
+      base.delivery_compatibility = 0.10
+      base.user_reliability = 0.05
+      return base
+    }
+
+    if (request?.urgency === 'critical') {
+      base.urgency_alignment = 0.30
+      base.item_compatibility = 0.30
+      base.geographic_proximity = 0.25
+      base.delivery_compatibility = 0.10
+      base.user_reliability = 0.05
+      return base
+    }
+
+    return base
+  }
+
+  getCachedDistance(lat1, lon1, lat2, lon2) {
+    const key = `${lat1 ?? 'x'}:${lon1 ?? 'x'}:${lat2 ?? 'x'}:${lon2 ?? 'x'}`
+    const now = Date.now()
+    const cached = this.distanceCache.get(key)
+    if (cached && (now - cached.t) < this.distanceTtlMs) {
+      return cached.v
+    }
+    const d = calculateDistance(lat1, lon1, lat2, lon2)
+    this.distanceCache.set(key, { v: d, t: now })
+    return d
+  }
+
+  async getCachedReliability(userId, userType) {
+    const key = `${userType}:${userId}`
+    const now = Date.now()
+    const cached = this.reliabilityCache.get(key)
+    if (cached && (now - cached.t) < this.reliabilityTtlMs) {
+      return cached.v
+    }
+    const v = await this.calculateUserReliability(userId, userType)
+    this.reliabilityCache.set(key, { v, t: now })
+    return v
   }
 }
 

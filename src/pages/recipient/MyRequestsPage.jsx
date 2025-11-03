@@ -18,7 +18,8 @@ import {
   Heart,
   Package,
   Truck,
-  X
+  X,
+  Gift
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -663,7 +664,7 @@ const MyRequestsPage = () => {
             )}
           </motion.div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 gap-6">
             <AnimatePresence>
               {filteredRequests.map((request, index) => {
                 const statusInfo = getStatusInfo(request.status)
@@ -679,129 +680,92 @@ const MyRequestsPage = () => {
                     transition={{ delay: index * 0.05 }}
                     className="card overflow-hidden hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 group"
                   >
-                    {/* Status Bar */}
-                    <div className={`h-1.5 ${statusInfo.color.includes('bg-') ? statusInfo.color : 'bg-navy-700'}`} />
-                    
-                    {/* Card Content */}
-                    <div className="p-5">
-                      {/* Header */}
-                      <div className="flex items-start justify-between mb-4">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
-                            <StatusIcon className={`h-5 w-5 flex-shrink-0 ${statusInfo.color.split(' ')[0]}`} />
-                            <h3 className="text-lg font-bold text-white truncate group-hover:text-yellow-300 transition-colors">
-                              {request.title}
-                            </h3>
+                    <div className="flex flex-col sm:flex-row gap-4 p-4">
+                      {/* Sample Image or Placeholder */}
+                      <div className="flex-shrink-0">
+                        {request.sample_image ? (
+                          <div className="relative w-full sm:w-56 lg:w-64 h-36 sm:h-full rounded-lg overflow-hidden border-2 border-yellow-500/30">
+                            <img 
+                              src={request.sample_image} 
+                              alt={request.title}
+                              className="w-full h-full object-cover"
+                            />
                           </div>
-                          
-                          {/* Badges */}
-                          <div className="flex flex-wrap gap-2">
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${statusInfo.color}`}>
+                        ) : (
+                          <div className="w-full sm:w-56 lg:w-64 h-36 sm:h-full rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600">
+                            <Gift className="h-12 w-12 text-yellow-400 mb-2" />
+                            <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
+                            <span className={`mt-2 px-2 py-0.5 rounded text-xs font-semibold ${statusInfo.color}`}>
                               {statusInfo.label}
                             </span>
-                            <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${urgencyInfo.color}`}>
-                              <AlertCircle className="h-3 w-3 mr-1" />
-                              {urgencyInfo.label}
-                            </span>
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-600/30">
-                              <Package className="h-3 w-3 mr-1" />
-                              {request.category}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Description */}
-                      {request.description && (
-                        <p className="text-gray-300 text-sm leading-relaxed mb-4 line-clamp-2">
-                          {request.description}
-                        </p>
-                      )}
-
-                      {/* Info Grid */}
-                      <div className="space-y-2 mb-4">
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center text-yellow-400">
-                            <Package className="h-4 w-4 mr-2" />
-                            <span className="font-medium">Quantity:</span>
-                          </div>
-                          <span className="text-white font-semibold">{request.quantity_needed}</span>
-                        </div>
-                        
-                        <div className="flex items-center justify-between text-sm">
-                          <div className="flex items-center text-yellow-400">
-                            <Calendar className="h-4 w-4 mr-2" />
-                            <span className="font-medium">Created:</span>
-                          </div>
-                          <span className="text-gray-300">{formatDate(request.created_at)}</span>
-                        </div>
-                        
-                        {request.needed_by && (
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center text-amber-400">
-                              <Clock className="h-4 w-4 mr-2" />
-                              <span className="font-medium">Deadline:</span>
-                            </div>
-                            <span className="text-amber-300 font-medium">{formatDate(request.needed_by)}</span>
-                          </div>
-                        )}
-                        
-                        {request.location && (
-                          <div className="flex items-center justify-between text-sm">
-                            <div className="flex items-center text-yellow-400">
-                              <MapPin className="h-4 w-4 mr-2" />
-                              <span className="font-medium">Location:</span>
-                            </div>
-                            <span className="text-gray-300 text-xs line-clamp-1 text-right flex-1 ml-2">{request.location}</span>
                           </div>
                         )}
                       </div>
+                      
+                      {/* Card Content */}
+                      <div className="flex-1 min-w-0">
+                        {/* Header with Title and Badges */}
+                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Heart className="h-5 w-5 flex-shrink-0 text-yellow-400" />
+                              <h3 className="text-base sm:text-lg font-bold text-white truncate">
+                                {request.title}
+                              </h3>
+                            </div>
+                            
+                            {/* Badges Row */}
+                            <div className="flex flex-wrap gap-1.5 mb-3">
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold ${statusInfo.color}`}>
+                                {statusInfo.label}
+                              </span>
+                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${urgencyInfo.color}`}>
+                                {urgencyInfo.label}
+                              </span>
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-600/30">
+                                {request.category}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
 
-                      {/* Tags */}
-                      {request.tags && request.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1.5 mb-4">
-                          {request.tags.slice(0, 3).map((tag, tagIndex) => (
-                            <span key={tagIndex} className="inline-flex items-center text-xs bg-navy-800/80 text-yellow-300 px-2 py-1 rounded border border-navy-700">
-                              <Tag className="h-2.5 w-2.5 mr-1" />
-                              {tag}
-                            </span>
-                          ))}
-                          {request.tags.length > 3 && (
-                            <span className="text-xs text-yellow-400 px-2 py-1">
-                              +{request.tags.length - 3}
-                            </span>
+                        {/* Description */}
+                        {request.description && (
+                          <p className="text-gray-300 text-sm mb-3 line-clamp-1">
+                            {request.description}
+                          </p>
+                        )}
+
+                        {/* Compact Info Grid */}
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <Package className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            <span className="text-yellow-400 font-medium">Quantity:</span>
+                            <span className="text-white font-semibold">{request.quantity_needed}</span>
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5">
+                            <Calendar className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            <span className="text-yellow-400 font-medium">Created:</span>
+                            <span className="text-gray-300">{formatDate(request.created_at)}</span>
+                          </div>
+                          
+                          {request.needed_by && (
+                            <div className="flex items-center gap-1.5 col-span-2">
+                              <Clock className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
+                              <span className="text-amber-400 font-medium">Deadline:</span>
+                              <span className="text-amber-300 font-semibold">{formatDate(request.needed_by)}</span>
+                            </div>
+                          )}
+                          
+                          {request.location && (
+                            <div className="flex items-center gap-1.5 col-span-2">
+                              <MapPin className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                              <span className="text-yellow-400 font-medium">Location:</span>
+                              <span className="text-gray-300 truncate">{request.location}</span>
+                            </div>
                           )}
                         </div>
-                      )}
-
-                      {/* Claims Badge */}
-                      {request.claims_count > 0 && (
-                        <div className="mb-4 p-2 bg-green-900/20 rounded-lg border border-green-500/30">
-                          <div className="flex items-center text-green-400 text-xs font-medium">
-                            <Heart className="h-3.5 w-3.5 mr-1.5" />
-                            <span>{request.claims_count} donor{request.claims_count > 1 ? 's' : ''} claimed this request</span>
-                          </div>
-                        </div>
-                      )}
-
-                    {/* Status Notifications */}
-                    {request.status === 'in_progress' && (
-                      <div className="mt-4 p-3 bg-purple-900/20 rounded-lg border border-purple-500/20">
-                        <div className="flex items-center text-purple-400 text-sm">
-                          <Truck className="h-4 w-4 mr-2 flex-shrink-0" />
-                          <span>Your request is being processed. You'll be notified when it's ready for pickup or delivery.</span>
-                        </div>
-                      </div>
-                    )}
-
-                      {request.status === 'fulfilled' && (
-                        <div className="p-3 bg-green-900/20 rounded-lg border border-green-500/30">
-                          <div className="flex items-center text-green-400 text-xs font-medium">
-                            <CheckCircle className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
-                            <span>Request fulfilled! Thank you for using HopeLink.</span>
-                          </div>
-                        </div>
-                      )}
 
                       {/* Action Buttons */}
                       <div className="flex items-center gap-2 pt-4 border-t border-navy-700">
@@ -810,33 +774,35 @@ const MyRequestsPage = () => {
                           className="flex-1 px-4 py-2.5 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm"
                         >
                           <Eye className="h-4 w-4" />
-                          View Details
+                          View
                         </button>
 
-                        {canEdit(request) && (
-                          <button
-                            onClick={() => handleEditRequest(request)}
-                            className="px-4 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-navy-600"
-                            title="Edit Request"
-                          >
-                            <Edit3 className="h-4 w-4" />
-                          </button>
-                        )}
+                        <button
+                          onClick={() => handleEditRequest(request)}
+                          disabled={!canEdit(request)}
+                          className="px-4 py-2.5 bg-navy-700 hover:bg-navy-600 text-yellow-300 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-navy-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={canEdit(request) ? "Edit Request" : "Only open requests can be edited"}
+                        >
+                          <Edit3 className="h-4 w-4" />
+                          <span>Edit</span>
+                        </button>
 
-                        {canDelete(request) && (
-                          <button
-                            onClick={() => handleDeleteClick(request)}
-                            disabled={deletingId === request.id}
-                            className="px-4 py-2.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-red-600/30"
-                            title="Delete Request"
-                          >
-                            {deletingId === request.id ? (
-                              <LoadingSpinner size="sm" />
-                            ) : (
+                        <button
+                          onClick={() => handleDeleteClick(request)}
+                          disabled={!canDelete(request) || deletingId === request.id}
+                          className="px-4 py-2.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded-lg transition-colors flex items-center justify-center gap-2 font-medium text-sm border border-red-600/30 disabled:opacity-50 disabled:cursor-not-allowed"
+                          title={canDelete(request) ? "Delete Request" : "This request cannot be deleted"}
+                        >
+                          {deletingId === request.id ? (
+                            <LoadingSpinner size="sm" />
+                          ) : (
+                            <>
                               <Trash2 className="h-4 w-4" />
-                            )}
-                          </button>
-                        )}
+                              <span>Delete</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
                       </div>
                     </div>
                   </motion.div>

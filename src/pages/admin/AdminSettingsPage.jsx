@@ -173,7 +173,10 @@ const AdminSettingsPage = () => {
     // Notification Settings
     emailNotifications: true,
     systemAlerts: true,
-    securityAlerts: true
+    securityAlerts: true,
+    // Logistics
+    auto_assign_enabled: false,
+    expiry_retention_days: 30
   })
 
   useEffect(() => {
@@ -185,7 +188,7 @@ const AdminSettingsPage = () => {
         setInitialLoading(true)
         const data = await db.getSettings()
         if (mounted && data) {
-          setSettings(data)
+          setSettings(prev => ({ ...prev, ...data }))
         }
       } catch (error) {
         console.error('Error loading settings:', error)
@@ -462,6 +465,54 @@ const AdminSettingsPage = () => {
             />
             
             <ToggleSwitch
+              label="Auto-assign Volunteers"
+              description="Automatically select the top volunteer and request acceptance with timeout"
+              checked={!!settings.auto_assign_enabled}
+              onChange={async (checked) => {
+                try {
+                  setLoading(true)
+                  const saved = await db.setAutoAssignEnabled(checked)
+                  setSettings(prev => ({ ...prev, auto_assign_enabled: !!saved.auto_assign_enabled }))
+                  success(`Auto-assign ${checked ? 'enabled' : 'disabled'}`)
+                } catch (e) {
+                  showError('Failed to update auto-assign setting')
+                } finally {
+                  setLoading(false)
+                }
+              }}
+              disabled={!isEditing}
+            />
+
+            <InputField
+              label="Expiry Retention (days)"
+              type="number"
+              value={settings.expiry_retention_days ?? 30}
+              onChange={(value) => setSettings(prev => ({ ...prev, expiry_retention_days: parseInt(value || '0', 10) }))}
+              disabled={!isEditing}
+            />
+            {isEditing && (
+              <div className="flex justify-end">
+                <button
+                  onClick={async () => {
+                    try {
+                      setLoading(true)
+                      const saved = await db.setRetentionDays(settings.expiry_retention_days || 0)
+                      setSettings(prev => ({ ...prev, expiry_retention_days: saved.expiry_retention_days }))
+                      success('Retention days updated')
+                    } catch (e) {
+                      showError('Failed to update retention days')
+                    } finally {
+                      setLoading(false)
+                    }
+                  }}
+                  className="btn btn-secondary"
+                >
+                  Save Retention
+                </button>
+              </div>
+            )}
+            
+            <ToggleSwitch
               label="Require ID Verification"
               description="Users must provide valid ID for account verification"
               checked={settings.requireIdVerification}
@@ -539,6 +590,41 @@ const AdminSettingsPage = () => {
               checked={settings.securityAlerts}
               onChange={(checked) => handleDirectChange('securityAlerts', checked)}
             />
+          </SettingSection>
+
+          {/* Donation Expiry Stats */}
+          <SettingSection icon={Activity} title="Donation Expiry Stats">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 rounded-lg bg-navy-800 border border-navy-700">
+                <div className="text-yellow-300 text-sm">Expired</div>
+                <div className="text-2xl font-bold text-white" id="expiredCount">--</div>
+              </div>
+              <div className="p-3 rounded-lg bg-navy-800 border border-navy-700">
+                <div className="text-yellow-300 text-sm">Archived</div>
+                <div className="text-2xl font-bold text-white" id="archivedCount">--</div>
+              </div>
+            </div>
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={async () => {
+                  try {
+                    setLoading(true)
+                    const stats = await db.getDonationExpiryStats()
+                    const expiredEl = document.getElementById('expiredCount')
+                    const archivedEl = document.getElementById('archivedCount')
+                    if (expiredEl) expiredEl.textContent = String(stats.expiredCount)
+                    if (archivedEl) archivedEl.textContent = String(stats.archivedCount)
+                  } catch (e) {
+                    showError('Failed to load stats')
+                  } finally {
+                    setLoading(false)
+                  }
+                }}
+                className="btn btn-secondary"
+              >
+                Refresh Stats
+              </button>
+            </div>
           </SettingSection>
         </div>
       </div>

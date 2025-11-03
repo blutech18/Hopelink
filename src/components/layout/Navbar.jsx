@@ -21,6 +21,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { db } from '../../lib/supabase'
 import FeedbackModal from '../ui/FeedbackModal'
 
 const Navbar = () => {
@@ -31,6 +32,9 @@ const Navbar = () => {
   const [activeSection, setActiveSection] = useState('home')
   const [showFeedbackFloat, setShowFeedbackFloat] = useState(false)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false)
+  const [showNotifications, setShowNotifications] = useState(false)
+  const [notifications, setNotifications] = useState([])
+  const [unreadCount, setUnreadCount] = useState(0)
   const { isAuthenticated, profile, signOut } = useAuth()
   const { success, error } = useToast()
   const location = useLocation()
@@ -74,6 +78,43 @@ const Navbar = () => {
       clearInterval(interval)
     }
   }, [])
+
+  // Realtime notifications
+  useEffect(() => {
+    let unsubscribe = null
+    async function load() {
+      if (!profile?.id) return
+      try {
+        const items = await db.getUserNotifications(profile.id, 20)
+        setNotifications(items || [])
+        setUnreadCount((items || []).filter(n => !n.read_at).length)
+      } catch (_) {}
+      try {
+        unsubscribe = db.subscribeToUserNotifications(profile.id, async () => {
+          try {
+            const items = await db.getUserNotifications(profile.id, 20)
+            setNotifications(items || [])
+            setUnreadCount((items || []).filter(n => !n.read_at).length)
+          } catch (_) {}
+        })
+      } catch (_) {}
+    }
+    load()
+    return () => { if (unsubscribe) unsubscribe() }
+  }, [profile?.id])
+
+  const markAllNotificationsAsRead = async () => {
+    try {
+      const unread = (notifications || []).filter(n => !n.read_at)
+      await Promise.all(unread.map(n => db.markNotificationAsRead(n.id)))
+      const items = await db.getUserNotifications(profile.id, 20)
+      setNotifications(items || [])
+      setUnreadCount((items || []).filter(n => !n.read_at).length)
+      success('All notifications marked as read')
+    } catch (e) {
+      error('Failed to mark notifications as read')
+    }
+  }
 
   // Close menus when authentication state changes
   useEffect(() => {
@@ -339,7 +380,141 @@ const Navbar = () => {
             {/* Auth Section */}
             {shouldShowProfile ? (
               <div className="flex items-center space-x-2">
-                {/* Profile Dropdown */}
+            {/* Notifications Bell */}
+            <div className="relative">
+              <button
+                onClick={() => setShowNotifications(v => !v)}
+                className="p-2 rounded-lg hover:bg-navy-800 transition-colors relative group"
+                aria-label="Notifications"
+              >
+                <Bell className={`h-5 w-5 transition-colors ${unreadCount > 0 ? 'text-yellow-400 animate-pulse' : 'text-yellow-400 hover:text-yellow-300'}`} />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center border-2 border-navy-900 shadow-lg animate-bounce">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                )}
+              </button>
+              <AnimatePresence>
+                {showNotifications && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="absolute right-0 mt-2 w-96 max-h-[32rem] overflow-hidden bg-navy-900 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50"
+                  >
+                    {/* Header */}
+                    <div className="flex items-center justify-between p-4 border-b-2 border-yellow-500/20 bg-navy-800/50">
+                      <div className="flex items-center gap-2">
+                        <Bell className="h-5 w-5 text-yellow-400" />
+                        <span className="text-white text-base font-bold">Notifications</span>
+                        {unreadCount > 0 && (
+                          <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-bold rounded-full">
+                            {unreadCount} new
+                          </span>
+                        )}
+                      </div>
+                      {unreadCount > 0 && (
+                        <button 
+                          onClick={markAllNotificationsAsRead} 
+                          className="text-xs text-yellow-300 hover:text-white font-semibold transition-colors px-2 py-1 hover:bg-navy-700 rounded"
+                        >
+                          Mark all read
+                        </button>
+                      )}
+                    </div>
+                    
+                    {/* Notifications List */}
+                    <div className="overflow-y-auto max-h-[28rem] custom-scrollbar">
+                      {(notifications || []).length === 0 ? (
+                        <div className="p-8 text-center">
+                          <Bell className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+                          <p className="text-gray-400 text-sm">No notifications yet</p>
+                        </div>
+                      ) : (
+                        <div className="divide-y divide-navy-800">
+                          {(notifications || []).map(n => (
+                            <div 
+                              key={n.id} 
+                              className={`p-4 transition-all hover:bg-navy-800/50 cursor-pointer group ${
+                                !n.read_at ? 'bg-yellow-900/10 border-l-4 border-yellow-500' : 'border-l-4 border-transparent'
+                              }`}
+                              onClick={async () => {
+                                if (!n.read_at) {
+                                  try {
+                                    await db.markNotificationAsRead(n.id)
+                                    const items = await db.getUserNotifications(profile.id, 20)
+                                    setNotifications(items || [])
+                                    setUnreadCount((items || []).filter(n => !n.read_at).length)
+                                  } catch (_) {}
+                                }
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="flex-1 min-w-0">
+                                  {/* Title with unread indicator */}
+                                  <div className="flex items-center gap-2 mb-1">
+                                    {!n.read_at && (
+                                      <span className="h-2 w-2 bg-yellow-400 rounded-full flex-shrink-0 animate-pulse"></span>
+                                    )}
+                                    <h4 className="text-white text-sm font-semibold truncate">
+                                      {n.title || 'Notification'}
+                                    </h4>
+                                  </div>
+                                  
+                                  {/* Message */}
+                                  <p className="text-yellow-300 text-xs mb-2 line-clamp-2">
+                                    {n.message}
+                                  </p>
+                                  
+                                  {/* Timestamp and status */}
+                                  <div className="flex items-center justify-between">
+                                    <span className="text-gray-400 text-[11px]">
+                                      {new Date(n.created_at).toLocaleString()}
+                                    </span>
+                                    {!n.read_at ? (
+                                      <span className="text-yellow-400 text-[10px] font-semibold uppercase tracking-wide">
+                                        New
+                                      </span>
+                                    ) : (
+                                      <span className="text-gray-500 text-[10px] uppercase tracking-wide">
+                                        Read
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* Mark as read button for unread notifications */}
+                                {!n.read_at && (
+                                  <button
+                                    onClick={async (e) => {
+                                      e.stopPropagation()
+                                      try {
+                                        await db.markNotificationAsRead(n.id)
+                                        const items = await db.getUserNotifications(profile.id, 20)
+                                        setNotifications(items || [])
+                                        setUnreadCount((items || []).filter(n => !n.read_at).length)
+                                      } catch (_) {}
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-navy-700 rounded"
+                                    title="Mark as read"
+                                  >
+                                    <svg className="h-4 w-4 text-yellow-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                    </svg>
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+
+            {/* Profile Dropdown */}
                 <div className="relative" ref={desktopProfileMenuRef}>
                   <button
                     onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}

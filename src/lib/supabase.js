@@ -131,6 +131,9 @@ export const db = {
     // Apply limit first for better performance
     const limit = filters.limit || 1000 // Default reasonable limit
 
+    // Auto-expire donations before fetching
+    try { await this.autoExpireDonations() } catch (_) {}
+
     let query = supabase
       .from('donations')
       .select(`
@@ -170,7 +173,16 @@ export const db = {
       .single()
     
     if (error) throw error
-    return data
+    // Incremental matching: suggest top matches for this new donation (non-blocking best-effort)
+    try {
+      const suggestions = await this.matchNewDonation(data.id, { maxResults: 3 })
+      // Attach suggestions without altering DB
+      return { ...data, _suggestedMatches: suggestions }
+    } catch (e) {
+      // Fallback to original data on any error
+      console.warn('matchNewDonation failed:', e)
+      return data
+    }
   },
 
   async updateDonation(donationId, updates, userId = null) {
@@ -331,7 +343,286 @@ export const db = {
       .single()
     
     if (error) throw error
-    return data
+    // Incremental matching: suggest top matches for this new request (non-blocking best-effort)
+    try {
+      const suggestions = await this.matchNewRequest(data.id, { maxResults: 5 })
+      return { ...data, _suggestedMatches: suggestions }
+    } catch (e) {
+      console.warn('matchNewRequest failed:', e)
+      return data
+    }
+  },
+
+  // ------------------------------
+  // Incremental matching helpers
+  // ------------------------------
+
+  async matchNewDonation(donationId, { maxResults = 5 } = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+
+      // Load the donation with donor info
+      const { data: donation, error: dErr } = await supabase
+        .from('donations')
+        .select(`
+          *,
+          donor:users!donations_donor_id_fkey(
+            id, name, latitude, longitude, city
+          )
+        `)
+        .eq('id', donationId)
+        .single()
+
+      if (dErr) throw dErr
+      if (!donation || donation.status !== 'available') return []
+
+      // Load currently open requests
+      const requests = await this.getRequests({ status: 'open', limit: 1000 })
+
+      // Score each request against this donation only (efficient path)
+      const scored = await Promise.all((requests || []).map(async (request) => {
+        const matches = await intelligentMatcher.matchDonorsToRequest(request, [donation], 1)
+        if (!matches || matches.length === 0) return null
+        const top = matches[0]
+        return {
+          request,
+          donation: top.donation,
+          score: top.score,
+          criteriaScores: top.criteriaScores,
+          matchReason: top.matchReason
+        }
+      }))
+
+      return (scored.filter(Boolean))
+        .sort((a, b) => b.score - a.score)
+        .slice(0, maxResults)
+    } catch (error) {
+      console.error('Error in matchNewDonation:', error)
+      return []
+    }
+  },
+
+  async matchNewRequest(requestId, { maxResults = 10 } = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+
+      // Load the request with requester info
+      const { data: request, error: rErr } = await supabase
+        .from('donation_requests')
+        .select(`
+          *,
+          requester:users!donation_requests_requester_id_fkey(
+            id, name, latitude, longitude, city
+          )
+        `)
+        .eq('id', requestId)
+        .single()
+
+      if (rErr) throw rErr
+      if (!request || request.status !== 'open') return []
+
+      // Load available donations
+      const donations = await this.getDonations({ status: 'available', limit: 1000 })
+
+      // Use optimized matcher to find top donations for this request
+      const matches = await intelligentMatcher.matchDonorsToRequest(request, donations, maxResults)
+      return matches
+    } catch (error) {
+      console.error('Error in matchNewRequest:', error)
+      return []
+    }
+  },
+
+  // ------------------------------
+  // Chapter 1 alignment utilities
+  // ------------------------------
+
+  // Objective: Build a ranking system for recipient requests
+  async rankOpenRequests({ limit = 50 } = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+      const requests = await this.getRequests({ status: 'open', limit: 1000 })
+
+      // Compute ranking score using urgency, quantity ratio, recency, and basic category priority
+      const scored = (requests || []).map(req => {
+        const urgencyLevels = { low: 1, medium: 2, high: 3, critical: 4 }
+        const urgencyScore = (urgencyLevels[req.urgency] || 2) / 4 // 0..1
+
+        const qtyNeeded = typeof req.quantity_needed === 'number' ? req.quantity_needed : 1
+        const quantityPressure = Math.min(qtyNeeded / 10, 1) // 0..1 (higher need → higher score)
+
+        const created = req.created_at ? new Date(req.created_at).getTime() : Date.now()
+        const ageDays = Math.max(1, (Date.now() - created) / (1000 * 60 * 60 * 24))
+        const recencyPenalty = Math.max(0, 1 - (ageDays / 30)) // recent → closer to 1
+
+        // Optional: slight category boost for perishables
+        const perishableCategories = new Set(['food', 'groceries', 'meals'])
+        const categoryBoost = perishableCategories.has((req.category || '').toLowerCase()) ? 0.1 : 0
+
+        const score = (
+          urgencyScore * 0.5 +
+          quantityPressure * 0.25 +
+          recencyPenalty * 0.15 +
+          categoryBoost
+        )
+
+        return { request: req, score }
+      })
+
+      return scored
+        .sort((a, b) => b.score - a.score)
+        .slice(0, limit)
+    } catch (error) {
+      console.error('Error ranking open requests:', error)
+      return []
+    }
+  },
+
+  // Objective: Provide verification badges derived from existing stats
+  async getUserBadges(userId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const profile = await this.getProfile(userId)
+      const role = profile?.role
+      const badges = []
+
+      if (role === 'donor') {
+        const { totalCompletedDonations, averageRating, totalRatings } = await this.getDonorStats(userId)
+        // Trusted Donor: Minimum 5 completed donations with at least 3.5 average rating
+        if (totalCompletedDonations >= 5 && (averageRating || 0) >= 3.5) badges.push('Trusted Donor')
+        // Gold Donor: Minimum 10 completed donations with at least 4.0 average rating
+        if (totalCompletedDonations >= 10 && (averageRating || 0) >= 4.0) badges.push('Gold Donor')
+        // Top Rated: Minimum 4.5 average rating with at least 10 ratings
+        if ((averageRating || 0) >= 4.5 && (totalRatings || 0) >= 10) badges.push('Top Rated')
+      } else if (role === 'recipient') {
+        // Priority Recipient if critical requests exist (indicates urgent need)
+        const requests = await this.getRequests({ requester_id: userId, status: 'open' })
+        const hasCritical = (requests || []).some(r => r.urgency === 'critical')
+        if (hasCritical) badges.push('Priority Recipient')
+      } else if (role === 'volunteer') {
+        const stats = await this.getVolunteerStats(userId).catch(() => null)
+        if (stats) {
+          // Verified Volunteer: Minimum 5 completed deliveries with at least 3.5 average rating
+          if (stats.completedDeliveries >= 5 && (stats.averageRating || 0) >= 3.5) {
+            badges.push('Verified Volunteer')
+          }
+          // Elite Volunteer: Minimum 20 completed deliveries with at least 4.0 average rating
+          if (stats.completedDeliveries >= 20 && (stats.averageRating || 0) >= 4.0) {
+            badges.push('Elite Volunteer')
+          }
+        }
+      }
+
+      return badges
+    } catch (error) {
+      console.error('Error getting user badges:', error)
+      return []
+    }
+  },
+
+  // Donor stats: total completed donations, average rating, total ratings
+  async getDonorStats(userId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Total completed donations by this donor (delivered status)
+      const { data: completedDonations, error: countError } = await supabase
+        .from('donations')
+        .select('id, status')
+        .eq('donor_id', userId)
+        .eq('status', 'delivered')
+
+      if (countError) throw countError
+      
+      const count = completedDonations?.length || 0
+
+      // Average rating received by this donor
+      const { data: feedback, error: feedbackError } = await supabase
+        .from('feedback_ratings')
+        .select('rating')
+        .eq('rated_user_id', userId)
+
+      if (feedbackError) throw feedbackError
+
+      const totalRatings = feedback?.length || 0
+      const averageRating = totalRatings > 0
+        ? feedback.reduce((sum, f) => sum + (f.rating || 0), 0) / totalRatings
+        : 0
+
+      return {
+        totalCompletedDonations: count || 0,
+        averageRating,
+        totalRatings
+      }
+    } catch (error) {
+      console.error('Error getting donor stats:', error)
+      return {
+        totalCompletedDonations: 0,
+        averageRating: 0,
+        totalRatings: 0
+      }
+    }
+  },
+
+  // Objective: Donation quality validation helper (client-side checks before insert)
+  validateDonationInput(donation) {
+    const errors = []
+    if (!donation?.title || donation.title.trim().length < 3) {
+      errors.push('Title must be at least 3 characters')
+    }
+    if (!donation?.category) {
+      errors.push('Category is required')
+    }
+    if (typeof donation?.quantity !== 'number' || donation.quantity <= 0) {
+      errors.push('Quantity must be a positive number')
+    }
+    // If provided, ensure expiration is in future (for perishables)
+    if (donation?.expiration_date) {
+      const exp = new Date(donation.expiration_date).getTime()
+      if (isFinite(exp) && exp < Date.now()) {
+        errors.push('Expiration date must be in the future')
+      }
+    }
+    return errors
+  },
+
+  // Objective: Volunteer assignment helper using existing matching
+  async autoAssignVolunteerForClaim(claimId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Find candidates
+      const matches = await this.findVolunteersForTask(claimId, 'claim', 3)
+      if (!matches || matches.length === 0) {
+        return { assigned: false, reason: 'No volunteers available', candidates: [] }
+      }
+
+      // Select the top candidate (do not mutate DB here to keep it safe)
+      const top = matches[0]
+      return { assigned: false, suggestedVolunteer: top.volunteer, candidates: matches }
+    } catch (error) {
+      console.error('Error auto-assigning volunteer for claim:', error)
+      return { assigned: false, reason: 'Error', candidates: [] }
+    }
   },
 
   async updateRequest(requestId, updates) {
@@ -359,6 +650,9 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    // Auto-expire donations before fetching available
+    try { await this.autoExpireDonations() } catch (_) {}
+
     const { data, error } = await supabase
       .from('donations')
       .select(`
@@ -373,6 +667,62 @@ export const db = {
 
     if (error) throw error
     return data
+  },
+
+  // Mark donations as expired if past expiration_date; archive expired older than retention
+  async autoExpireDonations(retentionDays = 30) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    // Load retention from settings if available
+    try {
+      const s = await this.getSettings()
+      if (s?.expiry_retention_days && Number.isFinite(s.expiry_retention_days)) {
+        retentionDays = s.expiry_retention_days
+      }
+    } catch (_) {}
+
+    // Expire: set status='expired' and expired_at when expiration_date < now and not already terminal
+    const terminalStatuses = ['completed', 'cancelled', 'archived']
+    try {
+      // Get ids to update to avoid mass updates blindly
+      const { data: toExpire } = await supabase
+        .from('donations')
+        .select('id')
+        .lt('expiration_date', new Date().toISOString())
+        .in('status', ['available', 'matched', 'claimed', 'in_transit', 'delivered'])
+
+      if (toExpire && toExpire.length > 0) {
+        const ids = toExpire.map(d => d.id)
+        await supabase
+          .from('donations')
+          .update({ status: 'expired', expired_at: new Date().toISOString() })
+          .in('id', ids)
+      }
+    } catch (e) {
+      // non-fatal
+    }
+
+    // Archive: move expired to archived after retention
+    try {
+      const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString()
+      const { data: toArchive } = await supabase
+        .from('donations')
+        .select('id')
+        .eq('status', 'expired')
+        .lt('expired_at', cutoff)
+
+      if (toArchive && toArchive.length > 0) {
+        const ids = toArchive.map(d => d.id)
+        await supabase
+          .from('donations')
+          .update({ status: 'archived', archived_at: new Date().toISOString() })
+          .in('id', ids)
+      }
+    } catch (e) {
+      // non-fatal
+    }
   },
 
   async claimDonation(donationId, recipientId) {
@@ -431,6 +781,16 @@ export const db = {
       if (deliveryError) {
         console.error('Error creating delivery record:', deliveryError)
         // Don't throw error here as the claim was successful
+      }
+
+      // Auto-assign flow (guarded by admin setting)
+      try {
+        const settings = await this.getSettings().catch(() => ({ auto_assign_enabled: false }))
+        if (settings?.auto_assign_enabled) {
+          await this.autoAssignTopVolunteerWithAcceptance(claim.id)
+        }
+      } catch (e) {
+        console.warn('Auto-assign skipped:', e?.message || e)
       }
     } else if (donation.delivery_mode === 'pickup') {
       // Create a pickup record for self-pickup tracking
@@ -519,6 +879,116 @@ export const db = {
     }
 
     return claim
+  },
+
+  // Auto-assign top volunteer with acceptance timeout and fallback
+  async autoAssignTopVolunteerWithAcceptance(claimId, { timeoutMinutes = 30 } = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    // Find candidates using existing matcher
+    const candidates = await this.findVolunteersForTask(claimId, 'claim', 3)
+    if (!candidates || candidates.length === 0) {
+      return { success: false, reason: 'no_candidates' }
+    }
+
+    const top = candidates[0]
+    const expiresAt = new Date(Date.now() + timeoutMinutes * 60 * 1000).toISOString()
+
+    // Mark claim as awaiting acceptance and tentatively assign volunteer
+    const { data: updatedClaim, error: updErr } = await supabase
+      .from('donation_claims')
+      .update({
+        tentative_volunteer_id: top.volunteer.id,
+        status: 'awaiting_volunteer_acceptance',
+        acceptance_expires_at: expiresAt
+      })
+      .eq('id', claimId)
+      .select('id, donor_id, recipient_id')
+      .single()
+
+    if (updErr) throw updErr
+
+    // Notify volunteer to accept
+    await this.createNotification({
+      user_id: top.volunteer.id,
+      type: 'volunteer_assignment_request',
+      title: 'New Delivery Opportunity',
+      message: 'You have been auto-selected for a delivery. Please accept within the time limit to confirm.',
+      data: {
+        claim_id: claimId,
+        expires_at: expiresAt
+      }
+    })
+
+    // Notify donor and recipient of pending assignment
+    try {
+      await this.createNotification({
+        user_id: updatedClaim.donor_id,
+        type: 'volunteer_assignment_pending',
+        title: 'Volunteer Assignment Pending',
+        message: 'A volunteer has been selected and is confirming availability.',
+        data: { claim_id: claimId }
+      })
+      await this.createNotification({
+        user_id: updatedClaim.recipient_id,
+        type: 'volunteer_assignment_pending',
+        title: 'Volunteer Assignment Pending',
+        message: 'A volunteer has been selected and is confirming availability.',
+        data: { claim_id: claimId }
+      })
+    } catch (_) {}
+
+    return { success: true, volunteerId: top.volunteer.id, expiresAt }
+  },
+
+  // Volunteer accepts assignment;
+  // if expired, try next candidate
+  async acceptVolunteerAssignment(claimId, volunteerId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    // Load claim and check tentative assignment
+    const { data: claim, error: claimErr } = await supabase
+      .from('donation_claims')
+      .select('*')
+      .eq('id', claimId)
+      .single()
+
+    if (claimErr) throw claimErr
+    if (claim.tentative_volunteer_id !== volunteerId) {
+      throw new Error('This assignment is not reserved for this volunteer')
+    }
+    if (claim.acceptance_expires_at && new Date(claim.acceptance_expires_at) < new Date()) {
+      throw new Error('Assignment has expired')
+    }
+
+    // Persist actual assignment using existing helper
+    const deliveryRecord = await this.assignVolunteerToDelivery(claimId, volunteerId)
+
+    // Update claim status
+    await supabase
+      .from('donation_claims')
+      .update({ status: 'assigned', tentative_volunteer_id: null, acceptance_expires_at: null })
+      .eq('id', claimId)
+
+    return { success: true, delivery: deliveryRecord }
+  },
+
+  // Admin setting to toggle auto-assign
+  async setAutoAssignEnabled(enabled) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+    const { data, error } = await supabase
+      .from('settings')
+      .upsert({ id: 1, auto_assign_enabled: !!enabled, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      .select('*')
+      .single()
+    if (error) throw error
+    return data
   },
 
   async createDonationRequest(requestData) {
@@ -1200,6 +1670,57 @@ export const db = {
     return data
   },
 
+  // Realtime subscription to notifications for a user
+  subscribeToUserNotifications(userId, onChange) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+    if (!userId) return null
+    const channel = supabase
+      .channel(`notifications_user_${userId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+        (payload) => {
+          try { onChange?.(payload) } catch (_) {}
+        }
+      )
+      .subscribe()
+
+    return () => {
+      try { supabase.removeChannel(channel) } catch (_) {}
+    }
+  },
+
+  async setRetentionDays(days) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+    const safeDays = Math.max(0, parseInt(days || 0, 10))
+    const { data, error } = await supabase
+      .from('settings')
+      .upsert({ id: 1, expiry_retention_days: safeDays, updated_at: new Date().toISOString() }, { onConflict: 'id' })
+      .select('*')
+      .single()
+    if (error) throw error
+    return data
+  },
+
+  async getDonationExpiryStats() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+    const { count: expiredCount } = await supabase
+      .from('donations')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'expired')
+    const { count: archivedCount } = await supabase
+      .from('donations')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'archived')
+    return { expiredCount: expiredCount || 0, archivedCount: archivedCount || 0 }
+  },
+
   // Profile completion check
   async checkProfileCompletion(userId) {
     if (!supabase) {
@@ -1749,6 +2270,24 @@ export const db = {
           action_required: 'donor_final_confirmation'
         }
       })
+
+      // If no rating was provided now, send a reminder to recipient to rate the donor later
+      if (confirmed && (rating === null || rating === undefined)) {
+        try {
+          await this.createNotification({
+            user_id: recipientId,
+            type: 'rating_reminder',
+            title: 'Rate Your Donation Experience',
+            message: `Please take a moment to rate your experience with the donor for "${delivery.claim.donation.title}".`,
+            data: {
+              delivery_id: deliveryId,
+              claim_id: delivery.claim.id,
+              rated_user_id: delivery.claim.donation.donor_id,
+              role: 'recipient'
+            }
+          })
+        } catch (_) {}
+      }
 
       // Mark recipient confirmation notifications as read
       const { data: unreadNotifications } = await supabase
@@ -3076,13 +3615,11 @@ export const db = {
         throw new Error('Items are not sufficiently compatible for matching')
       }
 
-      // Update donation status to claimed
+      // Update donation status to matched (donor is offering it to fulfill a request)
       const { data: updatedDonation, error: donationError } = await supabase
         .from('donations')
         .update({ 
-          status: 'claimed',
-          claimed_by: request.requester_id,
-          claimed_at: new Date().toISOString()
+          status: 'matched'
         })
         .eq('id', donationId)
         .select()
@@ -3090,13 +3627,11 @@ export const db = {
 
       if (donationError) throw donationError
 
-      // Update request status to matched
+      // Update request status to claimed (a donation has been offered/matched to this request)
       const { data: updatedRequest, error: requestError } = await supabase
         .from('donation_requests')
         .update({ 
-          status: 'matched',
-          matched_donation_id: donationId,
-          matched_at: new Date().toISOString()
+          status: 'claimed'
         })
         .eq('id', requestId)
         .select()
@@ -3104,11 +3639,11 @@ export const db = {
 
       if (requestError) throw requestError
 
-      // Create success notifications (using valid notification types)
+      // Create success notifications
       try {
         await this.createNotification({
           user_id: request.requester_id,
-          type: 'donation_claimed',
+          type: 'system_alert',
           title: 'Match Created!',
           message: `Your request "${request.title}" has been matched with a donation.`,
           data: {
@@ -3120,7 +3655,7 @@ export const db = {
 
         await this.createNotification({
           user_id: donation.donor_id,
-          type: 'donation_claimed',
+          type: 'system_alert',
           title: 'Your Donation Was Matched!',
           message: `Your donation "${donation.title}" was matched with someone in need.`,
           data: {
@@ -3140,7 +3675,7 @@ export const db = {
           request: updatedRequest,
           donation: updatedDonation,
           volunteer_id: volunteerId,
-          compatibility_score: compatibility,
+          compatibility_score: itemCompatibility,
           match_algorithm: 'Weighted Sum Model (WSM)',
           created_at: new Date().toISOString()
         }
@@ -3159,9 +3694,10 @@ export const db = {
 
     try {
       const { data, error } = await supabase
-        .from('admin_settings')
+        .from('settings')
         .select('*')
-        .single()
+        .eq('id', 1)
+        .maybeSingle()
 
       if (error && error.code !== 'PGRST116') {
         throw error
@@ -3185,7 +3721,9 @@ export const db = {
           enablePerformanceMonitoring: true,
           emailNotifications: true,
           systemAlerts: true,
-          securityAlerts: true
+          securityAlerts: true,
+          auto_assign_enabled: false,
+          expiry_retention_days: 30
         }
       }
 
@@ -3204,7 +3742,7 @@ export const db = {
     try {
       // Check if settings exist
       const { data: existing } = await supabase
-        .from('admin_settings')
+        .from('settings')
         .select('id')
         .maybeSingle()
 
@@ -3212,7 +3750,7 @@ export const db = {
       if (existing) {
         // Update existing settings
         result = await supabase
-          .from('admin_settings')
+          .from('settings')
           .update({
             ...settings,
             updated_at: new Date().toISOString()
@@ -3223,8 +3761,9 @@ export const db = {
       } else {
         // Insert new settings
         result = await supabase
-          .from('admin_settings')
+          .from('settings')
           .insert({
+            id: 1,
             ...settings,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
@@ -3433,6 +3972,24 @@ export const db = {
         .single()
 
       if (error) throw error
+
+      // Update rated user's aggregate rating
+      try { await this.updateUserRating(feedbackData.rated_user_id) } catch (_) {}
+
+      // Notify rated user in real-time
+      try {
+        await this.createNotification({
+          user_id: feedbackData.rated_user_id,
+          type: 'new_rating',
+          title: 'You received a new rating',
+          message: `You received a ${feedbackData.rating}-star rating.`,
+          data: {
+            transaction_id: feedbackData.transaction_id,
+            rating: feedbackData.rating
+          }
+        })
+      } catch (_) {}
+
       return data
     } catch (error) {
       console.error('Error submitting feedback:', error)

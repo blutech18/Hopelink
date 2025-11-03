@@ -112,6 +112,12 @@ const MyApprovedDonationsPage = () => {
       setDeliveryConfirmationNotifications(deliveryConfirmationNotifications)
       setPickupConfirmationNotifications(pickupConfirmationNotifications)
       setDirectDeliveryConfirmationNotifications(directDeliveryConfirmationNotifications)
+
+      // Rating reminders
+      const ratingReminderNotifications = notifications.filter(n => 
+        n.type === 'rating_reminder' && !n.read_at
+      )
+      setRatingReminderNotifications(ratingReminderNotifications)
     } catch (err) {
       console.error('Error loading confirmations:', err)
     }
@@ -121,6 +127,15 @@ const MyApprovedDonationsPage = () => {
     loadApprovedDonations()
     loadDeliveryConfirmations()
   }, [loadApprovedDonations, loadDeliveryConfirmations])
+
+  // Realtime notifications for recipients
+  useEffect(() => {
+    if (!user?.id) return
+    const unsubscribe = db.subscribeToUserNotifications(user.id, async () => {
+      try { await loadDeliveryConfirmations() } catch (_) {}
+    })
+    return () => { if (unsubscribe) unsubscribe() }
+  }, [user?.id, loadDeliveryConfirmations])
 
   const handleConfirmDelivery = (notification) => {
     setSelectedConfirmationNotification(notification)
@@ -189,6 +204,46 @@ const MyApprovedDonationsPage = () => {
     } catch (err) {
       console.error('Error confirming direct delivery:', err)
       error('Failed to confirm direct delivery completion')
+    }
+  }
+
+  // Rating reminder state and handlers
+  const [ratingReminderNotifications, setRatingReminderNotifications] = useState([])
+  const [showRatingModal, setShowRatingModal] = useState(false)
+  const [selectedRatingNotification, setSelectedRatingNotification] = useState(null)
+  const [rating, setRating] = useState(0)
+  const [feedback, setFeedback] = useState('')
+
+  const openRatingModal = (notification) => {
+    setSelectedRatingNotification(notification)
+    setRating(0)
+    setFeedback('')
+    setShowRatingModal(true)
+  }
+
+  const submitDonorRating = async () => {
+    if (!user?.id || !selectedRatingNotification) return
+    try {
+      const ratedUserId = selectedRatingNotification.data?.rated_user_id
+      const transactionId = selectedRatingNotification.data?.delivery_id || selectedRatingNotification.data?.claim_id
+      await db.submitFeedback({
+        transaction_id: transactionId,
+        transaction_type: 'delivery',
+        rater_id: user.id,
+        rated_user_id: ratedUserId,
+        rating: rating || 5,
+        feedback: feedback || ''
+      })
+      success('Thanks for rating your experience!')
+      if (selectedRatingNotification.id) {
+        await db.markNotificationAsRead(selectedRatingNotification.id)
+      }
+      setShowRatingModal(false)
+      setSelectedRatingNotification(null)
+      await loadDeliveryConfirmations()
+    } catch (err) {
+      console.error('Error submitting rating:', err)
+      error('Failed to submit rating')
     }
   }
 
@@ -265,6 +320,25 @@ const MyApprovedDonationsPage = () => {
     }
   }
 
+  // Render rating reminders list
+  const renderRatingReminders = () => (
+    ratingReminderNotifications && ratingReminderNotifications.length > 0 && (
+      <div className="card p-4 sm:p-5 lg:p-6 mb-4 sm:mb-6">
+        <h3 className="text-white font-semibold mb-3">Rate Your Recent Donations</h3>
+        <div className="space-y-3">
+          {ratingReminderNotifications.map((n) => (
+            <div key={n.id} className="flex items-center justify-between bg-navy-800/50 border border-navy-700 rounded-lg p-3">
+              <div className="text-yellow-300 text-sm">
+                {n.message}
+              </div>
+              <button onClick={() => openRatingModal(n)} className="btn btn-primary text-sm px-3 py-1.5">Rate now</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  )
+
   const getDirectDeliveryStatusIcon = (status) => {
     switch (status) {
       case 'coordination_needed': return MessageSquare
@@ -336,6 +410,35 @@ const MyApprovedDonationsPage = () => {
             </div>
           </div>
         </motion.div>
+
+        {/* Rating Reminders */}
+        {ratingReminderNotifications && ratingReminderNotifications.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.05 }}
+            className="mb-6 sm:mb-8"
+          >
+            <div className="bg-emerald-500/10 border-2 border-emerald-500/30 rounded-lg sm:rounded-xl p-4 sm:p-6">
+              <div className="flex items-center mb-3 sm:mb-4">
+                <Star className="h-5 w-5 sm:h-6 sm:w-6 text-emerald-400 mr-2 sm:mr-3 flex-shrink-0" />
+                <h2 className="text-base sm:text-lg font-semibold text-white">
+                  Rate Your Recent Donations ({ratingReminderNotifications.length})
+                </h2>
+              </div>
+              <div className="space-y-3">
+                {ratingReminderNotifications.map((n) => (
+                  <div key={n.id} className="flex items-center justify-between bg-navy-800/50 border border-navy-700 rounded-lg p-3">
+                    <div className="text-yellow-300 text-sm pr-3">
+                      {n.message}
+                    </div>
+                    <button onClick={() => openRatingModal(n)} className="btn btn-primary text-sm px-3 py-1.5">Rate now</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Delivery Confirmations */}
         {deliveryConfirmationNotifications.length > 0 && (
@@ -549,6 +652,34 @@ const MyApprovedDonationsPage = () => {
                         </div>
                       </div>
                       
+    {/* Rating Modal */}
+    {showRatingModal && (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-navy-900 border border-navy-700 shadow-xl rounded-xl p-6 max-w-md w-full"
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-white font-semibold">Rate Donor</h3>
+            <button onClick={() => setShowRatingModal(false)} className="text-yellow-300 hover:text-white">✕</button>
+          </div>
+          <div className="mb-4">
+            <div className="flex gap-2 items-center justify-center mb-2">
+              {[1,2,3,4,5].map(star => (
+                <button key={star} onClick={() => setRating(star)} className={`p-1 ${star <= rating ? 'text-yellow-400' : 'text-gray-500'}`}>★</button>
+              ))}
+            </div>
+            <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Optional feedback" className="input w-full h-24" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowRatingModal(false)} className="btn btn-secondary">Cancel</button>
+            <button onClick={submitDonorRating} className="btn btn-primary">Submit</button>
+          </div>
+        </motion.div>
+      </div>
+    )}
+
                       <div className="flex flex-wrap items-center gap-2">
                         {/* Self-Pickup Management Button */}
                         {isSelfPickup && claim.status !== 'completed' && (

@@ -86,7 +86,7 @@ const MyDonationsPage = () => {
   const statusOptions = [
     { value: 'all', label: 'All Status' },
     { value: 'available', label: 'Available' },
-    { value: 'matched', label: 'Matched' },
+    { value: 'matched', label: 'Donated' },
     { value: 'claimed', label: 'Claimed' },
     { value: 'in_transit', label: 'In Transit' },
     { value: 'delivered', label: 'Delivered' },
@@ -682,27 +682,27 @@ const MyDonationsPage = () => {
     // Special handling for direct donations
     if (donation?.donation_destination === 'organization') {
       const directStatusColors = {
-        available: donation?.delivery_mode === 'donor_delivery' ? 'bg-blue-900/20 text-blue-300' :
-                    donation?.delivery_mode === 'organization_pickup' ? 'bg-purple-900/20 text-purple-300' :
-                    'bg-yellow-900/20 text-yellow-300', // volunteer delivery waiting
-        delivered: 'bg-green-900/20 text-green-300',
-        claimed: 'bg-emerald-900/20 text-emerald-300'
+        available: donation?.delivery_mode === 'donor_delivery' ? 'bg-blue-900/70 text-white' :
+                    donation?.delivery_mode === 'organization_pickup' ? 'bg-purple-900/70 text-white' :
+                    'bg-yellow-900/70 text-white', // volunteer delivery waiting
+        delivered: 'bg-green-900/70 text-white',
+        claimed: 'bg-emerald-900/70 text-white'
       }
       return directStatusColors[status] || colors[status]
     }
     
     // Regular donations
     const colors = {
-      available: 'bg-success-900/20 text-success-300',
-      matched: 'bg-yellow-900/20 text-yellow-300',
-      claimed: 'bg-amber-900/20 text-amber-300',
-      in_transit: 'bg-purple-900/20 text-purple-300',
-      delivered: 'bg-emerald-900/20 text-emerald-300',
-      completed: 'bg-green-500/30 text-green-200 border border-green-500/50',
-      cancelled: 'bg-danger-900/20 text-danger-300',
-      expired: 'bg-gray-900/20 text-gray-300'
+      available: 'bg-success-900/70 text-white',
+      matched: 'bg-yellow-900/70 text-white',
+      claimed: 'bg-amber-900/70 text-white',
+      in_transit: 'bg-purple-900/70 text-white',
+      delivered: 'bg-emerald-900/70 text-white',
+      completed: 'bg-green-500/70 text-white border border-green-500/50',
+      cancelled: 'bg-danger-900/70 text-white',
+      expired: 'bg-gray-900/70 text-white'
     }
-    return colors[status] || 'bg-gray-900/20 text-gray-300'
+    return colors[status] || 'bg-gray-900/70 text-white'
   }
 
   const getStatusIcon = (status) => {
@@ -1263,8 +1263,10 @@ const MyDonationsPage = () => {
                             />
                             {/* Status Badge on Image */}
                             <div className="absolute top-2 right-2">
-                              <span className={`px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold backdrop-blur-md bg-black/50 border-2 shadow-lg ${getStatusColor(donation.status, donation)}`}>
-                                {donation.status.replace('_', ' ').toUpperCase()}
+                              <span className={`px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold backdrop-blur-md border-2 shadow-lg ${getStatusColor(donation.status, donation)}`}>
+                                {donation.description?.includes('Donation for request:') && donation.status === 'claimed'
+                                  ? 'SENT'
+                                  : donation.status.replace('_', ' ').toUpperCase()}
                               </span>
                             </div>
                             {/* Notification Badges - Mobile Only */}
@@ -1316,10 +1318,13 @@ const MyDonationsPage = () => {
                               <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
                                 {donation.category}
                               </span>
-                              {/* Status Badge */}
-                              <span className={`px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold border whitespace-nowrap ${getStatusColor(donation.status, donation)}`}>
-                                {donation.status.replace('_', ' ').toUpperCase()}
-                              </span>
+                              {/* Requested Donation Badge */}
+                              {donation.description?.includes('Donation for request:') && (
+                                <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-purple-500/20 text-purple-400 border border-purple-500/30 whitespace-nowrap">
+                                  <Heart className="h-3 w-3" />
+                                  Requested
+                                </span>
+                              )}
                               {donation.donation_destination === 'organization' && (
                                 <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30 whitespace-nowrap">
                                   <Building className="h-3 w-3" />
@@ -1333,7 +1338,9 @@ const MyDonationsPage = () => {
                               )}
                             </div>
                             <p className="text-gray-300 text-xs sm:text-sm line-clamp-2">
-                              {donation.description || 'No description available'}
+                              {donation.description?.startsWith('Donation for request:') 
+                                ? 'Donation created to fulfill a recipient request' 
+                                : donation.description || 'No description available'}
                             </p>
                           </div>
                           
