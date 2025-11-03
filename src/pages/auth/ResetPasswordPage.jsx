@@ -189,7 +189,7 @@ const ResetPasswordPage = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex flex-col items-center">
           <Link to="/" aria-label="Go to homepage" className="focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-skyblue-500 rounded">
-            <img src="/hopelinklogo.png" alt="HopeLink logo" className="h-16 w-16 sm:h-20 sm:w-20 rounded" />
+            <img src="/hopelinklogo.png" alt="HopeLink logo" className="h-20 w-28 sm:h-24 sm:w-32 rounded" />
           </Link>
           {isAuthedForRecovery || hasRecoveryParams ? (
             <>
@@ -255,9 +255,6 @@ const ResetPasswordPage = () => {
               </div>
             ) : (
               <>
-                <p className="text-skyblue-200 text-sm mb-4">
-                  Enter your email and we'll send you a link to reset your password.
-                </p>
                 <form onSubmit={handleSendResetEmail} className="space-y-4" noValidate>
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-skyblue-200">Email address</label>
