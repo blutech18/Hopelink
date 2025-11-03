@@ -178,22 +178,27 @@ const ResetPasswordPage = () => {
   )
 
   return (
-    <div className="min-h-screen bg-navy-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-navy-950 flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="flex justify-center">
-          <img src="/hopelinklogo.png" alt="HopeLink" className="h-12 w-12 rounded" />
+        <div className="flex flex-col items-center">
+          <Link to="/" aria-label="Go to homepage" className="focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-skyblue-500 rounded">
+            <img src="/hopelinklogo.png" alt="HopeLink logo" className="h-12 w-12 sm:h-14 sm:w-14 rounded" />
+          </Link>
+          <h1 className="mt-5 text-center text-2xl sm:text-3xl font-semibold text-white tracking-tight">
+            Reset your password
+          </h1>
+          <p className="mt-2 text-center text-skyblue-300 text-sm sm:text-base max-w-prose">
+            Enter a new password to secure your account.
+          </p>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-bold text-white">
-          Reset Password
-        </h2>
 
         {isInitializing ? (
           <p className="mt-4 text-center text-skyblue-300">Preparing your reset session...</p>
         ) : !(isAuthedForRecovery || hasRecoveryParams) ? (
-          <div className="mt-6 bg-navy-900 border border-navy-700 rounded-lg p-6">
+          <div className="mt-6 bg-navy-900/80 backdrop-blur-sm border border-navy-700 rounded-xl p-6 shadow-xl">
             {hasSentEmail ? (
               <div className="flex flex-col items-center text-center">
-                <svg className="h-14 w-14 text-success-400 animate-bounce" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <svg className="h-12 w-12 text-success-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" role="img" aria-label="Email sent">
                   <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
                   <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
@@ -205,25 +210,27 @@ const ResetPasswordPage = () => {
                 <p className="text-skyblue-200 text-sm mb-4">
                   Enter your email and we'll send you a link to reset your password.
                 </p>
-                <form onSubmit={handleSendResetEmail} className="space-y-4">
+                <form onSubmit={handleSendResetEmail} className="space-y-4" noValidate>
                   <div>
                     <label htmlFor="email" className="block text-sm font-medium text-skyblue-200">Email address</label>
                     <input
                       id="email"
                       type="email"
-                      className="mt-1 input"
+                      className="mt-1 input w-full"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       placeholder="you@example.com"
                       required
+                      aria-required="true"
+                      autoComplete="email"
                     />
                   </div>
 
                   {errorMessage && (
-                    <p className="text-secondary-400 text-sm">{errorMessage}</p>
+                    <p className="text-secondary-400 text-sm" role="alert" aria-live="polite">{errorMessage}</p>
                   )}
                   {successMessage && (
-                    <p className="text-success-400 text-sm">{successMessage}</p>
+                    <p className="text-success-400 text-sm" role="status" aria-live="polite">{successMessage}</p>
                   )}
 
                   <button
@@ -241,19 +248,22 @@ const ResetPasswordPage = () => {
             )}
           </div>
         ) : (
-          <div className="mt-6 bg-navy-900 border border-navy-700 rounded-lg p-6">
-            <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="mt-6 bg-navy-900/80 backdrop-blur-sm border border-navy-700 rounded-xl p-6 shadow-xl">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div>
                 <label htmlFor="new-password" className="block text-sm font-medium text-skyblue-200">New password</label>
                 <input
                   id="new-password"
                   type="password"
-                  className="mt-1 input"
+                  className="mt-1 input w-full"
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="At least 8 characters"
                   required
+                  aria-required="true"
+                  autoComplete="new-password"
                 />
+                <p className="mt-1 text-xs text-skyblue-300">Use at least 8 characters, including letters and numbers.</p>
               </div>
 
               <div>
@@ -261,18 +271,20 @@ const ResetPasswordPage = () => {
                 <input
                   id="confirm-password"
                   type="password"
-                  className="mt-1 input"
+                  className="mt-1 input w-full"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
                   required
+                  aria-required="true"
+                  autoComplete="new-password"
                 />
               </div>
 
               {errorMessage && (
-                <p className="text-secondary-400 text-sm">{errorMessage}</p>
+                <p className="text-secondary-400 text-sm" role="alert" aria-live="polite">{errorMessage}</p>
               )}
               {successMessage && (
-                <p className="text-success-400 text-sm">{successMessage}</p>
+                <p className="text-success-400 text-sm" role="status" aria-live="polite">{successMessage}</p>
               )}
 
               <button
