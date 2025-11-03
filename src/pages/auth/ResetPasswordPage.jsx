@@ -169,7 +169,12 @@ const ResetPasswordPage = () => {
     )
   }, [location.hash, location.search])
   const typeParamForRender = mergedParamsForRender.get('type')
-  const hasRecoveryParams = typeParamForRender === 'recovery'
+  const hasRecoveryParams = (
+    typeParamForRender === 'recovery' ||
+    !!mergedParamsForRender.get('token_hash') ||
+    !!mergedParamsForRender.get('access_token') ||
+    !!mergedParamsForRender.get('code')
+  )
 
   return (
     <div className="min-h-screen bg-navy-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
@@ -274,7 +279,7 @@ const ResetPasswordPage = () => {
                 className="btn btn-primary w-full disabled:opacity-60 disabled:cursor-not-allowed"
                 disabled={isSubmitting}
               >
-                {isSubmitting ? 'Saving...' : 'Update password'}
+                {isSubmitting ? 'Saving...' : 'Set new password'}
               </button>
             </form>
             <div className="mt-4 text-center">
