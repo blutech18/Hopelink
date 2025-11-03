@@ -160,6 +160,17 @@ const ResetPasswordPage = () => {
     }
   }
 
+  // Determine if URL already indicates a recovery flow so we can show the right UI immediately
+  const mergedParamsForRender = React.useMemo(() => {
+    const hash = location.hash || window.location.hash
+    const search = location.search || window.location.search
+    return new URLSearchParams(
+      `${hash?.startsWith('#') ? hash.slice(1) : hash}${hash && search ? '&' : ''}${search?.startsWith('?') ? search.slice(1) : search}`
+    )
+  }, [location.hash, location.search])
+  const typeParamForRender = mergedParamsForRender.get('type')
+  const hasRecoveryParams = typeParamForRender === 'recovery'
+
   return (
     <div className="min-h-screen bg-navy-950 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
@@ -172,7 +183,7 @@ const ResetPasswordPage = () => {
 
         {isInitializing ? (
           <p className="mt-4 text-center text-skyblue-300">Preparing your reset session...</p>
-        ) : !isAuthedForRecovery ? (
+        ) : !(isAuthedForRecovery || hasRecoveryParams) ? (
           <div className="mt-6 bg-navy-900 border border-navy-700 rounded-lg p-6">
             {hasSentEmail ? (
               <div className="flex flex-col items-center text-center">
