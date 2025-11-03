@@ -191,7 +191,7 @@ const ResetPasswordPage = () => {
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex flex-col items-center">
           <Link to="/" aria-label="Go to homepage" className="focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-skyblue-500 rounded">
-            <img src="/hopelinklogo.png" alt="HopeLink logo" className="h-20 w-28 sm:h-24 sm:w-32 rounded" />
+            <img src="/hopelinklogo.png" alt="HopeLink logo" className="h-20 w-32 sm:h-24 sm:w-36 rounded" />
           </Link>
           {isAuthedForRecovery || hasRecoveryParams ? (
             <>
