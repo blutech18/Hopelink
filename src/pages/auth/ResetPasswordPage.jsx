@@ -16,6 +16,8 @@ const ResetPasswordPage = () => {
   const [isSendingEmail, setIsSendingEmail] = React.useState(false)
   const [isValidatingEmail, setIsValidatingEmail] = React.useState(false)
   const [hasSentEmail, setHasSentEmail] = React.useState(false)
+  const [showNewPassword, setShowNewPassword] = React.useState(false)
+  const [showConfirmPassword, setShowConfirmPassword] = React.useState(false)
 
   React.useEffect(() => {
     const initFromAuthRedirect = async () => {
@@ -297,32 +299,76 @@ const ResetPasswordPage = () => {
             <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div>
                 <label htmlFor="new-password" className="block text-sm font-medium text-skyblue-200">New password</label>
-                <input
-                  id="new-password"
-                  type="password"
-                  className="mt-1 input w-full"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="At least 8 characters"
-                  required
-                  aria-required="true"
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <input
+                    id="new-password"
+                    type={showNewPassword ? 'text' : 'password'}
+                    className="mt-1 input w-full pr-10"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    placeholder="At least 8 characters"
+                    required
+                    aria-required="true"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowNewPassword((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center px-2 text-skyblue-300 hover:text-skyblue-200 focus:outline-none focus:ring-2 focus:ring-skyblue-500 rounded"
+                    aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showNewPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5 0-9.27-3-11-8 1.02-2.76 2.99-5 5.5-6.42" />
+                        <path d="M22 12c-.23.65-.52 1.27-.88 1.85" />
+                        <path d="M6.06 6.06A10.94 10.94 0 0 1 12 4c5 0 9.27 3 11 8a11.66 11.66 0 0 1-2.16 3.19" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
                 <p className="mt-1 text-xs text-skyblue-300">Use at least 8 characters, including letters and numbers.</p>
               </div>
 
               <div>
                 <label htmlFor="confirm-password" className="block text-sm font-medium text-skyblue-200">Confirm password</label>
-                <input
-                  id="confirm-password"
-                  type="password"
-                  className="mt-1 input w-full"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  required
-                  aria-required="true"
-                  autoComplete="new-password"
-                />
+                <div className="relative">
+                  <input
+                    id="confirm-password"
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    className="mt-1 input w-full pr-10"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    aria-required="true"
+                    autoComplete="new-password"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword((v) => !v)}
+                    className="absolute inset-y-0 right-0 flex items-center px-2 text-skyblue-300 hover:text-skyblue-200 focus:outline-none focus:ring-2 focus:ring-skyblue-500 rounded"
+                    aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
+                  >
+                    {showConfirmPassword ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M17.94 17.94A10.94 10.94 0 0 1 12 20c-5 0-9.27-3-11-8 1.02-2.76 2.99-5 5.5-6.42" />
+                        <path d="M22 12c-.23.65-.52 1.27-.88 1.85" />
+                        <path d="M6.06 6.06A10.94 10.94 0 0 1 12 4c5 0 9.27 3 11 8a11.66 11.66 0 0 1-2.16 3.19" />
+                        <line x1="1" y1="1" x2="23" y2="23" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                        <circle cx="12" cy="12" r="3" />
+                      </svg>
+                    )}
+                  </button>
+                </div>
               </div>
 
               {errorMessage && (
