@@ -169,31 +169,79 @@ const ResetPasswordPage = () => {
     )
   }, [location.hash, location.search])
   const typeParamForRender = mergedParamsForRender.get('type')
+  const recoverParamRaw = mergedParamsForRender.get('recover')
+  const recoverFlag = mergedParamsForRender.has('recover') || (recoverParamRaw ? recoverParamRaw.startsWith('1') : false)
   const hasRecoveryParams = (
     typeParamForRender === 'recovery' ||
     !!mergedParamsForRender.get('token_hash') ||
     !!mergedParamsForRender.get('access_token') ||
     !!mergedParamsForRender.get('code') ||
-    mergedParamsForRender.get('recover') === '1'
+    recoverFlag
   )
+
+  // Error handling for expired/invalid links (e.g., error=access_denied&error_code=otp_expired)
+  const errorParam = mergedParamsForRender.get('error')
+  const errorCodeParam = mergedParamsForRender.get('error_code')
+  const isOtpExpired = errorParam === 'access_denied' && errorCodeParam === 'otp_expired'
 
   return (
     <div className="min-h-screen bg-navy-950 flex flex-col justify-center py-8 px-4 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex flex-col items-center">
           <Link to="/" aria-label="Go to homepage" className="focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-skyblue-500 rounded">
-            <img src="/hopelinklogo.png" alt="HopeLink logo" className="h-12 w-12 sm:h-14 sm:w-14 rounded" />
+            <img src="/hopelinklogo.png" alt="HopeLink logo" className="h-16 w-16 sm:h-20 sm:w-20 rounded" />
           </Link>
-          <h1 className="mt-5 text-center text-2xl sm:text-3xl font-semibold text-white tracking-tight">
-            Reset your password
-          </h1>
-          <p className="mt-2 text-center text-skyblue-300 text-sm sm:text-base max-w-prose">
-            Enter a new password to secure your account.
-          </p>
+          {isAuthedForRecovery || hasRecoveryParams ? (
+            <>
+              <h1 className="mt-5 text-center text-2xl sm:text-3xl font-semibold text-white tracking-tight">Set a new password</h1>
+              <p className="mt-2 text-center text-skyblue-300 text-sm sm:text-base max-w-prose">Choose a strong password to protect your account.</p>
+            </>
+          ) : (
+            <>
+              <h1 className="mt-5 text-center text-2xl sm:text-3xl font-semibold text-white tracking-tight">Reset your password</h1>
+              <p className="mt-2 text-center text-skyblue-300 text-sm sm:text-base max-w-prose">Enter your email and we’ll send you a reset link.</p>
+            </>
+          )}
         </div>
 
         {isInitializing ? (
           <p className="mt-4 text-center text-skyblue-300">Preparing your reset session...</p>
+        ) : isOtpExpired ? (
+          <div className="mt-6 bg-navy-900/80 backdrop-blur-sm border border-amber-600/40 rounded-xl p-6 shadow-xl">
+            <div className="flex items-start gap-3">
+              <svg className="h-6 w-6 text-amber-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <div>
+                <h2 className="text-white font-semibold">Your reset link has expired</h2>
+                <p className="mt-1 text-skyblue-200 text-sm">For your security, reset links expire after a short time. Request a new email to continue.</p>
+              </div>
+            </div>
+            <form onSubmit={handleSendResetEmail} className="space-y-4 mt-4" noValidate>
+              <div>
+                <label htmlFor="email-expired" className="block text-sm font-medium text-skyblue-200">Email address</label>
+                <input
+                  id="email-expired"
+                  type="email"
+                  className="mt-1 input w-full"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                  required
+                  aria-required="true"
+                  autoComplete="email"
+                />
+              </div>
+              <button type="submit" className="btn btn-primary w-full" disabled={isSendingEmail || isValidatingEmail}>
+                {isValidatingEmail ? 'Checking…' : isSendingEmail ? 'Sending…' : 'Send a new reset link'}
+              </button>
+              <div className="text-center">
+                <Link to="/login" className="text-skyblue-400 hover:text-skyblue-300">Back to Sign In</Link>
+              </div>
+            </form>
+          </div>
         ) : !(isAuthedForRecovery || hasRecoveryParams) ? (
           <div className="mt-6 bg-navy-900/80 backdrop-blur-sm border border-navy-700 rounded-xl p-6 shadow-xl">
             {hasSentEmail ? (
