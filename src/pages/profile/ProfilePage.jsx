@@ -24,7 +24,9 @@ import {
   Camera,
   Upload,
   Trash2,
-  Navigation
+  Navigation,
+  Award,
+  Settings
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -32,6 +34,7 @@ import { ProfileSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import VolunteerProfileSettings from '../../components/ui/VolunteerProfileSettings'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
+import AdminSettings from '../../components/ui/AdminSettings'
 import LocationPicker from '../../components/ui/LocationPicker'
 import { db } from '../../lib/supabase'
 
@@ -39,14 +42,31 @@ const ProfilePage = () => {
   const { user, profile, updateProfile, updatePassword } = useAuth()
   const { success, error } = useToast()
   const [badges, setBadges] = useState([])
+
+  // Helper function to calculate age from birthdate
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null
+    const today = new Date()
+    const birth = new Date(birthDate)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age
+  }
   const [donorStats, setDonorStats] = useState(null)
-  const [isEditing, setIsEditing] = useState(false)
+  const [volunteerStats, setVolunteerStats] = useState(null)
+  const [completedEventsCount, setCompletedEventsCount] = useState(0)
+  const [isEditing] = useState(true) // Always in edit mode
   const [isLoading, setIsLoading] = useState(false)
   const [showPasswordSection, setShowPasswordSection] = useState(false)
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [profileImage, setProfileImage] = useState(null)
   const [imagePreview, setImagePreview] = useState(null)
+  const [selectedAvatar, setSelectedAvatar] = useState(null)
+  const [originalProfileImage, setOriginalProfileImage] = useState(null)
   const [uploadingImage, setUploadingImage] = useState(false)
   const [savingImage, setSavingImage] = useState(false)
   const [idImagePreview, setIdImagePreview] = useState(null)
@@ -55,7 +75,37 @@ const ProfilePage = () => {
   const [uploadingSecondaryIdImage, setUploadingSecondaryIdImage] = useState(false)
   const [showLocationPicker, setShowLocationPicker] = useState(false)
   const [selectedLocation, setSelectedLocation] = useState(null)
+  const [activeTab, setActiveTab] = useState('personal')
+  const [adminSettingsDirty, setAdminSettingsDirty] = useState(false)
+  const [showProfileImageModal, setShowProfileImageModal] = useState(false)
   const fileInputRef = useRef(null)
+  const adminSettingsRef = useRef(null)
+  const volunteerSettingsRef = useRef(null)
+  const isResettingRef = useRef(false)
+
+  // Check URL hash on mount and when hash changes to set active tab (for admin-settings)
+  useEffect(() => {
+    const checkHash = () => {
+      if (profile?.role === 'admin') {
+        if (window.location.hash === '#admin-settings') {
+          setActiveTab('admin-settings')
+        } else if (activeTab === 'role') {
+          // If admin user is on role tab, redirect to personal tab (admin has no role tab)
+          setActiveTab('personal')
+        }
+      }
+    }
+    
+    // Check on mount
+    checkHash()
+    
+    // Listen for hash changes
+    window.addEventListener('hashchange', checkHash)
+    
+    return () => {
+      window.removeEventListener('hashchange', checkHash)
+    }
+  }, [profile?.role, activeTab])
 
   const {
     register,
@@ -70,20 +120,25 @@ const ProfilePage = () => {
     defaultValues: {
       donation_types: [],
       assistance_needs: [],
-          availability_days: [],
-    availability_times: [],
-      public_profile: false,
-      receive_notifications: true,
-      share_contact_info: false,
-      has_vehicle: false,
-      background_check_consent: false,
+      // Volunteer-specific fields
+      volunteer_experience: '',
+      special_skills: [],
+      languages_spoken: [],
+      preferred_delivery_types: [],
+      communication_preferences: [],
+      delivery_notes: '',
+      has_insurance: false,
+      insurance_provider: '',
+      insurance_policy_number: '',
       // Granular address fields
       address_house: '',
       address_street: '',
       address_barangay: '',
       address_subdivision: '',
       address_landmark: '',
-      delivery_instructions: ''
+      // Personal information fields
+      birthdate: '',
+      age: ''
     }
   })
 
@@ -95,6 +150,13 @@ const ProfilePage = () => {
     formState: { errors: passwordErrors }
   } = useForm()
 
+  // Redirect volunteers away from ID Verification tab
+  useEffect(() => {
+    if (profile?.role === 'volunteer' && activeTab === 'id') {
+      setActiveTab('personal')
+    }
+  }, [profile?.role, activeTab])
+
   // Load profile data into form when component mounts or profile changes
   useEffect(() => {
     if (profile) {
@@ -102,6 +164,8 @@ const ProfilePage = () => {
         name: profile.name || '',
         email: profile.email || '',
         phone_number: profile.phone_number || '',
+        birthdate: profile.birthdate || profile.birth_date || profile.date_of_birth || '',
+        age: profile.age || '',
         address: profile.address || '',
         city: profile.city || '',
         province: profile.province || '',
@@ -112,30 +176,26 @@ const ProfilePage = () => {
         household_size: profile.household_size || '',
         emergency_contact_name: profile.emergency_contact_name || '',
         emergency_contact_phone: profile.emergency_contact_phone || '',
-        max_delivery_distance: profile.max_delivery_distance || 20,
         volunteer_experience: profile.volunteer_experience || '',
+        special_skills: Array.isArray(profile.special_skills) ? profile.special_skills : [],
+        languages_spoken: Array.isArray(profile.languages_spoken) ? profile.languages_spoken : [],
+        preferred_delivery_types: Array.isArray(profile.preferred_delivery_types) ? profile.preferred_delivery_types : [],
+        communication_preferences: Array.isArray(profile.communication_preferences) ? profile.communication_preferences : [],
+        delivery_notes: profile.delivery_notes || '',
+        has_insurance: profile.has_insurance || false,
+        insurance_provider: profile.insurance_provider || '',
+        insurance_policy_number: profile.insurance_policy_number || '',
         donation_types: Array.isArray(profile.donation_types) ? profile.donation_types : [],
         assistance_needs: Array.isArray(profile.assistance_needs) ? profile.assistance_needs : [],
-        availability_days: Array.isArray(profile.availability_days) ? profile.availability_days : [],
-        availability_times: Array.isArray(profile.availability_times) ? profile.availability_times : [],
-        has_vehicle: profile.has_vehicle || false,
-        vehicle_type: profile.vehicle_type || '',
-        background_check_consent: profile.background_check_consent || false,
         account_type: profile.account_type || 'individual',
-        preferred_pickup_location: profile.preferred_pickup_location || '',
         donation_frequency: profile.donation_frequency || '',
         max_donation_value: profile.max_donation_value || '',
-        preferred_contact_method: profile.preferred_contact_method || '',
-        public_profile: profile.public_profile || false,
-        receive_notifications: profile.receive_notifications !== false, // Default to true
-        share_contact_info: profile.share_contact_info || false,
         // Granular address fields
         address_house: profile.address_house || '',
         address_street: profile.address_street || '',
         address_barangay: profile.address_barangay || '',
         address_subdivision: profile.address_subdivision || '',
         address_landmark: profile.address_landmark || '',
-        delivery_instructions: profile.delivery_instructions || '',
         // Valid ID fields
         primary_id_type: profile.primary_id_type || '',
         primary_id_number: profile.primary_id_number || '',
@@ -153,6 +213,18 @@ const ProfilePage = () => {
       // Set profile image if it exists
       if (profile.profile_image_url) {
         setImagePreview(profile.profile_image_url)
+        setOriginalProfileImage(profile.profile_image_url)
+        // Check if the profile image is an avatar
+        const avatarMatch = profile.profile_image_url.match(/\/avatar(\d+)\.png/)
+        if (avatarMatch) {
+          setSelectedAvatar(parseInt(avatarMatch[1]))
+        } else {
+          setSelectedAvatar(null)
+        }
+      } else {
+        setImagePreview(null)
+        setOriginalProfileImage(null)
+        setSelectedAvatar(null)
       }
       
       // Set ID images if they exist
@@ -174,6 +246,105 @@ const ProfilePage = () => {
     }
   }, [profile, reset])
 
+  // Track form changes and compare with original profile to clear dirty state when values match
+  useEffect(() => {
+    if (!profile || !isDirty || isResettingRef.current) return
+    
+    let timeoutId = null
+    
+    const subscription = watch((formValues) => {
+      // Skip if we're currently resetting to prevent infinite loop
+      if (isResettingRef.current) return
+      
+      // Debounce the comparison to avoid too many checks
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+      
+      timeoutId = setTimeout(() => {
+        if (isResettingRef.current) return
+        
+        // Compare current form values with original profile values
+        const originalFormData = {
+          name: profile.name || '',
+          email: profile.email || '',
+          phone_number: profile.phone_number || '',
+          address: profile.address || '',
+          city: profile.city || '',
+          province: profile.province || '',
+          zip_code: profile.zip_code || '',
+          bio: profile.bio || '',
+          organization_name: profile.organization_name || '',
+          website_link: profile.website_link || '',
+          household_size: profile.household_size || '',
+          emergency_contact_name: profile.emergency_contact_name || '',
+          emergency_contact_phone: profile.emergency_contact_phone || '',
+          volunteer_experience: profile.volunteer_experience || '',
+          special_skills: Array.isArray(profile.special_skills) ? profile.special_skills : [],
+          languages_spoken: Array.isArray(profile.languages_spoken) ? profile.languages_spoken : [],
+          preferred_delivery_types: Array.isArray(profile.preferred_delivery_types) ? profile.preferred_delivery_types : [],
+          communication_preferences: Array.isArray(profile.communication_preferences) ? profile.communication_preferences : [],
+          delivery_notes: profile.delivery_notes || '',
+          has_insurance: profile.has_insurance || false,
+          insurance_provider: profile.insurance_provider || '',
+          insurance_policy_number: profile.insurance_policy_number || '',
+          donation_types: Array.isArray(profile.donation_types) ? profile.donation_types : [],
+          assistance_needs: Array.isArray(profile.assistance_needs) ? profile.assistance_needs : [],
+          account_type: profile.account_type || 'individual',
+          donation_frequency: profile.donation_frequency || '',
+          max_donation_value: profile.max_donation_value || '',
+          primary_id_type: profile.primary_id_type || '',
+          primary_id_number: profile.primary_id_number || '',
+          primary_id_expiry: profile.primary_id_expiry || '',
+          secondary_id_type: profile.secondary_id_type || '',
+          secondary_id_number: profile.secondary_id_number || '',
+          secondary_id_expiry: profile.secondary_id_expiry || '',
+          organization_representative_name: profile.organization_representative_name || '',
+          organization_representative_position: profile.organization_representative_position || '',
+          // Granular address fields
+          address_house: profile.address_house || '',
+          address_street: profile.address_street || '',
+          address_barangay: profile.address_barangay || '',
+          address_subdivision: profile.address_subdivision || '',
+          address_landmark: profile.address_landmark || ''
+        }
+        
+        // Compare all fields
+        const allFieldsMatch = Object.keys(originalFormData).every(key => {
+          const currentValue = formValues[key]
+          const originalValue = originalFormData[key]
+          
+          // Handle arrays
+          if (Array.isArray(currentValue) && Array.isArray(originalValue)) {
+            if (currentValue.length !== originalValue.length) return false
+            return currentValue.every((val, idx) => val === originalValue[idx])
+          }
+          
+          // Handle other types
+          return currentValue === originalValue
+        })
+        
+        // If all fields match original values, reset form to clear dirty state
+        // Use reset with keepValues to reset dirty state without changing values
+        if (allFieldsMatch && !isResettingRef.current) {
+          isResettingRef.current = true
+          reset(formValues, { keepValues: true, keepDefaultValues: true })
+          // Reset the flag after reset completes
+          requestAnimationFrame(() => {
+            isResettingRef.current = false
+          })
+        }
+      }, 100) // Debounce by 100ms
+    })
+    
+    return () => {
+      subscription.unsubscribe()
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
+    }
+  }, [watch, profile, isDirty, reset])
+
   // Load derived badges
   useEffect(() => {
     let mounted = true
@@ -188,14 +359,31 @@ const ProfilePage = () => {
     return () => { mounted = false }
   }, [user?.id])
 
-  // Load donor stats
+  // Load donor stats and completed events for donors and volunteers
   useEffect(() => {
     let mounted = true
     async function loadStats() {
-      if (!profile?.id || profile?.role !== 'donor') return
+      if (!profile?.id) return
+      
       try {
-        const stats = await db.getDonorStats(profile.id)
-        if (mounted) setDonorStats(stats)
+        // Load completed events for both donors and volunteers
+        const events = await db.getUserCompletedEvents(profile.id).catch(() => [])
+        if (mounted) {
+          setCompletedEventsCount(events?.length || 0)
+        }
+        
+        // Load role-specific stats
+        if (profile?.role === 'donor') {
+          const stats = await db.getDonorStats(profile.id).catch(() => null)
+          if (mounted) {
+            setDonorStats(stats)
+          }
+        } else if (profile?.role === 'volunteer') {
+          const stats = await db.getVolunteerStats(profile.id).catch(() => null)
+          if (mounted) {
+            setVolunteerStats(stats)
+          }
+        }
       } catch (_) {}
     }
     loadStats()
@@ -237,6 +425,7 @@ const ProfilePage = () => {
       // Set preview
       setImagePreview(base64String)
       setProfileImage(base64String)
+      setSelectedAvatar(null) // Clear avatar selection when uploading own image
       
       success('Image selected successfully!')
     } catch (err) {
@@ -258,6 +447,8 @@ const ProfilePage = () => {
       // Clear local states
       setImagePreview(null)
       setProfileImage(null)
+      setSelectedAvatar(null)
+      setOriginalProfileImage(null)
       if (fileInputRef.current) {
         fileInputRef.current.value = ''
       }
@@ -275,10 +466,48 @@ const ProfilePage = () => {
       // Restore the image preview if the database update failed
       if (profile?.profile_image_url) {
         setImagePreview(profile.profile_image_url)
+        setOriginalProfileImage(profile.profile_image_url)
+        const avatarMatch = profile.profile_image_url.match(/\/avatar(\d+)\.png/)
+        if (avatarMatch) {
+          setSelectedAvatar(parseInt(avatarMatch[1]))
+        }
       }
     } finally {
       setUploadingImage(false)
     }
+  }
+
+  const handleAvatarSelect = (avatarNumber) => {
+    // Store original profile image if not already stored
+    if (!originalProfileImage && profile?.profile_image_url) {
+      setOriginalProfileImage(profile.profile_image_url)
+    }
+    
+    const avatarPath = `/avatar${avatarNumber}.png`
+    setImagePreview(avatarPath)
+    setProfileImage(avatarPath)
+    setSelectedAvatar(avatarNumber)
+    // Clear file input if any
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleCancelAvatarSelection = () => {
+    // Restore original profile image preview
+    if (originalProfileImage) {
+      setImagePreview(originalProfileImage)
+    } else {
+      setImagePreview(null)
+    }
+    // Clear profileImage to hide Save Picture button
+    setProfileImage(null)
+    setSelectedAvatar(null)
+    // Clear file input if any
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+    success('Avatar selection cancelled.')
   }
 
   const saveProfileImage = async () => {
@@ -289,6 +518,8 @@ const ProfilePage = () => {
       await updateProfile({ profile_image_url: profileImage })
       success('Profile picture updated successfully!')
       setProfileImage(null) // Clear the pending image
+      // Update original profile image to the newly saved one
+      setOriginalProfileImage(profileImage)
     } catch (err) {
       console.error('Error updating profile image:', err)
       error('Failed to update profile picture. Please try again.')
@@ -559,6 +790,20 @@ const ProfilePage = () => {
   const onSubmit = async (data) => {
     setIsLoading(true)
     try {
+      // If on admin-settings tab, save admin settings only and return early
+      if (activeTab === 'admin-settings' && adminSettingsRef.current) {
+        const saved = await adminSettingsRef.current.saveSettings()
+        if (!saved) {
+          setIsLoading(false)
+          return // Don't proceed if admin settings save failed
+        }
+        // After saving, the originalSettings in AdminSettings are updated
+        // Clear dirty state since settings are now saved
+        setAdminSettingsDirty(false)
+        setIsLoading(false)
+        return // Exit early - admin settings already saved with its own toast
+      }
+
       console.log('Form data before processing:', data)
       
 
@@ -593,6 +838,15 @@ const ProfilePage = () => {
       // Core fields
       addFieldIfValid('name', data.name)
       addFieldIfValid('phone_number', data.phone_number)
+      // Birthdate - try different field names that might exist in database
+      if (data.birthdate) {
+        addFieldIfValid('birthdate', data.birthdate)
+      } else if (data.birth_date) {
+        addFieldIfValid('birth_date', data.birth_date)
+      } else if (data.date_of_birth) {
+        addFieldIfValid('date_of_birth', data.date_of_birth)
+      }
+      addFieldIfValid('age', data.age, (val) => parseInt(val))
       addFieldIfValid('address', data.address)
       addFieldIfValid('city', data.city)
       addFieldIfValid('province', data.province)
@@ -611,7 +865,6 @@ const ProfilePage = () => {
       addFieldIfValid('address_barangay', data.address_barangay)
       addFieldIfValid('address_subdivision', data.address_subdivision)
       addFieldIfValid('address_landmark', data.address_landmark)
-      addFieldIfValid('delivery_instructions', data.delivery_instructions)
       
       // Account info
       addFieldIfValid('account_type', data.account_type)
@@ -621,31 +874,32 @@ const ProfilePage = () => {
       // Numeric fields
       addFieldIfValid('household_size', data.household_size, (val) => parseInt(val))
       addFieldIfValid('max_donation_value', data.max_donation_value, (val) => parseFloat(val))
-      addFieldIfValid('max_delivery_distance', data.max_delivery_distance, (val) => parseInt(val))
-      
-      // Boolean fields - always include these
-      processedData.public_profile = !!data.public_profile
-      processedData.receive_notifications = data.receive_notifications !== false
-      processedData.share_contact_info = !!data.share_contact_info
-      processedData.has_vehicle = !!data.has_vehicle
-      processedData.background_check_consent = !!data.background_check_consent
       
       // Array fields
       if (Array.isArray(data.donation_types)) processedData.donation_types = data.donation_types
       if (Array.isArray(data.assistance_needs)) processedData.assistance_needs = data.assistance_needs
-      if (Array.isArray(data.availability_days)) processedData.availability_days = data.availability_days
-      if (Array.isArray(data.availability_times)) processedData.availability_times = data.availability_times
       
       // Preference fields
-      addFieldIfValid('preferred_pickup_location', data.preferred_pickup_location)
       addFieldIfValid('donation_frequency', data.donation_frequency)
-      addFieldIfValid('preferred_contact_method', data.preferred_contact_method)
-      addFieldIfValid('vehicle_type', data.vehicle_type)
       addFieldIfValid('volunteer_experience', data.volunteer_experience)
       
-      // Emergency contact
+      // Volunteer-specific fields
+      if (profile.role === 'volunteer') {
+        if (Array.isArray(data.special_skills)) processedData.special_skills = data.special_skills
+        if (Array.isArray(data.languages_spoken)) processedData.languages_spoken = data.languages_spoken
+        if (Array.isArray(data.preferred_delivery_types)) processedData.preferred_delivery_types = data.preferred_delivery_types
+        if (Array.isArray(data.communication_preferences)) processedData.communication_preferences = data.communication_preferences
+        addFieldIfValid('delivery_notes', data.delivery_notes)
+        if (typeof data.has_insurance === 'boolean') processedData.has_insurance = data.has_insurance
+        addFieldIfValid('insurance_provider', data.insurance_provider)
+        addFieldIfValid('insurance_policy_number', data.insurance_policy_number)
+      }
+      
+      // Emergency contact (for recipients only, not volunteers)
+      if (profile.role !== 'volunteer') {
       addFieldIfValid('emergency_contact_name', data.emergency_contact_name)
       addFieldIfValid('emergency_contact_phone', data.emergency_contact_phone)
+      }
       
       // ID fields
       addFieldIfValid('primary_id_type', data.primary_id_type)
@@ -670,9 +924,9 @@ const ProfilePage = () => {
         processedData.profile_image_url = profileImage
       }
 
+      // Update profile (we only get here if not on admin-settings tab)
       await updateProfile(processedData)
       success('Profile updated successfully!')
-      setIsEditing(false)
       setProfileImage(null) // Clear pending image after successful save
     } catch (err) {
       console.error('Profile update error:', err)
@@ -697,6 +951,66 @@ const ProfilePage = () => {
   }
 
   const cancelEdit = () => {
+    // If on admin-settings tab, reset admin settings
+    if (activeTab === 'admin-settings' && adminSettingsRef.current) {
+      adminSettingsRef.current.resetSettings()
+      setAdminSettingsDirty(false)
+      return
+    }
+    
+    // If volunteer role, reset volunteer settings form
+    if (profile?.role === 'volunteer' && volunteerSettingsRef.current) {
+      volunteerSettingsRef.current.resetForm()
+      // Also reset the main form to clear any volunteer fields
+      if (profile) {
+        const formData = {
+          volunteer_experience: profile.volunteer_experience || '',
+          special_skills: Array.isArray(profile.special_skills) ? profile.special_skills : [],
+          languages_spoken: Array.isArray(profile.languages_spoken) ? profile.languages_spoken : [],
+          preferred_delivery_types: Array.isArray(profile.preferred_delivery_types) ? profile.preferred_delivery_types : [],
+          communication_preferences: Array.isArray(profile.communication_preferences) ? profile.communication_preferences : [],
+          delivery_notes: profile.delivery_notes || '',
+          has_insurance: profile.has_insurance || false,
+          insurance_provider: profile.insurance_provider || '',
+          insurance_policy_number: profile.insurance_policy_number || ''
+        }
+        Object.entries(formData).forEach(([key, value]) => {
+          setValue(key, value, { shouldDirty: false })
+        })
+      }
+      return
+    }
+    
+    // If recipient role, ensure recipient-specific fields are properly reset
+    if (profile?.role === 'recipient') {
+      // Reset recipient-specific fields explicitly to ensure buttons/checkboxes reset
+      const recipientFields = {
+        household_size: profile.household_size || '',
+        assistance_needs: Array.isArray(profile.assistance_needs) ? profile.assistance_needs : [],
+        emergency_contact_name: profile.emergency_contact_name || '',
+        emergency_contact_phone: profile.emergency_contact_phone || '',
+        donation_types: Array.isArray(profile.donation_types) ? profile.donation_types : []
+      }
+      Object.entries(recipientFields).forEach(([key, value]) => {
+        setValue(key, value, { shouldDirty: false })
+      })
+    }
+    
+    // If donor role, ensure donor-specific fields are properly reset
+    if (profile?.role === 'donor') {
+      // Reset donor-specific fields explicitly to ensure buttons/checkboxes reset
+      const donorFields = {
+        donation_types: Array.isArray(profile.donation_types) ? profile.donation_types : [],
+        donation_frequency: profile.donation_frequency || '',
+        max_donation_value: profile.max_donation_value || '',
+        emergency_contact_name: profile.emergency_contact_name || '',
+        emergency_contact_phone: profile.emergency_contact_phone || ''
+      }
+      Object.entries(donorFields).forEach(([key, value]) => {
+        setValue(key, value, { shouldDirty: false })
+      })
+    }
+    
     if (profile) {
       // Reset form with current profile data
       const formData = {
@@ -713,23 +1027,20 @@ const ProfilePage = () => {
         household_size: profile.household_size || '',
         emergency_contact_name: profile.emergency_contact_name || '',
         emergency_contact_phone: profile.emergency_contact_phone || '',
-        max_delivery_distance: profile.max_delivery_distance || 20,
         volunteer_experience: profile.volunteer_experience || '',
+        special_skills: Array.isArray(profile.special_skills) ? profile.special_skills : [],
+        languages_spoken: Array.isArray(profile.languages_spoken) ? profile.languages_spoken : [],
+        preferred_delivery_types: Array.isArray(profile.preferred_delivery_types) ? profile.preferred_delivery_types : [],
+        communication_preferences: Array.isArray(profile.communication_preferences) ? profile.communication_preferences : [],
+        delivery_notes: profile.delivery_notes || '',
+        has_insurance: profile.has_insurance || false,
+        insurance_provider: profile.insurance_provider || '',
+        insurance_policy_number: profile.insurance_policy_number || '',
         donation_types: Array.isArray(profile.donation_types) ? profile.donation_types : [],
         assistance_needs: Array.isArray(profile.assistance_needs) ? profile.assistance_needs : [],
-        availability_days: Array.isArray(profile.availability_days) ? profile.availability_days : [],
-        availability_times: Array.isArray(profile.availability_times) ? profile.availability_times : [],
-        has_vehicle: profile.has_vehicle || false,
-        vehicle_type: profile.vehicle_type || '',
-        background_check_consent: profile.background_check_consent || false,
         account_type: profile.account_type || 'individual',
-        preferred_pickup_location: profile.preferred_pickup_location || '',
         donation_frequency: profile.donation_frequency || '',
         max_donation_value: profile.max_donation_value || '',
-        preferred_contact_method: profile.preferred_contact_method || '',
-        public_profile: profile.public_profile || false,
-        receive_notifications: profile.receive_notifications !== false,
-        share_contact_info: profile.share_contact_info || false,
         primary_id_type: profile.primary_id_type || '',
         primary_id_number: profile.primary_id_number || '',
         primary_id_image_url: profile.primary_id_image_url || '',
@@ -739,12 +1050,17 @@ const ProfilePage = () => {
         secondary_id_image_url: profile.secondary_id_image_url || '',
         secondary_id_expiry: profile.secondary_id_expiry || '',
         organization_representative_name: profile.organization_representative_name || '',
-        organization_representative_position: profile.organization_representative_position || ''
+        organization_representative_position: profile.organization_representative_position || '',
+        // Granular address fields
+        address_house: profile.address_house || '',
+        address_street: profile.address_street || '',
+        address_barangay: profile.address_barangay || '',
+        address_subdivision: profile.address_subdivision || '',
+        address_landmark: profile.address_landmark || ''
       }
       reset(formData)
     }
-    setIsEditing(false)
-    // Reset image changes
+    // Reset image changes - ensure all image previews are reset
     setProfileImage(null)
     if (profile?.profile_image_url) {
       setImagePreview(profile.profile_image_url)
@@ -752,7 +1068,7 @@ const ProfilePage = () => {
       setImagePreview(null)
     }
     
-    // Reset ID image changes
+    // Reset ID image changes - ensure all ID image previews are reset
     if (profile?.primary_id_image_url) {
       setIdImagePreview(profile.primary_id_image_url)
     } else {
@@ -764,6 +1080,44 @@ const ProfilePage = () => {
     } else {
       setSecondaryIdImagePreview(null)
     }
+    
+    // Ensure all Personal Information and ID Verification fields are reset
+    // This includes all fields that might have been changed
+    const personalAndIdFields = {
+      name: profile.name || '',
+      email: profile.email || '',
+      phone_number: profile.phone_number || '',
+      address: profile.address || '',
+      city: profile.city || '',
+      province: profile.province || '',
+      zip_code: profile.zip_code || '',
+      bio: profile.bio || '',
+      organization_name: profile.organization_name || '',
+      website_link: profile.website_link || '',
+      account_type: profile.account_type || 'individual',
+      // Granular address fields
+      address_house: profile.address_house || '',
+      address_street: profile.address_street || '',
+      address_barangay: profile.address_barangay || '',
+      address_subdivision: profile.address_subdivision || '',
+      address_landmark: profile.address_landmark || '',
+      // ID Verification fields
+      primary_id_type: profile.primary_id_type || '',
+      primary_id_number: profile.primary_id_number || '',
+      primary_id_expiry: profile.primary_id_expiry || '',
+      primary_id_image_url: profile.primary_id_image_url || '',
+      secondary_id_type: profile.secondary_id_type || '',
+      secondary_id_number: profile.secondary_id_number || '',
+      secondary_id_expiry: profile.secondary_id_expiry || '',
+      secondary_id_image_url: profile.secondary_id_image_url || '',
+      organization_representative_name: profile.organization_representative_name || '',
+      organization_representative_position: profile.organization_representative_position || ''
+    }
+    
+    // Reset all Personal Information and ID Verification fields
+    Object.entries(personalAndIdFields).forEach(([key, value]) => {
+      setValue(key, value, { shouldDirty: false })
+    })
   }
 
   const getRoleIcon = (role) => {
@@ -795,15 +1149,15 @@ const ProfilePage = () => {
       : ['name', 'phone_number', 'address', 'city', 'primary_id_type', 'primary_id_number']
     
     const roleSpecificFields = {
-      donor: ['donation_types', 'preferred_contact_method'],
+      donor: ['donation_types'],
       recipient: ['household_size', 'assistance_needs', 'emergency_contact_name'],
-      volunteer: ['availability_days', 'background_check_consent'],
+      volunteer: [],
       admin: [] // Admins have minimal required fields
     }
 
     // Additional recommended fields for better profile completion
     const recommendedFields = {
-      donor: ['bio', 'preferred_pickup_location', 'donation_frequency', 'availability_days'],
+      donor: ['bio', 'donation_frequency'],
       recipient: ['emergency_contact_phone', 'bio'], // Emergency contact phone and bio for better trust
       volunteer: [],
       admin: []
@@ -831,9 +1185,17 @@ const ProfilePage = () => {
       return !value || value === 'To be completed' || value === '09000000000'
     })
     
-    // Special validation for volunteers - must have driver's license (not applicable to admins)
-    if (profile.role === 'volunteer' && profile.primary_id_type !== 'drivers_license') {
+    // Special validation for volunteers - must have driver's license type and ID image
+    // Note: primary_id_number is already checked in baseRequiredFields above
+    if (profile.role === 'volunteer') {
+      // Check if ID type is specifically driver's license (not just any ID type)
+      if (profile.primary_id_type !== 'drivers_license') {
       missingRequired.push('drivers_license_required')
+      }
+      // Check if ID image is uploaded (not in baseRequiredFields)
+      if (!profile.primary_id_image_url) {
+        missingRequired.push('primary_id_image_url')
+      }
     }
 
     const missingRecommended = allRecommendedFields.filter(field => {
@@ -854,6 +1216,73 @@ const ProfilePage = () => {
 
   const { percentage: completionPercentage } = getCompletionStatus()
 
+  // Calculate missing fields per tab
+  const getMissingFieldsByTab = () => {
+    if (!profile) return { personal: 0, id: 0, role: 0 }
+
+    const counts = { personal: 0, id: 0, role: 0 }
+
+    // Personal tab required fields
+    const personalFields = ['name', 'phone_number', 'address', 'city']
+    personalFields.forEach(field => {
+      const value = profile[field]
+      if (!value || value === 'To be completed') counts.personal++
+    })
+
+    // ID Verification tab required fields (not for volunteers or admins)
+    if (profile.role !== 'volunteer' && profile.role !== 'admin') {
+      const idFields = ['primary_id_type', 'primary_id_number']
+      idFields.forEach(field => {
+        const value = profile[field]
+        if (!value || value === 'To be completed') counts.id++
+      })
+
+      // Organization additional IDs
+      if (profile.account_type === 'business' || profile.account_type === 'organization') {
+        const orgIdFields = ['secondary_id_type', 'secondary_id_number', 'organization_representative_name']
+        orgIdFields.forEach(field => {
+          const value = profile[field]
+          if (!value || value === 'To be completed') counts.id++
+        })
+      }
+    }
+
+    // Role-specific tab required fields
+    const roleSpecificFields = {
+      donor: ['donation_types'],
+      recipient: ['household_size', 'assistance_needs', 'emergency_contact_name'],
+      volunteer: [], // No required fields in volunteer settings tab (removed vehicle, availability, background check, emergency contact)
+      admin: []
+    }
+
+    const roleFields = roleSpecificFields[profile.role] || []
+    roleFields.forEach(field => {
+      const value = profile[field]
+      if (Array.isArray(value)) {
+        if (value.length === 0) counts.role++
+      } else if (!value || value === 'To be completed' || value === false) {
+        counts.role++
+      }
+    })
+
+    // Special check for volunteers - must have driver's license, ID number, and ID image
+    if (profile.role === 'volunteer') {
+      if (profile.primary_id_type !== 'drivers_license') {
+        counts.role++ // Driver's license type is required
+      }
+      if (!profile.primary_id_number) {
+        counts.role++ // ID number is required
+      }
+      if (!profile.primary_id_image_url) {
+        counts.role++ // ID image is required
+      }
+    }
+
+    return counts
+  }
+
+  const missingFieldsCounts = getMissingFieldsByTab()
+
   if (!profile) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{backgroundColor: '#00237d'}}>
@@ -863,6 +1292,25 @@ const ProfilePage = () => {
   }
 
   const RoleIcon = getRoleIcon(profile.role)
+
+  // Helper to get role tab config
+  const getRoleTabConfig = () => {
+    switch (profile.role) {
+      case 'donor':
+        return { icon: Gift, label: 'Donor Information' }
+      case 'recipient':
+        return { icon: Heart, label: 'Recipient Information' }
+      case 'volunteer':
+        return { icon: Truck, label: 'Volunteer Settings' }
+      case 'admin':
+        return { icon: Users, label: 'Admin Information' }
+      default:
+        return { icon: Users, label: 'Profile Information' }
+    }
+  }
+
+  const roleTabConfig = getRoleTabConfig()
+  const RoleTabIcon = roleTabConfig.icon
 
   return (
     <div className="min-h-screen py-4 sm:py-6 lg:py-8" style={{backgroundColor: '#00237d'}}>
@@ -877,32 +1325,6 @@ const ProfilePage = () => {
             <div>
               <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-1 sm:mb-2">Profile Settings</h1>
               <p className="text-sm sm:text-base text-yellow-300">Manage your account information and preferences</p>
-            </div>
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-4 w-full sm:w-auto">
-              {/* Profile completion only shown for non-admin users */}
-              {profile.role !== 'admin' && (
-                <div className="w-full sm:w-auto text-left sm:text-right bg-navy-800/50 sm:bg-transparent p-3 sm:p-0 rounded-lg sm:rounded-none border border-navy-700 sm:border-0">
-                  <div className="text-xs sm:text-sm text-yellow-300 mb-1">Profile Completion</div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 sm:w-20 bg-navy-700 sm:bg-navy-800 rounded-full h-2">
-                      <div
-                        className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${completionPercentage}%` }}
-                      />
-                    </div>
-                    <span className="text-xs sm:text-sm font-medium text-white">{completionPercentage}%</span>
-                  </div>
-                </div>
-              )}
-              {!isEditing && (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="btn btn-primary flex items-center justify-center w-full sm:w-auto text-sm sm:text-base px-4 py-2.5 active:scale-95"
-                >
-                  <Edit3 className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
-                  <span>Edit Profile</span>
-                </button>
-              )}
             </div>
           </div>
 
@@ -919,19 +1341,17 @@ const ProfilePage = () => {
               </div>
             )}
             {/* Verification Status Badge */}
-            <div className="flex items-center">
               {profile.is_verified ? (
-                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-green-500/20 border border-green-500/30">
-                  <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-300" />
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-400" />
                   <span className="text-xs sm:text-sm font-medium text-green-300">Verified</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-orange-500/20 border border-orange-500/30">
-                  <AlertCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-300" />
+              <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                <AlertCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-orange-400" />
                   <span className="text-xs sm:text-sm font-medium text-orange-300">Unverified</span>
                 </div>
               )}
-            </div>
             {/* Derived Badges */}
             {Array.isArray(badges) && badges.length > 0 && (
               <div className="flex flex-wrap items-center gap-2">
@@ -944,9 +1364,9 @@ const ProfilePage = () => {
               </div>
             )}
 
-            {/* Donor stats: rating and totals */}
+            {/* Donor stats: rating, totals, and completed events */}
             {profile.role === 'donor' && donorStats && (
-              <div className="flex items-center gap-2 sm:gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
                   <span className="text-xs sm:text-sm font-medium text-yellow-200">
                     ⭐ {donorStats.averageRating?.toFixed(2) || '0.00'} ({donorStats.totalRatings || 0})
@@ -958,10 +1378,87 @@ const ProfilePage = () => {
                     {donorStats.totalCompletedDonations || 0} Donations
                   </span>
                 </div>
+                <div
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full border ${
+                    completedEventsCount > 0
+                      ? 'bg-green-500/20 border-green-500/30'
+                      : 'bg-navy-800 border-navy-700'
+                  }`}
+                >
+                  <Award
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${
+                      completedEventsCount > 0 ? 'text-green-400' : 'text-yellow-200'
+                    }`}
+                  />
+                  <span
+                    className={`text-xs sm:text-sm font-medium ${
+                      completedEventsCount > 0 ? 'text-green-300' : 'text-yellow-200'
+                    }`}
+                  >
+                    {completedEventsCount} Events Participated
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* Volunteer stats: delivered items and completed events */}
+            {profile.role === 'volunteer' && volunteerStats && (
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                  <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400" />
+                  <span className="text-xs sm:text-sm font-medium text-yellow-200">
+                    {volunteerStats.completedDeliveries || 0} Deliveries
+                  </span>
+                </div>
+                <div
+                  className={`flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full border ${
+                    completedEventsCount > 0
+                      ? 'bg-green-500/20 border-green-500/30'
+                      : 'bg-navy-800 border-navy-700'
+                  }`}
+                >
+                  <Award
+                    className={`h-3.5 w-3.5 sm:h-4 sm:w-4 ${
+                      completedEventsCount > 0 ? 'text-green-400' : 'text-yellow-200'
+                    }`}
+                  />
+                  <span
+                    className={`text-xs sm:text-sm font-medium ${
+                      completedEventsCount > 0 ? 'text-green-300' : 'text-yellow-200'
+                    }`}
+                  >
+                    {completedEventsCount} Events Participated
+                  </span>
+                </div>
               </div>
             )}
           </div>
         </motion.div>
+
+        {/* Profile Completion Progress Bar - Only shown for non-admin users */}
+        {profile.role !== 'admin' && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="card p-2.5 sm:p-3 mb-3 sm:mb-4"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex-1">
+                <div className="text-xs sm:text-sm text-yellow-300 mb-1 font-medium">Profile Completion</div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 bg-navy-700 rounded-full h-2">
+                    <div
+                      className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full transition-all duration-300"
+                      style={{ width: `${completionPercentage}%` }}
+                    />
+                  </div>
+                  <span className="text-xs sm:text-sm font-semibold text-white min-w-[2.5rem] text-right">{completionPercentage}%</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Profile Picture Section */}
         <motion.div
@@ -978,7 +1475,11 @@ const ProfilePage = () => {
           <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4 sm:gap-6">
             {/* Current Profile Picture */}
             <div className="relative">
-              <div className="w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full overflow-hidden bg-navy-800 border-2 sm:border-4 border-navy-700 flex items-center justify-center">
+              <div 
+                className="w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 xl:w-56 xl:h-56 rounded-full overflow-hidden bg-navy-800 border-2 sm:border-4 border-navy-700 flex items-center justify-center cursor-pointer hover:border-yellow-400 transition-colors"
+                onClick={() => setShowProfileImageModal(true)}
+                title="View profile picture"
+              >
                 {imagePreview ? (
                   <img
                     src={imagePreview}
@@ -986,23 +1487,16 @@ const ProfilePage = () => {
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <User className="h-12 w-12 sm:h-14 sm:w-14 lg:h-16 lg:w-16 text-yellow-400" />
+                  <User className="h-16 w-16 sm:h-20 sm:w-20 lg:h-24 lg:w-24 xl:h-28 xl:w-28 text-yellow-400" />
                 )}
               </div>
               
-              {/* Upload/Edit Overlay */}
-              <button
-                type="button"
-                onClick={handleImageUpload}
-                disabled={uploadingImage}
-                className="absolute inset-0 w-24 h-24 sm:w-28 sm:h-28 lg:w-32 lg:h-32 rounded-full bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity active:scale-95"
+              {/* View/Edit Overlay - Shows on hover */}
+              <div
+                className="absolute inset-0 w-32 h-32 sm:w-40 sm:h-40 lg:w-48 lg:h-48 xl:w-56 xl:h-56 rounded-full bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity pointer-events-none"
               >
-                {uploadingImage ? (
-                  <LoadingSpinner size="sm" />
-                ) : (
-                  <Camera className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                )}
-              </button>
+                <div className="text-white text-xs sm:text-sm font-medium text-center px-2">View Profile</div>
+              </div>
             </div>
 
             {/* Upload Controls */}
@@ -1047,25 +1541,69 @@ const ProfilePage = () => {
                 )}
 
                 {profileImage && (
-                  <button
-                    type="button"
-                    onClick={saveProfileImage}
-                    disabled={savingImage}
-                    className="btn btn-primary flex items-center justify-center w-full sm:w-auto text-sm px-3 py-2 active:scale-95"
-                  >
-                    {savingImage ? (
-                      <>
-                        <LoadingSpinner size="sm" />
-                        <span className="ml-2">Saving...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
-                        Save Picture
-                      </>
+                  <>
+                    <button
+                      type="button"
+                      onClick={saveProfileImage}
+                      disabled={savingImage}
+                      className="btn btn-primary flex items-center justify-center w-full sm:w-auto text-sm px-3 py-2 active:scale-95"
+                    >
+                      {savingImage ? (
+                        <>
+                          <LoadingSpinner size="sm" />
+                          <span className="ml-2">Saving...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                          Save Picture
+                        </>
+                      )}
+                    </button>
+                    {selectedAvatar && (
+                      <button
+                        type="button"
+                        onClick={handleCancelAvatarSelection}
+                        className="btn btn-outline-danger flex items-center justify-center w-full sm:w-auto text-sm px-3 py-2 active:scale-95 hover:bg-red-500/10 hover:border-red-500 transition-colors"
+                        title="Cancel avatar selection"
+                      >
+                        <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
+                        Cancel
+                      </button>
                     )}
-                  </button>
+                  </>
                 )}
+              </div>
+
+              {/* Avatar Selection - Compact */}
+              <div className="mt-3">
+                <p className="text-gray-400 text-xs mb-2 text-center sm:text-left">Or choose an avatar:</p>
+                <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
+                  {[1, 2, 3, 4, 5, 6].map((avatarNum) => (
+                    <button
+                      key={avatarNum}
+                      type="button"
+                      onClick={() => handleAvatarSelect(avatarNum)}
+                      className={`relative w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden border-2 transition-all duration-200 cursor-pointer hover:scale-110 ${
+                        selectedAvatar === avatarNum
+                          ? 'border-yellow-400 ring-1 ring-yellow-400/50'
+                          : 'border-navy-700 hover:border-yellow-400/50'
+                      }`}
+                      title={`Select Avatar ${avatarNum}`}
+                    >
+                      <img
+                        src={`/avatar${avatarNum}.png`}
+                        alt={`Avatar ${avatarNum}`}
+                        className="w-full h-full object-cover"
+                      />
+                      {selectedAvatar === avatarNum && (
+                        <div className="absolute inset-0 bg-yellow-400/30 flex items-center justify-center">
+                          <CheckCircle className="w-3 h-3 sm:w-4 sm:h-4 text-yellow-400" />
+                        </div>
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Hidden File Input */}
@@ -1081,69 +1619,168 @@ const ProfilePage = () => {
         </motion.div>
 
         <form onSubmit={handleSubmit(onSubmit)}>
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-            {/* Main Profile Section */}
-            <div className="lg:col-span-2 space-y-4 sm:space-y-6 lg:space-y-8">
-              {/* Basic Information */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1 }}
-                className="card p-4 sm:p-5 lg:p-6"
-              >
-                <h2 className="text-lg sm:text-xl font-semibold text-white mb-4 sm:mb-6 flex items-center">
-                  <User className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 mr-2" />
-                  Basic Information
-                </h2>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-2">
-                      Full Name
-                    </label>
-                    {isEditing ? (
-                      <input
-                        {...register('name', {
-                          validate: {
-                            requiredIfProvided: (value) => {
-                              if (value && value.trim().length > 0) {
-                                return value.trim().length >= 2 || 'Name must be at least 2 characters'
-                              }
-                              return true
-                            }
-                          }
-                        })}
-                        className="input"
-                        placeholder="Enter your full name"
-                      />
-                    ) : (
-                      <div className="input bg-navy-800">
-                        <span className={profile.name ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                          {profile.name || 'Not provided'}
-                        </span>
-                      </div>
+          <div className="space-y-4 sm:space-y-6 lg:space-y-8">
+            {/* Tab Navigation */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="card p-0 overflow-hidden"
+            >
+              <div className="flex border-b border-navy-700">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('personal')}
+                  className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-medium transition-colors relative ${
+                    activeTab === 'personal'
+                      ? 'text-yellow-400 border-b-2 border-yellow-400 bg-navy-800/50'
+                      : 'text-yellow-200 hover:text-yellow-300 hover:bg-navy-800/30'
+                  }`}
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <User className="inline h-4 w-4" />
+                    <span>Personal Information</span>
+                    {missingFieldsCounts.personal > 0 && (
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full">
+                        {missingFieldsCounts.personal}
+                      </span>
                     )}
+                  </span>
+                </button>
+                {profile.role !== 'volunteer' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('id')}
+                    className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-medium transition-colors relative ${
+                      activeTab === 'id'
+                        ? 'text-yellow-400 border-b-2 border-yellow-400 bg-navy-800/50'
+                        : 'text-yellow-200 hover:text-yellow-300 hover:bg-navy-800/30'
+                    }`}
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      <Shield className="inline h-4 w-4" />
+                      <span>ID Verification</span>
+                      {missingFieldsCounts.id > 0 && (
+                        <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full">
+                          {missingFieldsCounts.id}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                )}
+                {profile.role !== 'admin' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('role')}
+                  className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-medium transition-colors relative ${
+                    activeTab === 'role'
+                      ? 'text-yellow-400 border-b-2 border-yellow-400 bg-navy-800/50'
+                      : 'text-yellow-200 hover:text-yellow-300 hover:bg-navy-800/30'
+                  }`}
+                >
+                  <span className="flex items-center justify-center gap-2">
+                    <RoleTabIcon className="inline h-4 w-4" />
+                    <span>{roleTabConfig.label}</span>
+                    {missingFieldsCounts.role > 0 && (
+                      <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold bg-red-500 text-white rounded-full">
+                        {missingFieldsCounts.role}
+                      </span>
+                    )}
+                  </span>
+                </button>
+                )}
+                {profile.role === 'admin' && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('admin-settings')}
+                    className={`flex-1 px-4 sm:px-6 py-3 sm:py-4 text-sm sm:text-base font-medium transition-colors relative ${
+                      activeTab === 'admin-settings'
+                        ? 'text-yellow-400 border-b-2 border-yellow-400 bg-navy-800/50'
+                        : 'text-yellow-200 hover:text-yellow-300 hover:bg-navy-800/30'
+                    }`}
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      <Settings className="inline h-4 w-4" />
+                      <span>Admin Settings</span>
+                    </span>
+                  </button>
+                )}
+              </div>
+            </motion.div>
+
+            {/* Tab Content */}
+            <AnimatePresence mode="wait">
+              {/* Personal Information Tab */}
+              {activeTab === 'personal' && (
+                <motion.div
+                  key="personal"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-6"
+                >
+                  {/* Basic Information */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="card p-4 sm:p-5 lg:p-6"
+                  >
+                <div className="border-b border-navy-700 pb-4 mb-6">
+                  <h2 className="text-xl font-semibold text-white flex items-center">
+                    <User className="h-5 w-5 text-yellow-400 mr-2" />
+                    Basic Information
+                  </h2>
+                  <p className="text-sm text-yellow-300 mt-1">Your personal details and contact information</p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-sm font-medium text-yellow-200 mb-2">
+                      Full Name <span className="text-red-400">*</span>
+                    </label>
+                    <input
+                      {...register('name', {
+                        validate: {
+                          requiredIfProvided: (value) => {
+                            if (value && value.trim().length > 0) {
+                              return value.trim().length >= 2 || 'Name must be at least 2 characters'
+                            }
+                            return true
+                          }
+                        }
+                      })}
+                      className="input focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                      placeholder="Enter your full name"
+                    />
                     {errors.name && (
-                      <p className="mt-1 text-sm text-danger-600">{errors.name.message}</p>
+                      <p className="mt-2 text-sm text-red-400 flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-1" />
+                        {errors.name.message}
+                      </p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-white mb-2">
+                    <label className="block text-sm font-medium text-yellow-200 mb-2">
                       Email Address
                     </label>
-                    <div className="input bg-navy-800 text-yellow-200 flex items-center">
+                    <div className="input bg-navy-800/50 border-navy-700 cursor-not-allowed opacity-75 flex items-center">
                       <Mail className="h-4 w-4 text-yellow-400 mr-2" />
-                      {profile.email}
+                      <span className="text-white">{profile.email}</span>
                     </div>
-                    <p className="mt-1 text-xs text-yellow-400">Email cannot be changed</p>
+                    <p className="mt-2 text-xs text-gray-400 flex items-center">
+                      <AlertCircle className="h-3 w-3 mr-1" />
+                      Email address cannot be changed
+                    </p>
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-white mb-2">
-                      Phone Number
+                    <label className="block text-sm font-medium text-yellow-200 mb-2">
+                      Phone Number <span className="text-red-400">*</span>
                     </label>
-                    {isEditing ? (
+                    <div className="relative">
+                      <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400" />
                       <input
                         {...register('phone_number', {
                           validate: {
@@ -1151,7 +1788,7 @@ const ProfilePage = () => {
                               if (value && value.trim().length > 0) {
                                 const phoneRegex = /^(09|\+639)\d{9}$/
                                 if (!phoneRegex.test(value)) {
-                                  return 'Please enter a valid Philippines phone number (e.g., 09123456789 or +639123456789)'
+                                  return 'Please enter a valid Philippines phone number'
                                 }
                                 if (value === '09000000000') {
                                   return 'Please enter your actual phone number'
@@ -1161,20 +1798,18 @@ const ProfilePage = () => {
                             }
                           }
                         })}
-                        className="input"
+                        className="input pl-10 focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
                         placeholder="09123456789"
                         maxLength="11"
                       />
+                    </div>
+                    {errors.phone_number ? (
+                      <p className="mt-2 text-sm text-red-400 flex items-center">
+                        <AlertCircle className="h-4 w-4 mr-1" />
+                        {errors.phone_number.message}
+                      </p>
                     ) : (
-                      <div className="input bg-navy-800 flex items-center">
-                        <Phone className="h-4 w-4 text-yellow-400 mr-2" />
-                        <span className={profile.phone_number ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                          {profile.phone_number || 'Not provided'}
-                        </span>
-                      </div>
-                    )}
-                    {errors.phone_number && (
-                      <p className="mt-1 text-sm text-danger-600">{errors.phone_number.message}</p>
+                      <p className="mt-2 text-xs text-gray-400">Format: 09123456789 or +639123456789</p>
                     )}
                   </div>
 
@@ -1201,6 +1836,43 @@ const ProfilePage = () => {
                       )}
                     </div>
                   )}
+
+                  {/* Birthdate Field - Always display */}
+                  <div>
+                    <label className="block text-sm font-medium text-yellow-200 mb-2">
+                      Birthdate
+                    </label>
+                    <div className="relative">
+                      <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-yellow-400" />
+                      <input
+                        type="date"
+                        {...register('birthdate')}
+                        defaultValue={profile.birthdate || profile.birth_date || profile.date_of_birth || ''}
+                        className="input pl-10 focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Age Field - Always display, calculate from birthdate if available */}
+                  <div>
+                    <label className="block text-sm font-medium text-yellow-200 mb-2">
+                      Age
+                    </label>
+                    <div className="input bg-navy-800/50 border-navy-700 flex items-center">
+                      <Calendar className="h-4 w-4 text-yellow-400 mr-2" />
+                      <span className="text-white">
+                        {(() => {
+                          if (profile.age) return profile.age
+                          const birthDate = profile.birthdate || profile.birth_date || profile.date_of_birth
+                          if (birthDate) {
+                            const calculatedAge = calculateAge(birthDate)
+                            return calculatedAge !== null ? calculatedAge : 'Not provided'
+                          }
+                          return 'Not provided'
+                        })()}
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </motion.div>
 
@@ -1211,45 +1883,43 @@ const ProfilePage = () => {
                 transition={{ delay: 0.2 }}
                 className="card p-6"
               >
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-0 mb-4 sm:mb-6">
-                  <h2 className="text-lg sm:text-xl font-semibold text-white flex items-center">
-                    <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 mr-2" />
-                    Address Information
-                  </h2>
-                  {isEditing && (
+                <div className="border-b border-navy-700 pb-4 mb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div>
+                      <h2 className="text-xl font-semibold text-white flex items-center">
+                        <MapPin className="h-5 w-5 text-yellow-400 mr-2" />
+                        Address Information
+                      </h2>
+                      <p className="text-sm text-yellow-300 mt-1">Your residential or business location</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => setShowLocationPicker(true)}
-                      className="flex items-center justify-center gap-2 px-4 py-2.5 bg-yellow-500 hover:bg-yellow-600 text-navy-950 rounded-lg transition-colors font-medium text-sm active:scale-95 w-full sm:w-auto"
+                      className="btn btn-primary flex items-center justify-center gap-2 px-4 py-2.5 text-sm active:scale-95 w-full sm:w-auto bg-yellow-400 hover:bg-yellow-500 text-navy-900 border-yellow-400"
                     >
                       <Navigation className="h-4 w-4" />
                       Select on Map
                     </button>
-                  )}
+                  </div>
                 </div>
 
                 {/* Matching Algorithm Info Banner */}
                 {(profile.role === 'donor' || profile.role === 'recipient' || profile.role === 'volunteer') && (
-                  <div className="mb-6 p-4 bg-gradient-to-r from-yellow-500/10 to-orange-500/10 border border-yellow-500/20 rounded-lg">
-                    <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 text-center sm:text-left">
-                      <div className="flex-shrink-0 w-10 h-10 bg-yellow-500/20 rounded-full flex items-center justify-center">
-                        <Globe className="h-5 w-5 text-yellow-400" />
+                  <div className="mb-6 p-4 bg-yellow-500/10 border-l-4 border-yellow-400 rounded-lg">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-shrink-0">
+                        <Globe className="h-5 w-5 text-yellow-400 mt-0.5" />
                       </div>
                       <div className="flex-1">
-                        <h3 className="text-sm font-semibold text-white mb-1">
+                        <h3 className="text-sm font-medium text-white mb-1">
                           Smart Location Matching
                         </h3>
-                        <p className="text-xs text-yellow-200 leading-relaxed">
+                        <p className="text-xs text-gray-300 leading-relaxed">
                           Your location helps our intelligent matching algorithm connect you with nearby{' '}
                           {profile.role === 'donor' && 'recipients and volunteers'}
                           {profile.role === 'recipient' && 'donors and volunteers'}
                           {profile.role === 'volunteer' && 'donors and recipients'}
                           . This ensures faster deliveries and more efficient assistance. 
-                          {selectedLocation && selectedLocation.lat && selectedLocation.lng && (
-                            <span className="text-yellow-400 font-medium ml-1">
-                              ✓ Location verified
-                            </span>
-                          )}
                         </p>
                       </div>
                     </div>
@@ -1257,14 +1927,48 @@ const ProfilePage = () => {
                 )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {/* City (first), Province (second), Barangay (third), Street (fourth) */}
+                  {/* Reorganized by importance: Province → City → Barangay → Street → House → Subdivision → ZIP → Landmark */}
+                  
+                  {/* 1. Province - Most general, regional level */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
-                      City / Municipality
+                      Province <span className="text-red-400">*</span>
+                    </label>
+                    {isEditing ? (
+                      <select
+                        {...register('province', {
+                          required: 'Province is required'
+                        })}
+                        className="input"
+                      >
+                        <option value="">Select Province</option>
+                        <option value="Misamis Oriental">Misamis Oriental</option>
+                        <option value="Misamis Occidental">Misamis Occidental</option>
+                        <option value="Bukidnon">Bukidnon</option>
+                        <option value="Camiguin">Camiguin</option>
+                        <option value="Lanao del Norte">Lanao del Norte</option>
+                      </select>
+                    ) : (
+                      <div className="input bg-navy-800">
+                        <span className={profile.province ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                          {profile.province || 'Not provided'}
+                        </span>
+                      </div>
+                    )}
+                    {errors.province && (
+                      <p className="mt-1 text-sm text-danger-600">{errors.province.message}</p>
+                    )}
+                  </div>
+
+                  {/* 2. City / Municipality - City level */}
+                  <div>
+                    <label className="block text-sm font-medium text-white mb-2">
+                      City / Municipality <span className="text-red-400">*</span>
                     </label>
                     {isEditing ? (
                       <input
                         {...register('city', {
+                          required: 'City is required',
                           validate: {
                             validIfProvided: (value) => {
                               if (value && value.trim().length > 0) {
@@ -1289,38 +1993,16 @@ const ProfilePage = () => {
                     )}
                   </div>
 
+                  {/* 3. Barangay - Local area */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
-                      Province
-                    </label>
-                    {isEditing ? (
-                      <select
-                        {...register('province')}
-                        className="input"
-                      >
-                        <option value="Misamis Oriental">Misamis Oriental</option>
-                        <option value="Misamis Occidental">Misamis Occidental</option>
-                        <option value="Bukidnon">Bukidnon</option>
-                        <option value="Camiguin">Camiguin</option>
-                        <option value="Lanao del Norte">Lanao del Norte</option>
-                      </select>
-                    ) : (
-                      <div className="input bg-navy-800">
-                        <span className={profile.province ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                          {profile.province || 'Not provided'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Barangay (third) */}
-                  <div>
-                    <label className="block text-sm font-medium text-white mb-2">
-                      Barangay
+                      Barangay <span className="text-red-400">*</span>
                     </label>
                     {isEditing ? (
                       <input
-                        {...register('address_barangay')}
+                        {...register('address_barangay', {
+                          required: 'Barangay is required'
+                        })}
                         className="input"
                         placeholder="e.g., Brgy. 28 or Gusa"
                       />
@@ -1331,9 +2013,12 @@ const ProfilePage = () => {
                         </span>
                       </div>
                     )}
+                    {errors.address_barangay && (
+                      <p className="mt-1 text-sm text-danger-600">{errors.address_barangay.message}</p>
+                    )}
                   </div>
 
-                  {/* Street Name (fourth) */}
+                  {/* 4. Street Name - Street level */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       Street Name
@@ -1353,7 +2038,7 @@ const ProfilePage = () => {
                     )}
                   </div>
 
-                  {/* House / Unit Number */}
+                  {/* 5. House / Unit Number - Most specific location */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       House/Unit Number
@@ -1373,7 +2058,7 @@ const ProfilePage = () => {
                     )}
                   </div>
 
-                  {/* Subdivision / Building */}
+                  {/* 6. Subdivision / Building - Optional but helpful */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       Subdivision / Building
@@ -1393,7 +2078,7 @@ const ProfilePage = () => {
                     )}
                   </div>
 
-                  {/* ZIP Code (after main locality lines) */}
+                  {/* 7. ZIP Code - Postal code */}
                   <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       ZIP Code
@@ -1413,10 +2098,8 @@ const ProfilePage = () => {
                     )}
                   </div>
 
-                  
-
-                  {/* Landmark (optional) */}
-                  <div className="md:col-span-2">
+                  {/* 8. Landmark - Optional reference point */}
+                  <div>
                     <label className="block text-sm font-medium text-white mb-2">
                       Landmark (optional)
                     </label>
@@ -1435,70 +2118,55 @@ const ProfilePage = () => {
                     )}
                   </div>
 
-                  {/* Delivery Instructions */}
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-white mb-2">
-                      Delivery Instructions (for volunteers)
-                    </label>
-                    {isEditing ? (
-                      <textarea
-                        {...register('delivery_instructions')}
-                        className="input min-h-[88px]"
-                        placeholder="Gate code, contact person, best time to deliver, etc."
-                      />
-                    ) : (
-                      <div className="input bg-navy-800 min-h-[48px] flex items-center">
-                        <span className={profile.delivery_instructions ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                          {profile.delivery_instructions || 'Not provided'}
-                        </span>
-                      </div>
-                    )}
-                  </div>
                 </div>
               </motion.div>
+                </motion.div>
+              )}
 
-              {/* Valid ID Information - Only show for non-volunteers and optional for admins */}
-              {profile.role !== 'volunteer' && (
+              {/* ID Verification Tab */}
+              {activeTab === 'id' && profile.role !== 'volunteer' && (
                 <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.25 }}
-                  className="card p-4 sm:p-5 lg:p-6"
+                  key="id"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4 sm:space-y-6 lg:space-y-8"
                 >
-                <div className="mb-4 sm:mb-6">
-                  <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-3 sm:mb-0">
-                    <h2 className="text-lg sm:text-xl font-semibold text-white flex items-center">
-                      <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-amber-400 mr-2" />
+                  <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 }}
+                    className="card p-4 sm:p-5 lg:p-6"
+                  >
+                <div className="border-b border-navy-700 pb-4 mb-6">
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+                    <div className="flex-1">
+                      <h2 className="text-xl font-semibold text-white flex items-center mb-1">
+                        <Shield className="h-5 w-5 text-amber-400 mr-2" />
                       Valid ID Requirements
                     </h2>
-                    <div className="flex flex-wrap items-center gap-2 sm:ml-3">
-                      {profile.role !== 'admin' && (
-                        <span className="text-xs bg-amber-500/20 text-amber-300 px-2.5 py-1 rounded-full border border-amber-500/30">
-                          Required
-                        </span>
-                      )}
-                      {profile.role === 'admin' && (
-                        <span className="text-xs bg-blue-500/20 text-blue-300 px-2.5 py-1 rounded-full border border-blue-500/30">
-                          Optional
-                        </span>
-                      )}
-                      {/* ID Verification Status Badge */}
-                      <div className="sm:ml-auto">
+                      <p className="text-sm text-yellow-300">
+                        {profile.role === 'donor' && 'Provide valid identification documents for account verification'}
+                        {profile.role === 'recipient' && 'Provide valid identification documents for account verification'}
+                        {profile.role === 'admin' && 'ID verification is optional for administrators'}
+                      </p>
+                    </div>
+                    {/* ID Verification Status Indicator */}
+                    <div className="flex-shrink-0">
                         {(() => {
-                          const hasIdUploaded = profile.primary_id_type && profile.primary_id_number && 
-                            (profile.primary_id_image_url || true) // Consider ID uploaded if type and number exist
+                        const hasIdUploaded = profile.primary_id_type && profile.primary_id_number
                           
                           return (
                             <IDVerificationBadge
                               idStatus={profile.id_verification_status}
                               hasIdUploaded={hasIdUploaded}
-                              size="sm"
+                            size="md"
                               showText={true}
                               showDescription={false}
                             />
                           )
                         })()}
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -1507,8 +2175,8 @@ const ProfilePage = () => {
                 {(() => {
                   const getValidIdOptions = () => {
                     if (profile.role === 'donor') {
-                      if ((isEditing ? watchedAccountType : profile.account_type) === 'business' || 
-                          (isEditing ? watchedAccountType : profile.account_type) === 'organization') {
+                      if ((watchedAccountType || profile.account_type) === 'business' || 
+                          (watchedAccountType || profile.account_type) === 'organization') {
                         return {
                           primary: [
                             { value: 'sec_registration', label: 'SEC Registration Certificate (Corporation/NGO)' },
@@ -1541,7 +2209,7 @@ const ProfilePage = () => {
                         }
                       }
                     } else if (profile.role === 'recipient') {
-                      if ((isEditing ? watchedAccountType : profile.account_type) === 'organization') {
+                      if ((watchedAccountType || profile.account_type) === 'organization') {
                         return {
                           primary: [
                             { value: 'sec_registration', label: 'SEC Registration Certificate (for NGOs/Institutions)' },
@@ -1605,122 +2273,7 @@ const ProfilePage = () => {
 
                   return (
                     <div className="space-y-6">
-                      {/* Role-specific ID requirements info */}
-                      <div className="bg-navy-800/50 border border-yellow-500/20 rounded-lg p-3 sm:p-4">
-                        <div className="flex flex-col sm:flex-row items-start gap-3 text-center sm:text-left">
-                          <AlertCircle className="h-5 w-5 text-yellow-400 flex-shrink-0 mx-auto sm:mx-0 sm:mt-0.5" />
-                          <div className="flex-1">
-                            <h4 className="text-xs sm:text-sm font-medium text-white mb-2">
-                              {profile.role === 'donor' && 'Donor ID Requirements'}
-                              {profile.role === 'recipient' && 'Recipient ID Requirements'}
-                              {profile.role === 'volunteer' && 'Volunteer ID Requirements'}
-                              {profile.role === 'admin' && 'Admin ID Requirements'}
-                            </h4>
-                            <p className="text-xs text-yellow-300 leading-relaxed">
-                              {profile.role === 'donor' && (
-                                (isEditing ? watchedAccountType : profile.account_type) === 'business' || 
-                                (isEditing ? watchedAccountType : profile.account_type) === 'organization'
-                                  ? 'Organizations must provide business registration AND a valid ID of the authorized representative.'
-                                  : 'Individual donors must provide at least one (1) valid Philippine government-issued ID.'
-                              )}
-                              {profile.role === 'recipient' && (
-                                (isEditing ? watchedAccountType : profile.account_type) === 'organization'
-                                  ? 'Organizations must provide SEC registration or DSWD accreditation AND a valid ID of the authorized representative.'
-                                  : 'Individual recipients must provide at least one (1) valid ID. 4Ps Beneficiary ID is preferred for eligible families.'
-                              )}
-                              {profile.role === 'volunteer' && 'Volunteers must have a valid Driver\'s License for all delivery-related roles. This is mandatory for safety and legal compliance.'}
-                              {profile.role === 'admin' && 'ID verification is optional for administrators. You may provide identification for additional security, but it is not required for platform access.'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* ID Verification Status Summary */}
-                      <div className="bg-navy-800/30 border border-navy-600 rounded-lg p-3 sm:p-4">
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:justify-between">
-                          <div className="flex-1">
-                            <h4 className="text-xs sm:text-sm font-medium text-white mb-1">Verification Status</h4>
-                            <p className="text-xs text-yellow-300 leading-relaxed">
-                              {(() => {
-                                const hasIdUploaded = profile.primary_id_type && profile.primary_id_number
-                                const idStatus = profile.id_verification_status
-                                
-                                if (!hasIdUploaded) {
-                                  return 'Please provide your valid ID information to complete verification.'
-                                } else if (idStatus === 'pending') {
-                                  return 'Your ID information is under review by our admin team.'
-                                } else if (idStatus === 'verified') {
-                                  return 'Your ID has been verified.'
-                                } else if (idStatus === 'rejected') {
-                                  return 'Your ID verification was rejected. Please contact support for assistance.'
-                                } else {
-                                  return 'Your ID information is being processed.'
-                                }
-                              })()}
-                            </p>
-                          </div>
-                          <div className="w-full sm:w-auto flex justify-center sm:justify-end">
-                            <IDVerificationBadge
-                              idStatus={profile.id_verification_status}
-                              hasIdUploaded={profile.primary_id_type && profile.primary_id_number}
-                              size="sm"
-                              showText={true}
-                              showDescription={false}
-                            />
-                          </div>
-                        </div>
-                        
-                        {/* Progress indicators */}
-                        <div className="mt-4 space-y-2">
-                          <div className="flex items-center space-x-3 text-xs">
-                            {profile.primary_id_type && profile.primary_id_number ? (
-                              <CheckCircle className="h-4 w-4 text-green-400" />
-                            ) : (
-                              <div className="h-4 w-4 rounded-full border-2 border-gray-400"></div>
-                            )}
-                            <span className={profile.primary_id_type && profile.primary_id_number ? 'text-green-300' : 'text-gray-400'}>
-                              ID Information Provided
-                            </span>
-                          </div>
-                          
-                          {idOptions.requireSecondary && (
-                            <div className="flex items-center space-x-3 text-xs">
-                              {profile.secondary_id_type && profile.secondary_id_number && profile.organization_representative_name ? (
-                                <CheckCircle className="h-4 w-4 text-green-400" />
-                              ) : (
-                                <div className="h-4 w-4 rounded-full border-2 border-gray-400"></div>
-                              )}
-                              <span className={profile.secondary_id_type && profile.secondary_id_number && profile.organization_representative_name ? 'text-green-300' : 'text-gray-400'}>
-                                Representative ID Provided
-                              </span>
-                            </div>
-                          )}
-                          
-                          <div className="flex items-center space-x-3 text-xs">
-                            {profile.id_verification_status === 'verified' ? (
-                              <CheckCircle className="h-4 w-4 text-green-400" />
-                            ) : profile.id_verification_status === 'pending' ? (
-                              <div className="h-4 w-4 rounded-full border-2 border-yellow-400 flex items-center justify-center">
-                                <div className="h-2 w-2 rounded-full bg-yellow-400"></div>
-                              </div>
-                            ) : (
-                              <div className="h-4 w-4 rounded-full border-2 border-gray-400"></div>
-                            )}
-                            <span className={
-                              profile.id_verification_status === 'verified' 
-                                ? 'text-green-300' 
-                                : profile.id_verification_status === 'pending' 
-                                  ? 'text-yellow-300' 
-                                  : 'text-gray-400'
-                            }>
-                              Admin Verification
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
                       {/* Primary ID */}
-                      <div className="space-y-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           <div>
                             <label className="block text-sm font-medium text-white mb-2">
@@ -1822,7 +2375,6 @@ const ProfilePage = () => {
                               </span>
                             </div>
                           )}
-                        </div>
                       </div>
 
                       {/* Secondary ID (for organizations or optional for volunteers) */}
@@ -2158,514 +2710,284 @@ const ProfilePage = () => {
                   )
                 })()}
                 </motion.div>
+                </motion.div>
               )}
 
-              {/* Role-specific sections */}
-              <AnimatePresence>
-                {profile.role === 'donor' && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="card p-6"
-                  >
-                    <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
-                      <Gift className="h-5 w-5 text-blue-400 mr-2" />
-                      Donor Information
-                    </h2>
+              {/* Role-specific Tab */}
+              {activeTab === 'role' && (
+                <motion.div
+                  key="role"
+                  initial={{ opacity: 0, x: -20 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.2 }}
+                  className="space-y-4 sm:space-y-6 lg:space-y-8"
+                >
+                  {profile.role === 'donor' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 }}
+                      className="card p-6 rounded-xl shadow-lg"
+                    >
+                    <div className="border-b border-navy-700 pb-4 mb-6">
+                      <h2 className="text-xl font-semibold text-white flex items-center">
+                        <Gift className="h-5 w-5 text-blue-400 mr-2" />
+                        Donor Information
+                      </h2>
+                      <p className="text-sm text-yellow-300 mt-1">Provide details about your donations and preferences</p>
+                    </div>
 
-                    <div className="space-y-6">
+                    <div className="space-y-8">
                       {/* Business/Organization fields */}
-                      {(isEditing ? watchedAccountType : profile.account_type) === 'business' && (
-                        <>
+                      {(watchedAccountType || profile.account_type) === 'business' && (
+                        <div className="bg-blue-500/5 border border-blue-500/20 rounded-lg p-5">
+                          <h3 className="text-md font-semibold text-white mb-4 flex items-center">
+                            <Building2 className="h-4 w-4 text-blue-400 mr-2" />
+                            Organization Details
+                          </h3>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div>
-                              <label className="block text-sm font-medium text-white mb-2">
-                                Organization Name *
+                              <label className="block text-sm font-medium text-yellow-200 mb-2">
+                                Organization Name <span className="text-red-400">*</span>
                               </label>
-                              {isEditing ? (
-                                <input
-                                  {...register('organization_name', {
-                                    validate: {
-                                      requiredForBusiness: (value, formValues) => {
-                                        const accountType = formValues.account_type || profile.account_type
-                                        if (accountType === 'business' && (!value || value.trim().length === 0)) {
-                                          return 'Organization name is required for business accounts'
-                                        }
-                                        if (value && value.trim().length > 0 && value.trim().length < 2) {
-                                          return 'Organization name must be at least 2 characters'
-                                        }
-                                        return true
+                              <input
+                                {...register('organization_name', {
+                                  validate: {
+                                    requiredForBusiness: (value, formValues) => {
+                                      const accountType = formValues.account_type || profile.account_type
+                                      if (accountType === 'business' && (!value || value.trim().length === 0)) {
+                                        return 'Organization name is required for business accounts'
                                       }
+                                      if (value && value.trim().length > 0 && value.trim().length < 2) {
+                                        return 'Organization name must be at least 2 characters'
+                                      }
+                                      return true
                                     }
-                                  })}
-                                  className="input"
-                                  placeholder="Enter organization name"
-                                />
-                              ) : (
-                                <div className="input bg-navy-800">
-                                  <span className={profile.organization_name ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                                    {profile.organization_name || 'Not provided'}
-                                  </span>
-                                </div>
-                              )}
+                                  }
+                                })}
+                                className="input focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
+                                placeholder="Enter organization name"
+                              />
                               {errors.organization_name && (
-                                <p className="mt-1 text-sm text-danger-600">{errors.organization_name.message}</p>
+                                <p className="mt-2 text-sm text-red-400 flex items-center">
+                                  <AlertCircle className="h-4 w-4 mr-1" />
+                                  {errors.organization_name.message}
+                                </p>
                               )}
                             </div>
 
                             <div>
-                              <label className="block text-sm font-medium text-white mb-2">
+                              <label className="block text-sm font-medium text-yellow-200 mb-2">
                                 Website URL
                               </label>
-                              {isEditing ? (
+                              <div className="relative">
+                                <Globe className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-blue-400" />
                                 <input
                                   {...register('website_link', {
                                     pattern: {
                                       value: /^https?:\/\/.+/,
-                                      message: 'Please enter a valid URL starting with http:// or https://'
+                                      message: 'Enter a valid URL (https://...)'
                                     }
                                   })}
-                                  className="input"
+                                  className="input pl-10 focus:ring-2 focus:ring-blue-400 focus:border-blue-400"
                                   placeholder="https://your-website.com"
                                   type="url"
                                 />
+                              </div>
+                              {errors.website_link ? (
+                                <p className="mt-2 text-sm text-red-400 flex items-center">
+                                  <AlertCircle className="h-4 w-4 mr-1" />
+                                  {errors.website_link.message}
+                                </p>
                               ) : (
-                                <div className="input bg-navy-800 flex items-center">
-                                  {profile.website_link ? (
-                                    <>
-                                      <Globe className="h-4 w-4 text-yellow-400 mr-2" />
-                                      <a 
-                                        href={profile.website_link} 
-                                        target="_blank" 
-                                        rel="noopener noreferrer"
-                                        className="text-yellow-400 hover:text-yellow-300 truncate"
-                                      >
-                                        {profile.website_link}
-                                      </a>
-                                    </>
-                                  ) : (
-                                    <span className="text-gray-400 italic">Not provided</span>
-                                  )}
-                                </div>
-                              )}
-                              {errors.website_link && (
-                                <p className="mt-1 text-sm text-danger-600">{errors.website_link.message}</p>
+                                <p className="mt-2 text-xs text-gray-400">Optional - Your organization's website</p>
                               )}
                             </div>
                           </div>
-                        </>
+                        </div>
                       )}
 
                       <div>
-                        <label className="block text-sm font-medium text-white mb-2">
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
                           Bio/Description
-                          <span className="text-xs text-yellow-400 ml-1">(Optional - Tell others about yourself and your motivation to donate)</span>
+                          <span className="text-xs text-gray-400 ml-2">(Optional)</span>
+                        </label>
+                        <textarea
+                          {...register('bio', {
+                            minLength: {
+                              value: 10,
+                              message: 'Bio must be at least 10 characters if provided'
+                            },
+                            maxLength: {
+                              value: 1000,
+                              message: 'Bio must be less than 1000 characters'
+                            },
+                            validate: {
+                              notOnlySpaces: (value) => 
+                                !value || value.trim().length >= 10 || 'Bio must contain meaningful content'
+                            }
+                          })}
+                          className="input h-32 resize-none focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                          placeholder="Share your story, motivation, and what drives you to help others..."
+                        />
+                        <div className="flex justify-between mt-2">
+                          {errors.bio ? (
+                            <p className="text-sm text-red-400 flex items-center">
+                              <AlertCircle className="h-4 w-4 mr-1" />
+                              {errors.bio.message}
+                            </p>
+                          ) : (
+                            <span className="text-xs text-gray-400">
+                              {watch('bio')?.length || 0}/1000 characters
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Emergency Contact Name */}
+                      <div>
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
+                          Emergency Contact Name
                         </label>
                         {isEditing ? (
-                          <textarea
-                            {...register('bio', {
-                              minLength: {
-                                value: 10,
-                                message: 'Bio must be at least 10 characters if provided'
-                              },
-                              maxLength: {
-                                value: 1000,
-                                message: 'Bio must be less than 1000 characters'
-                              },
+                          <input
+                            {...register('emergency_contact_name', {
                               validate: {
-                                notOnlySpaces: (value) => 
-                                  !value || value.trim().length >= 10 || 'Bio must contain meaningful content'
+                                validIfProvided: (value) => {
+                                  if (value && value.trim().length > 0) {
+                                    if (value.trim().length < 2) {
+                                      return 'Name must be at least 2 characters'
+                                    }
+                                    if (!/^[a-zA-Z\s\-'.]+$/.test(value)) {
+                                      return 'Name can only contain letters, spaces, hyphens, apostrophes, and periods'
+                                    }
+                                  }
+                                  return true
+                                }
                               }
                             })}
-                            className="input h-32 resize-none"
-                            placeholder="Share your story, motivation, and what drives you to help others through donations... (Optional)"
+                            className="input focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                            placeholder="Enter emergency contact name"
                           />
                         ) : (
-                          <div className="input bg-navy-800 h-32 overflow-y-auto custom-scrollbar">
-                            {profile.bio || <span className="text-gray-400 italic">Not provided</span>}
+                          <div className="input bg-navy-800">
+                            <span className={profile.emergency_contact_name ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                              {profile.emergency_contact_name || 'Not provided'}
+                            </span>
                           </div>
                         )}
-                        {isEditing && (
-                          <div className="flex justify-between mt-1">
-                            {errors.bio ? (
-                              <p className="text-sm text-danger-600">{errors.bio.message}</p>
-                            ) : (
-                              <span className="text-xs text-yellow-400">
-                                {watch('bio')?.length || 0}/1000 characters
-                              </span>
-                            )}
+                        {errors.emergency_contact_name && (
+                          <p className="mt-2 text-sm text-red-400 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {errors.emergency_contact_name.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Emergency Contact Phone */}
+                      <div>
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
+                          Emergency Contact Phone
+                        </label>
+                        {isEditing ? (
+                          <input
+                            {...register('emergency_contact_phone', {
+                              pattern: {
+                                value: /^(09|\+639)\d{9}$/,
+                                message: 'Please enter a valid Philippines phone number (e.g., 09123456789 or +639123456789)'
+                              },
+                              validate: {
+                                notPlaceholder: (value) => 
+                                  !value || value !== '09000000000' || 'Please enter an actual phone number'
+                              }
+                            })}
+                            className="input focus:ring-2 focus:ring-yellow-400 focus:border-yellow-400"
+                            placeholder="09123456789 or +639123456789"
+                            maxLength="13"
+                          />
+                        ) : (
+                          <div className="input bg-navy-800">
+                            <span className={profile.emergency_contact_phone ? 'text-yellow-200' : 'text-gray-400 italic'}>
+                              {profile.emergency_contact_phone || 'Not provided'}
+                            </span>
                           </div>
+                        )}
+                        {errors.emergency_contact_phone && (
+                          <p className="mt-2 text-sm text-red-400 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {errors.emergency_contact_phone.message}
+                          </p>
                         )}
                       </div>
 
                       <div>
-                        <label className="block text-sm font-medium text-white mb-3">
-                          Donation Types You Can Provide *
-                          <span className="text-xs text-yellow-400 ml-1">(Select all that apply)</span>
+                        <label className="block text-sm font-medium text-yellow-200 mb-3">
+                          Donation Types You Can Provide <span className="text-red-400">*</span>
                         </label>
-                        {isEditing ? (
-                          <Controller
-                            name="donation_types"
-                            control={control}
-                            rules={{ 
-                              validate: {
-                                optional: () => true // Make donation types optional for editing
-                              }
-                            }}
-                            render={({ field: { value = [], onChange } }) => (
-                              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <p className="text-sm text-gray-400 mb-4">Select all types of items or assistance you can offer</p>
+                        <Controller
+                          name="donation_types"
+                          control={control}
+                          rules={{ 
+                            validate: {
+                              optional: () => true
+                            }
+                          }}
+                          render={({ field: { value = [], onChange } }) => (
+                            <>
+                              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                                 {[
-                                  'Food & Beverages',
-                                  'Clothing & Accessories', 
-                                  'Medical Supplies',
-                                  'Educational Materials',
-                                  'Household Items',
-                                  'Electronics & Technology',
-                                  'Toys & Recreation',
-                                  'Personal Care Items',
-                                  'Emergency Supplies',
-                                  'Financial Assistance',
-                                  'Transportation',
-                                  'Other'
-                                ].map((type) => (
-                                  <label key={type} className="flex items-center cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={value.includes(type)}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          onChange([...value, type])
-                                        } else {
-                                          onChange(value.filter(item => item !== type))
-                                        }
-                                      }}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800"
-                                    />
-                                    <span className="ml-2 text-sm text-white">{type}</span>
-                                  </label>
+                                  { icon: '🍔', label: 'Food & Beverages' },
+                                  { icon: '👕', label: 'Clothing & Accessories' },
+                                  { icon: '💊', label: 'Medical Supplies' },
+                                  { icon: '📚', label: 'Educational Materials' },
+                                  { icon: '🏠', label: 'Household Items' },
+                                  { icon: '💻', label: 'Electronics & Technology' },
+                                  { icon: '🧸', label: 'Toys & Recreation' },
+                                  { icon: '🧴', label: 'Personal Care Items' },
+                                  { icon: '🚨', label: 'Emergency Supplies' },
+                                  { icon: '💰', label: 'Financial Assistance' },
+                                  { icon: '🚗', label: 'Transportation' },
+                                  { icon: '📦', label: 'Other' }
+                                ].map(({ icon, label }) => (
+                                  <button
+                                    key={label}
+                                    type="button"
+                                    onClick={() => {
+                                      if (value.includes(label)) {
+                                        onChange(value.filter(item => item !== label))
+                                      } else {
+                                        onChange([...value, label])
+                                      }
+                                    }}
+                                    className={`h-16 w-full rounded-lg border-2 transition-all flex items-center gap-2 px-3 ${
+                                      value.includes(label)
+                                        ? 'border-blue-400 bg-blue-500/20 text-white'
+                                        : 'border-navy-700 bg-navy-800/50 text-gray-300 hover:border-blue-400/50 hover:bg-navy-700/50'
+                                    }`}
+                                  >
+                                    <span className="text-2xl flex-shrink-0">{icon}</span>
+                                    <span className="text-xs font-medium text-left truncate">{label}</span>
+                                  </button>
                                 ))}
                               </div>
-                            )}
-                          />
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {profile.donation_types && profile.donation_types.length > 0 ? (
-                              profile.donation_types.map((type, index) => (
-                                <span key={index} className="badge badge-primary">{type}</span>
-                              ))
-                            ) : (
-                              <span className="text-gray-400 italic">None specified</span>
-                            )}
-                          </div>
-                        )}
-                        {errors.donation_types && (
-                          <p className="mt-1 text-sm text-danger-600">{errors.donation_types.message}</p>
-                        )}
-                      </div>
-
-                      {/* Additional Donor Preferences */}
-                      <div className="border-t border-navy-700 pt-6">
-                        <h3 className="text-lg font-medium text-white mb-4">Donation Preferences</h3>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div>
-                            <label className="block text-sm font-medium text-white mb-2">
-                              Preferred Pickup Location
-                            </label>
-                            {isEditing ? (
-                              <select
-                                {...register('preferred_pickup_location')}
-                                className="input"
-                              >
-                                <option value="">Select pickup preference</option>
-                                <option value="home">My Home/Office</option>
-                                <option value="public">Public Location</option>
-                                <option value="delivery">I can deliver</option>
-                                <option value="flexible">Flexible</option>
-                              </select>
-                            ) : (
-                              <div className="input bg-navy-800">
-                                <span className={profile.preferred_pickup_location ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                                  {profile.preferred_pickup_location ? 
-                                    profile.preferred_pickup_location.charAt(0).toUpperCase() + profile.preferred_pickup_location.slice(1) 
-                                    : 'Not specified'}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-white mb-2">
-                              Donation Frequency
-                            </label>
-                            {isEditing ? (
-                              <select
-                                {...register('donation_frequency')}
-                                className="input"
-                              >
-                                <option value="">Select frequency</option>
-                                <option value="one-time">One-time</option>
-                                <option value="monthly">Monthly</option>
-                                <option value="quarterly">Quarterly</option>
-                                <option value="as-needed">As needed</option>
-                                <option value="regular">Regular basis</option>
-                              </select>
-                            ) : (
-                              <div className="input bg-navy-800">
-                                <span className={profile.donation_frequency ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                                  {profile.donation_frequency ? 
-                                    profile.donation_frequency.charAt(0).toUpperCase() + profile.donation_frequency.slice(1) 
-                                    : 'Not specified'}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-white mb-2">
-                              Maximum Donation Value (₱)
-                            </label>
-                            {isEditing ? (
-                              <input
-                                {...register('max_donation_value', {
-                                  min: { value: 0, message: 'Value must be positive' },
-                                  max: { value: 10000000, message: 'Value cannot exceed ₱10,000,000' },
-                                  validate: {
-                                    isValidNumber: (value) => {
-                                      if (!value) return true // Optional field
-                                      const num = parseFloat(value)
-                                      return !isNaN(num) && num >= 0 || 'Please enter a valid positive number'
-                                    }
-                                  }
-                                })}
-                                type="number"
-                                className="input"
-                                placeholder="5000"
-                                min="0"
-                                step="1"
-                              />
-                            ) : (
-                              <div className="input bg-navy-800">
-                                <span className={profile.max_donation_value ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                                  {profile.max_donation_value ? `₱${parseInt(profile.max_donation_value).toLocaleString()}` : 'Not specified'}
-                                </span>
-                              </div>
-                            )}
-                            {errors.max_donation_value && (
-                              <p className="mt-1 text-sm text-danger-600">{errors.max_donation_value.message}</p>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-white mb-2">
-                              Preferred Contact Method
-                            </label>
-                            {isEditing ? (
-                              <select
-                                {...register('preferred_contact_method')}
-                                className="input"
-                              >
-                                <option value="">Select contact method</option>
-                                <option value="email">Email</option>
-                                <option value="phone">Phone</option>
-                                <option value="sms">SMS/Text</option>
-                                <option value="app">In-app messaging</option>
-                              </select>
-                            ) : (
-                              <div className="input bg-navy-800">
-                                <span className={profile.preferred_contact_method ? 'text-yellow-200' : 'text-gray-400 italic'}>
-                                  {profile.preferred_contact_method ? 
-                                    profile.preferred_contact_method.charAt(0).toUpperCase() + profile.preferred_contact_method.slice(1) 
-                                    : 'Not specified'}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Donation Availability */}
-                      <div className="border-t border-navy-700 pt-6">
-                        <h3 className="text-lg font-medium text-white mb-4">Availability</h3>
-                        
-                        <div className="space-y-4">
-                          <div>
-                            <label className="block text-sm font-medium text-white mb-3">
-                              Available Days for Pickup/Coordination
-                            </label>
-                            {isEditing ? (
-                              <Controller
-                                name="availability_days"
-                                control={control}
-                                render={({ field: { value = [], onChange } }) => (
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map((day) => (
-                                      <label key={day} className="flex items-center cursor-pointer">
-                                        <input
-                                          type="checkbox"
-                                          checked={value.includes(day)}
-                                          onChange={(e) => {
-                                            if (e.target.checked) {
-                                              onChange([...value, day])
-                                            } else {
-                                              onChange(value.filter(item => item !== day))
-                                            }
-                                          }}
-                                          className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800"
-                                        />
-                                        <span className="ml-2 text-sm text-white">{day}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                              />
-                            ) : (
-                              <div className="flex flex-wrap gap-2">
-                                                              {profile.availability_days && profile.availability_days.length > 0 ? (
-                                profile.availability_days.map((day, index) => (
-                                    <span key={index} className="badge badge-primary">{day}</span>
-                                  ))
-                                ) : (
-                                  <span className="text-yellow-400 text-sm">Not specified</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div>
-                            <label className="block text-sm font-medium text-white mb-3">
-                              Preferred Time Slots
-                            </label>
-                            {isEditing ? (
-                              <Controller
-                                name="availability_times"
-                                control={control}
-                                render={({ field: { value = [], onChange } }) => (
-                                  <div className="grid grid-cols-2 gap-3">
-                                    {['Morning (6AM-12PM)', 'Afternoon (12PM-6PM)', 'Evening (6PM-9PM)', 'Flexible/Any time'].map((time) => (
-                                      <label key={time} className="flex items-center cursor-pointer">
-                                        <input
-                                          type="checkbox"
-                                          checked={value.includes(time)}
-                                          onChange={(e) => {
-                                            if (e.target.checked) {
-                                              onChange([...value, time])
-                                            } else {
-                                              onChange(value.filter(item => item !== time))
-                                            }
-                                          }}
-                                          className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800"
-                                        />
-                                        <span className="ml-2 text-sm text-white">{time}</span>
-                                      </label>
-                                    ))}
-                                  </div>
-                                )}
-                              />
-                            ) : (
-                              <div className="flex flex-wrap gap-2">
-                                                              {profile.availability_times && profile.availability_times.length > 0 ? (
-                                profile.availability_times.map((time, index) => (
-                                    <span key={index} className="badge badge-primary">{time}</span>
-                                  ))
-                                ) : (
-                                  <span className="text-yellow-400 text-sm">Not specified</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Privacy and Verification Preferences */}
-                      <div className="border-t border-navy-700 pt-6">
-                        <h3 className="text-lg font-medium text-white mb-4">Preferences & Privacy</h3>
-                        
-                        <div className="space-y-4">
-                          {isEditing ? (
-                            <>
-                              <Controller
-                                name="public_profile"
-                                control={control}
-                                render={({ field: { value, onChange } }) => (
-                                  <label className="flex items-start">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!value}
-                                      onChange={(e) => onChange(e.target.checked)}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mt-0.5"
-                                    />
-                                    <div className="ml-3">
-                                      <span className="text-sm font-medium text-white">Make my profile public</span>
-                                      <p className="text-xs text-yellow-400">Allow other users to see your profile and donation history</p>
-                                    </div>
-                                  </label>
-                                )}
-                              />
-
-                              <Controller
-                                name="receive_notifications"
-                                control={control}
-                                render={({ field: { value, onChange } }) => (
-                                  <label className="flex items-start">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!value}
-                                      onChange={(e) => onChange(e.target.checked)}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mt-0.5"
-                                    />
-                                    <div className="ml-3">
-                                      <span className="text-sm font-medium text-white">Receive donation match notifications</span>
-                                      <p className="text-xs text-yellow-400">Get notified when your donations match with requests</p>
-                                    </div>
-                                  </label>
-                                )}
-                              />
-
-                              <Controller
-                                name="share_contact_info"
-                                control={control}
-                                render={({ field: { value, onChange } }) => (
-                                  <label className="flex items-start">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!value}
-                                      onChange={(e) => onChange(e.target.checked)}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mt-0.5"
-                                    />
-                                    <div className="ml-3">
-                                      <span className="text-sm font-medium text-white">Allow sharing contact information</span>
-                                      <p className="text-xs text-yellow-400">Allow verified recipients to see your contact information for coordination</p>
-                                    </div>
-                                  </label>
-                                )}
-                              />
+                              {value && value.length > 0 && (
+                                <p className="mt-3 text-sm text-green-400">
+                                  ✓ {value.length} donation type(s) selected
+                                </p>
+                              )}
                             </>
-                          ) : (
-                            <div className="grid grid-cols-1 gap-3">
-                              <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
-                                <span className="text-sm text-white">Public Profile</span>
-                                <span className={`text-sm ${profile.public_profile ? 'text-green-400' : 'text-gray-400'}`}>
-                                  {profile.public_profile ? 'Enabled' : 'Disabled'}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
-                                <span className="text-sm text-white">Donation Notifications</span>
-                                <span className={`text-sm ${profile.receive_notifications ? 'text-green-400' : 'text-gray-400'}`}>
-                                  {profile.receive_notifications ? 'Enabled' : 'Disabled'}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
-                                <span className="text-sm text-white">Contact Sharing</span>
-                                <span className={`text-sm ${profile.share_contact_info ? 'text-green-400' : 'text-gray-400'}`}>
-                                  {profile.share_contact_info ? 'Enabled' : 'Disabled'}
-                                </span>
-                              </div>
-                            </div>
                           )}
-                        </div>
+                        />
+                        {errors.donation_types && (
+                          <p className="mt-2 text-sm text-red-400 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {errors.donation_types.message}
+                          </p>
+                        )}
                       </div>
+
                     </div>
                   </motion.div>
                 )}
@@ -2674,31 +2996,34 @@ const ProfilePage = () => {
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
-                    className="card p-6"
+                    transition={{ delay: 0.1 }}
+                    className="card p-6 rounded-xl shadow-lg"
                   >
-                    <h2 className="text-xl font-semibold text-white mb-6 flex items-center">
+                    <div className="border-b border-navy-700 pb-4 mb-6">
+                      <h2 className="text-xl font-semibold text-white flex items-center">
                       <Heart className="h-5 w-5 text-green-400 mr-2" />
                       Recipient Information
                     </h2>
+                      <p className="text-sm text-yellow-300 mt-1">Provide details about your needs and assistance requirements</p>
+                    </div>
 
-                    <div className="space-y-6">
-                      {/* Account Type for Recipients */}
+                    <div className="space-y-8">
+                      {/* Account Type */}
                       <div>
-                        <label className="block text-sm font-medium text-white mb-2">
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
                           Account Type
                         </label>
                         {isEditing ? (
                           <select
                             {...register('account_type')}
-                            className="input"
+                            className="input focus:ring-2 focus:ring-green-400 focus:border-green-400"
                           >
                             <option value="individual">Individual</option>
                             <option value="organization">Organization/Institution</option>
                           </select>
                         ) : (
                           <div className="input bg-navy-800 flex items-center">
-                            <Building2 className="h-4 w-4 text-yellow-400 mr-2" />
+                            <Building2 className="h-4 w-4 text-green-400 mr-2" />
                             <span className="text-yellow-200">
                               {profile.account_type === 'organization' ? 'Organization/Institution' : 'Individual'}
                             </span>
@@ -2706,11 +3031,16 @@ const ProfilePage = () => {
                         )}
                       </div>
 
-                      {/* Organization Name for organizational recipients */}
-                      {(isEditing ? watchedAccountType : profile.account_type) === 'organization' && (
+                      {/* Organization Details for organizational recipients */}
+                      {(watchedAccountType || profile.account_type) === 'organization' && (
+                        <div className="bg-green-500/5 border border-green-500/20 rounded-lg p-5">
+                          <h3 className="text-md font-semibold text-white mb-4 flex items-center">
+                            <Building2 className="h-4 w-4 text-green-400 mr-2" />
+                            Organization Details
+                          </h3>
                         <div>
-                          <label className="block text-sm font-medium text-white mb-2">
-                            Organization/Institution Name *
+                            <label className="block text-sm font-medium text-yellow-200 mb-2">
+                              Organization/Institution Name <span className="text-red-400">*</span>
                           </label>
                           {isEditing ? (
                             <input
@@ -2730,7 +3060,7 @@ const ProfilePage = () => {
                                   }
                                 }
                               })}
-                              className="input"
+                                className="input focus:ring-2 focus:ring-green-400 focus:border-green-400"
                               placeholder="Enter organization/institution name"
                             />
                           ) : (
@@ -2741,16 +3071,21 @@ const ProfilePage = () => {
                             </div>
                           )}
                           {errors.organization_name && (
-                            <p className="mt-1 text-sm text-danger-600">{errors.organization_name.message}</p>
+                              <p className="mt-2 text-sm text-red-400 flex items-center">
+                                <AlertCircle className="h-4 w-4 mr-1" />
+                                {errors.organization_name.message}
+                              </p>
                           )}
+                          </div>
                         </div>
                       )}
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Household Information */}
                       <div>
-                        <label className="block text-sm font-medium text-white mb-2">
-                          Household Size
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
+                          Household Size <span className="text-red-400">*</span>
                         </label>
+                        <p className="text-sm text-gray-400 mb-4">Number of people in your household</p>
                         {isEditing ? (
                           <input
                             {...register('household_size', {
@@ -2773,7 +3108,7 @@ const ProfilePage = () => {
                               }
                             })}
                             type="number"
-                            className="input"
+                            className="input focus:ring-2 focus:ring-green-400 focus:border-green-400"
                             placeholder="Enter household size"
                             min="1"
                           />
@@ -2785,13 +3120,95 @@ const ProfilePage = () => {
                           </div>
                         )}
                         {errors.household_size && (
-                          <p className="mt-1 text-sm text-danger-600">{errors.household_size.message}</p>
+                          <p className="mt-2 text-sm text-red-400 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {errors.household_size.message}
+                          </p>
                         )}
                       </div>
 
+                      {/* Types of Assistance Needed */}
                       <div>
-                        <label className="block text-sm font-medium text-white mb-2">
-                          Emergency Contact Name
+                        <label className="block text-sm font-medium text-yellow-200 mb-3">
+                          Types of Assistance Needed <span className="text-red-400">*</span>
+                        </label>
+                        <p className="text-sm text-gray-400 mb-4">Select all types of assistance you need</p>
+                        {isEditing ? (
+                          <Controller
+                            name="assistance_needs"
+                            control={control}
+                            rules={{ 
+                              validate: {
+                                optional: () => true // Make assistance needs optional for editing
+                              }
+                            }}
+                            render={({ field: { value = [], onChange } }) => (
+                              <>
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                  {[
+                                    { icon: '🍔', label: 'Food & Beverages' },
+                                    { icon: '👕', label: 'Clothing & Accessories' },
+                                    { icon: '💊', label: 'Medical Supplies' },
+                                    { icon: '📚', label: 'Educational Materials' },
+                                    { icon: '🏠', label: 'Household Items' },
+                                    { icon: '💰', label: 'Financial Assistance' },
+                                    { icon: '🧴', label: 'Personal Care Items' },
+                                    { icon: '🚗', label: 'Transportation' },
+                                    { icon: '🚨', label: 'Emergency Supplies' },
+                                    { icon: '📦', label: 'Other' }
+                                  ].map(({ icon, label }) => (
+                                    <button
+                                      key={label}
+                                      type="button"
+                                      onClick={() => {
+                                        if (value.includes(label)) {
+                                          onChange(value.filter(item => item !== label))
+                                        } else {
+                                          onChange([...value, label])
+                                        }
+                                      }}
+                                      className={`h-16 w-full rounded-lg border-2 transition-all flex items-center gap-2 px-3 ${
+                                        value.includes(label)
+                                          ? 'border-green-400 bg-green-500/20 text-white'
+                                          : 'border-navy-700 bg-navy-800/50 text-gray-300 hover:border-green-400/50 hover:bg-navy-700/50'
+                                      }`}
+                                    >
+                                      <span className="text-2xl flex-shrink-0">{icon}</span>
+                                      <span className="text-xs font-medium text-left truncate">{label}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                                {value && value.length > 0 && (
+                                  <p className="mt-3 text-sm text-green-400">
+                                    ✓ {value.length} assistance type(s) selected
+                                  </p>
+                                )}
+                              </>
+                            )}
+                          />
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {profile.assistance_needs && profile.assistance_needs.length > 0 ? (
+                              profile.assistance_needs.map((need, index) => (
+                                <span key={index} className="badge badge-success">{need}</span>
+                              ))
+                            ) : (
+                              <span className="text-yellow-400 text-sm">None specified</span>
+                            )}
+                          </div>
+                        )}
+                        {errors.assistance_needs && (
+                          <p className="mt-2 text-sm text-red-400 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {errors.assistance_needs.message}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Emergency Contact Name */}
+                      <div>
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
+                          Emergency Contact Name <span className="text-red-400">*</span>
                         </label>
                         {isEditing ? (
                           <input
@@ -2810,7 +3227,7 @@ const ProfilePage = () => {
                                 }
                               }
                             })}
-                            className="input"
+                            className="input focus:ring-2 focus:ring-green-400 focus:border-green-400"
                             placeholder="Enter emergency contact name"
                           />
                         ) : (
@@ -2821,13 +3238,17 @@ const ProfilePage = () => {
                           </div>
                         )}
                         {errors.emergency_contact_name && (
-                          <p className="mt-1 text-sm text-danger-600">{errors.emergency_contact_name.message}</p>
+                          <p className="mt-2 text-sm text-red-400 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {errors.emergency_contact_name.message}
+                          </p>
                         )}
                       </div>
 
+                      {/* Emergency Contact Phone */}
                       <div>
-                        <label className="block text-sm font-medium text-white mb-2">
-                          Emergency Contact Phone
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
+                          Emergency Contact Phone <span className="text-red-400">*</span>
                         </label>
                         {isEditing ? (
                           <input
@@ -2841,7 +3262,7 @@ const ProfilePage = () => {
                                   !value || value !== '09000000000' || 'Please enter an actual phone number'
                               }
                             })}
-                            className="input"
+                            className="input focus:ring-2 focus:ring-green-400 focus:border-green-400"
                             placeholder="09123456789 or +639123456789"
                             maxLength="13"
                           />
@@ -2853,78 +3274,20 @@ const ProfilePage = () => {
                           </div>
                         )}
                         {errors.emergency_contact_phone && (
-                          <p className="mt-1 text-sm text-danger-600">{errors.emergency_contact_phone.message}</p>
+                          <p className="mt-2 text-sm text-red-400 flex items-center">
+                            <AlertCircle className="h-4 w-4 mr-1" />
+                            {errors.emergency_contact_phone.message}
+                          </p>
                         )}
                       </div>
 
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-white mb-3">
-                          Types of Assistance Needed
-                        </label>
-                        {isEditing ? (
-                          <Controller
-                            name="assistance_needs"
-                            control={control}
-                            rules={{ 
-                              validate: {
-                                optional: () => true // Make assistance needs optional for editing
-                              }
-                            }}
-                            render={({ field: { value = [], onChange } }) => (
-                              <div className="grid grid-cols-2 gap-3">
-                                {[
-                                  'Food & Beverages',
-                                  'Clothing & Accessories',
-                                  'Medical Supplies',
-                                  'Educational Materials',
-                                  'Household Items',
-                                  'Financial Assistance',
-                                  'Personal Care Items',
-                                  'Transportation',
-                                  'Emergency Supplies',
-                                  'Other'
-                                ].map((type) => (
-                                  <label key={type} className="flex items-center cursor-pointer">
-                                    <input
-                                      type="checkbox"
-                                      checked={value.includes(type)}
-                                      onChange={(e) => {
-                                        if (e.target.checked) {
-                                          onChange([...value, type])
-                                        } else {
-                                          onChange(value.filter(item => item !== type))
-                                        }
-                                      }}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800"
-                                    />
-                                    <span className="ml-2 text-sm text-white">{type}</span>
-                                  </label>
-                                ))}
-                              </div>
-                            )}
-                          />
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {profile.assistance_needs && profile.assistance_needs.length > 0 ? (
-                              profile.assistance_needs.map((need, index) => (
-                                <span key={index} className="badge badge-success">{need}</span>
-                              ))
-                            ) : (
-                              <span className="text-yellow-400 text-sm">None specified</span>
-                            )}
-                          </div>
-                        )}
-                        {errors.assistance_needs && (
-                          <p className="mt-1 text-sm text-danger-600">{errors.assistance_needs.message}</p>
-                        )}
-                      </div>
-
-                      {/* Bio Section for Recipients */}
-                      <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-white mb-2">
+                      {/* Bio Section */}
+                      <div>
+                        <label className="block text-sm font-medium text-yellow-200 mb-2">
                           Bio/Description
-                          <span className="text-xs text-yellow-400 ml-1">(Optional - Tell others about your situation and needs)</span>
+                          <span className="text-xs text-gray-400 ml-2">(Optional)</span>
                         </label>
+                        <p className="text-sm text-gray-400 mb-4">Tell others about your situation and needs</p>
                         {isEditing ? (
                           <textarea
                             {...register('bio', {
@@ -2941,7 +3304,7 @@ const ProfilePage = () => {
                                   !value || value.trim().length >= 10 || 'Bio must contain meaningful content'
                               }
                             })}
-                            className="input h-32 resize-none"
+                            className="input h-32 resize-none focus:ring-2 focus:ring-green-400 focus:border-green-400"
                             placeholder="Share your story, current situation, and specific needs... (Optional)"
                           />
                         ) : (
@@ -2952,11 +3315,14 @@ const ProfilePage = () => {
                           </div>
                         )}
                         {isEditing && (
-                          <div className="flex justify-between mt-1">
+                          <div className="flex justify-between mt-2">
                             {errors.bio ? (
-                              <p className="text-sm text-danger-600">{errors.bio.message}</p>
+                              <p className="text-sm text-red-400 flex items-center">
+                                <AlertCircle className="h-4 w-4 mr-1" />
+                                {errors.bio.message}
+                              </p>
                             ) : (
-                              <span className="text-xs text-yellow-400">
+                              <span className="text-xs text-gray-400">
                                 {watch('bio')?.length || 0}/1000 characters
                               </span>
                             )}
@@ -2964,356 +3330,196 @@ const ProfilePage = () => {
                         )}
                       </div>
 
-                      {/* Recipient Privacy Preferences */}
-                      <div className="md:col-span-2 border-t border-navy-700 pt-6">
-                        <h3 className="text-lg font-medium text-white mb-4">Privacy & Notification Preferences</h3>
-                        
-                        <div className="space-y-4">
-                          {isEditing ? (
-                            <>
-                              <Controller
-                                name="public_profile"
-                                control={control}
-                                render={({ field: { value, onChange } }) => (
-                                  <label className="flex items-start">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!value}
-                                      onChange={(e) => onChange(e.target.checked)}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mt-0.5"
-                                    />
-                                    <div className="ml-3">
-                                      <span className="text-sm font-medium text-white">Make my profile visible to donors</span>
-                                      <p className="text-xs text-yellow-400">Allow donors to see your profile and assistance needs</p>
-                                    </div>
-                                  </label>
-                                )}
-                              />
-
-                              <Controller
-                                name="receive_notifications"
-                                control={control}
-                                render={({ field: { value, onChange } }) => (
-                                  <label className="flex items-start">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!value}
-                                      onChange={(e) => onChange(e.target.checked)}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mt-0.5"
-                                    />
-                                    <div className="ml-3">
-                                      <span className="text-sm font-medium text-white">Receive donation availability notifications</span>
-                                      <p className="text-xs text-yellow-400">Get notified when donations matching your needs become available</p>
-                                    </div>
-                                  </label>
-                                )}
-                              />
-
-                              <Controller
-                                name="share_contact_info"
-                                control={control}
-                                render={({ field: { value, onChange } }) => (
-                                  <label className="flex items-start">
-                                    <input
-                                      type="checkbox"
-                                      checked={!!value}
-                                      onChange={(e) => onChange(e.target.checked)}
-                                      className="h-4 w-4 text-skyblue-600 focus:ring-skyblue-500 border-navy-600 rounded bg-navy-800 mt-0.5"
-                                    />
-                                    <div className="ml-3">
-                                      <span className="text-sm font-medium text-white">Allow donors to contact me directly</span>
-                                      <p className="text-xs text-yellow-400">Let verified donors see your contact information for coordination</p>
-                                    </div>
-                                  </label>
-                                )}
-                              />
-                            </>
-                          ) : (
-                            <div className="grid grid-cols-1 gap-3">
-                              <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
-                                <span className="text-sm text-white">Public Profile</span>
-                                <span className={`text-sm ${profile.public_profile ? 'text-green-400' : 'text-gray-400'}`}>
-                                  {profile.public_profile ? 'Visible' : 'Private'}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
-                                <span className="text-sm text-white">Donation Notifications</span>
-                                <span className={`text-sm ${profile.receive_notifications ? 'text-green-400' : 'text-gray-400'}`}>
-                                  {profile.receive_notifications ? 'Enabled' : 'Disabled'}
-                                </span>
-                              </div>
-                              <div className="flex items-center justify-between p-3 bg-navy-800 rounded-lg">
-                                <span className="text-sm text-white">Direct Contact</span>
-                                <span className={`text-sm ${profile.share_contact_info ? 'text-green-400' : 'text-gray-400'}`}>
-                                  {profile.share_contact_info ? 'Allowed' : 'Not Allowed'}
-                                </span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    </div>
-                  </motion.div>
+                  </div>
+                </motion.div>
                 )}
 
                 {profile.role === 'volunteer' && (
                   <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.3 }}
+                    transition={{ delay: 0.1 }}
                   >
                     <VolunteerProfileSettings 
+                      ref={volunteerSettingsRef}
                       profileData={profile}
-                      onUpdate={(data) => {
+                      onUpdate={(currentData, originalValues) => {
                         // Update form data when volunteer component changes
-                        Object.entries(data).forEach(([key, value]) => {
-                          setValue(key, value)
+                        Object.entries(currentData).forEach(([key, value]) => {
+                          setValue(key, value, { shouldDirty: true, shouldValidate: true })
                         })
+                        
+                        // Compare current data with original values to determine if dirty
+                        if (originalValues) {
+                          const volunteerFields = [
+                            'volunteer_experience',
+                            'special_skills',
+                            'languages_spoken',
+                            'primary_id_type',
+                            'primary_id_number',
+                            'primary_id_expiry',
+                            'primary_id_image_url',
+                            'has_insurance',
+                            'insurance_provider',
+                            'insurance_policy_number',
+                            'preferred_delivery_types',
+                            'delivery_notes',
+                            'communication_preferences'
+                          ]
+                          
+                          const hasChanges = volunteerFields.some(key => {
+                            const currentValue = currentData[key]
+                            const originalValue = originalValues[key]
+                            
+                            // Handle arrays - compare deeply
+                            if (Array.isArray(currentValue) && Array.isArray(originalValue)) {
+                              if (currentValue.length !== originalValue.length) return true
+                              return currentValue.some((val, idx) => val !== originalValue[idx])
+                            }
+                            
+                            // Handle other types
+                            return currentValue !== originalValue
+                          })
+                          
+                          // Only mark form as dirty if there are actual changes
+                          // Note: react-hook-form's isDirty will handle this, but we can also manually control it
+                          if (!hasChanges) {
+                            // Reset the specific fields to their original values to clear dirty state
+                            Object.entries(originalValues).forEach(([key, value]) => {
+                              setValue(key, value, { shouldDirty: false })
+                            })
+                          }
+                        }
                       }}
                       isEditing={isEditing}
                     />
                   </motion.div>
                 )}
-              </AnimatePresence>
-
-              {/* Action Buttons */}
-              {isEditing && (
-                <motion.div
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex flex-col sm:flex-row gap-3 sm:gap-4"
-                >
-                  <button
-                    type="submit"
-                    disabled={isLoading}
-                    className="btn btn-primary flex items-center justify-center flex-1 text-sm sm:text-base px-4 py-2.5 active:scale-95"
-                  >
-                    {isLoading ? (
-                      <LoadingSpinner size="sm" />
-                    ) : (
-                      <>
-                        <Save className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
-                        Save Changes
-                      </>
-                    )}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={cancelEdit}
-                    className="btn btn-secondary flex items-center justify-center flex-1 text-sm sm:text-base px-4 py-2.5 active:scale-95"
-                  >
-                    <X className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
-                    Cancel
-                  </button>
                 </motion.div>
               )}
-            </div>
 
-            {/* Sidebar */}
-            <div className="space-y-4 sm:space-y-6">
-              {/* Account Security */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.4 }}
-                className="card p-4 sm:p-5 lg:p-6"
-              >
-                <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4 flex items-center">
-                  <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 mr-2" />
-                  Account Security
-                </h3>
-
-                <div className="space-y-3 sm:space-y-4">
-                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-navy-800 rounded-lg">
-                    <div>
-                      <p className="text-xs sm:text-sm font-medium text-white">Password</p>
-                      <p className="text-xs text-yellow-400">Last updated: Never</p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowPasswordSection(!showPasswordSection)}
-                      className="text-yellow-400 hover:text-yellow-300 text-xs sm:text-sm font-medium active:scale-95"
-                    >
-                      {showPasswordSection ? 'Cancel' : 'Change'}
-                    </button>
-                  </div>
-
-                  <AnimatePresence>
-                    {showPasswordSection && (
-                      <motion.form
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        onSubmit={handlePasswordSubmit(onPasswordSubmit)}
-                        className="space-y-4 overflow-hidden"
-                      >
-                        <div>
-                          <label className="block text-sm font-medium text-white mb-2">
-                            New Password
-                          </label>
-                          <div className="relative">
-                            <input
-                              {...registerPassword('newPassword', {
-                                required: 'New password is required',
-                                minLength: { value: 6, message: 'Password must be at least 6 characters' }
-                              })}
-                              type={showNewPassword ? 'text' : 'password'}
-                              className="input pr-10"
-                              placeholder="Enter new password"
-                            />
-                            <button
-                              type="button"
-                              className="absolute inset-y-0 right-0 pr-3 flex items-center"
-                              onClick={() => setShowNewPassword(!showNewPassword)}
-                            >
-                              {showNewPassword ? (
-                                <EyeOff className="h-5 w-5 text-gray-400" />
-                              ) : (
-                                <Eye className="h-5 w-5 text-gray-400" />
-                              )}
-                            </button>
-                          </div>
-                          {passwordErrors.newPassword && (
-                            <p className="mt-1 text-sm text-danger-600">{passwordErrors.newPassword.message}</p>
-                          )}
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-white mb-2">
-                            Confirm New Password
-                          </label>
-                          <input
-                            {...registerPassword('confirmPassword', {
-                              required: 'Please confirm your password',
-                              validate: value => value === newPassword || 'Passwords do not match'
-                            })}
-                            type="password"
-                            className="input"
-                            placeholder="Confirm new password"
-                          />
-                          {passwordErrors.confirmPassword && (
-                            <p className="mt-1 text-sm text-danger-600">{passwordErrors.confirmPassword.message}</p>
-                          )}
-                        </div>
-
-                        <button
-                          type="submit"
-                          disabled={isLoading}
-                          className="btn btn-primary w-full text-sm sm:text-base py-2.5 active:scale-95"
-                        >
-                          {isLoading ? <LoadingSpinner size="sm" /> : 'Update Password'}
-                        </button>
-                      </motion.form>
-                    )}
-                  </AnimatePresence>
-
-                  <div className="flex items-center justify-between p-2.5 sm:p-3 bg-navy-800 rounded-lg">
-                    <div>
-                      <p className="text-xs sm:text-sm font-medium text-white">Two-Factor Authentication</p>
-                      <p className="text-xs text-yellow-400">Coming soon</p>
-                    </div>
-                    <span className="text-xs text-amber-400 bg-amber-900/20 px-2 py-1 rounded">
-                      Soon
-                    </span>
-                  </div>
-                </div>
-              </motion.div>
-
-              {/* Profile Completion Status - Hide for admins */}
-              {profile.role !== 'admin' && (
+              {/* Admin Settings Tab */}
+              {activeTab === 'admin-settings' && profile.role === 'admin' && (
                 <motion.div
-                  initial={{ opacity: 0, x: 20 }}
+                  key="admin-settings"
+                  initial={{ opacity: 0, x: -20 }}
                   animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.5 }}
-                  className="card p-4 sm:p-5 lg:p-6"
+                  exit={{ opacity: 0, x: 20 }}
+                  transition={{ duration: 0.2 }}
                 >
-                  <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">
-                    Profile Verification
-                  </h3>
+                  <AdminSettings 
+                    ref={adminSettingsRef}
+                    onUpdate={(currentSettings, originalSettings) => {
+                      // Compare current settings with original to determine if dirty
+                      if (originalSettings) {
+                        // List of all settings keys to compare
+                        const settingsKeys = [
+                          'enableSystemLogs',
+                          'logRetentionDays',
+                          'requireIdVerification',
+                          'auto_assign_enabled',
+                          'expiry_retention_days',
+                          'donor_signup_enabled',
+                          'recipient_signup_enabled',
+                          'volunteer_signup_enabled'
+                        ]
+                        
+                        const hasChanges = settingsKeys.some(key => {
+                          const currentValue = currentSettings[key]
+                          const originalValue = originalSettings[key]
+                          
+                          // Normalize values for comparison (handle null/undefined/boolean)
+                          const normalize = (val) => {
+                            if (val === null || val === undefined) {
+                              // Use default values based on key
+                              if (key === 'enableSystemLogs' || key === 'requireIdVerification' || 
+                                  key === 'donor_signup_enabled' || key === 'recipient_signup_enabled' || 
+                                  key === 'volunteer_signup_enabled') {
+                                return true
+                              }
+                              if (key === 'auto_assign_enabled') {
+                                return false
+                              }
+                              if (key === 'logRetentionDays' || key === 'expiry_retention_days') {
+                                return 30
+                              }
+                              return val
+                            }
+                            return val
+                          }
+                          
+                          const normalizedCurrent = normalize(currentValue)
+                          const normalizedOriginal = normalize(originalValue)
+                          
+                          return normalizedCurrent !== normalizedOriginal
+                        })
+                        
+                        setAdminSettingsDirty(hasChanges)
+                      } else {
+                        // If no original settings yet, don't mark as dirty
+                        setAdminSettingsDirty(false)
+                      }
+                    }}
+                    isEditing={isEditing}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
 
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-white">Profile Completion</span>
-                      <span className="text-sm font-medium text-white">{completionPercentage}%</span>
-                    </div>
-                    
-                    <div className="w-full bg-navy-800 rounded-full h-2">
-                      <div
-                        className="bg-gradient-to-r from-yellow-400 to-orange-400 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${completionPercentage}%` }}
-                      />
-                    </div>
-
-                    {completionPercentage === 100 ? (
-                      <div className="flex items-center gap-2 text-green-400">
-                        <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                        <span className="text-xs sm:text-sm">Profile Complete</span>
+            {/* Save Button - Only visible when there are unsaved changes */}
+            <AnimatePresence>
+              {(isDirty || (activeTab === 'admin-settings' && adminSettingsDirty)) && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10, scale: 0.98 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 10, scale: 0.98 }}
+                  transition={{
+                    duration: 0.3,
+                    ease: [0.4, 0, 0.2, 1],
+                    opacity: { duration: 0.25 },
+                    scale: { duration: 0.3 }
+                  }}
+                  className="sticky bottom-4 z-50 mt-8 flex justify-center"
+                >
+                  <div className="bg-gradient-to-r from-navy-800 to-navy-900 border border-yellow-400/30 rounded-lg p-2.5 shadow-2xl backdrop-blur-sm w-[60%]">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <div className="flex items-center text-yellow-300">
+                        <AlertCircle className="h-2.5 w-2.5 mr-1.5" />
+                        <span className="text-xs font-medium">You have unsaved changes</span>
                       </div>
-                    ) : (
-                      <div className="flex items-center gap-2 text-amber-400">
-                        <AlertCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                        <span className="text-xs sm:text-sm">Complete your profile for verification</span>
-                      </div>
-                    )}
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-1.5">
+                      <button
+                        type="submit"
+                        disabled={isLoading}
+                        className="btn btn-primary flex items-center justify-center flex-1 text-xs px-3.5 py-1.5 active:scale-95 font-semibold shadow-lg"
+                      >
+                        {isLoading ? (
+                          <>
+                            <LoadingSpinner size="sm" />
+                            <span className="ml-1.5">Saving Changes...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Save className="h-3 w-3 mr-1.5" />
+                            Save Changes
+                          </>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={cancelEdit}
+                        disabled={isLoading}
+                        className="btn btn-secondary flex items-center justify-center sm:flex-none sm:px-3.5 text-xs px-3.5 py-1.5 active:scale-95 font-semibold"
+                      >
+                        <X className="h-3 w-3 mr-1.5" />
+                        Discard
+                      </button>
+                    </div>
                   </div>
                 </motion.div>
               )}
-
-              {/* Account Stats */}
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: 0.6 }}
-                className="card p-4 sm:p-5 lg:p-6"
-              >
-                <h3 className="text-base sm:text-lg font-semibold text-white mb-3 sm:mb-4">
-                  Account Summary
-                </h3>
-
-                {/* Mini Profile Card */}
-                <div className="flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 bg-navy-800 rounded-lg mb-3 sm:mb-4">
-                  <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-full overflow-hidden bg-navy-700 border-2 border-navy-600 flex items-center justify-center flex-shrink-0">
-                    {imagePreview || profile.profile_image_url ? (
-                      <img
-                        src={imagePreview || profile.profile_image_url}
-                        alt="Profile"
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <User className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs sm:text-sm font-medium text-white truncate">
-                      {profile.name || 'Name not set'}
-                    </p>
-                    <p className="text-xs text-yellow-400 truncate">
-                      {profile.email}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-2.5 sm:space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-yellow-300">Member Since</span>
-                    <span className="text-sm text-white">
-                      {profile.created_at ? new Date(profile.created_at).toLocaleDateString() : 'Unknown'}
-                    </span>
-                  </div>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-yellow-300">Account Type</span>
-                    <span className="text-sm text-white capitalize">{profile.role}</span>
-                  </div>
-
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-yellow-300">Status</span>
-                    <span className="text-sm text-green-400">Active</span>
-                  </div>
-                </div>
-              </motion.div>
-            </div>
+            </AnimatePresence>
           </div>
         </form>
       </div>
@@ -3326,6 +3532,67 @@ const ProfilePage = () => {
         initialLocation={selectedLocation}
         title="Select Your Location"
       />
+
+      {/* Profile Image Viewer Modal */}
+      <AnimatePresence>
+        {showProfileImageModal && (
+          <div className="fixed inset-0 z-50">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowProfileImageModal(false)}
+              className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+            />
+            
+            {/* Image Container - Full Screen */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="relative w-full h-full flex items-center justify-center p-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {imagePreview ? (
+                <>
+                  <img
+                    src={imagePreview}
+                    alt="Profile"
+                    className="max-w-full max-h-full w-auto h-auto object-contain"
+                  />
+                  {/* Close Button Overlay */}
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileImageModal(false)}
+                    className="absolute top-4 right-4 p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors backdrop-blur-sm z-10 shadow-lg"
+                    title="Close"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </>
+              ) : (
+                <div className="relative flex flex-col items-center justify-center text-center">
+                  <div className="w-48 h-48 rounded-full bg-navy-800 border-4 border-navy-700 flex items-center justify-center mb-4">
+                    <User className="h-24 w-24 text-yellow-400" />
+                  </div>
+                  <p className="text-gray-400 text-lg">No profile picture uploaded</p>
+                  <p className="text-gray-500 text-sm mt-2">Click "Choose Image" to upload a profile picture</p>
+                  {/* Close Button Overlay */}
+                  <button
+                    type="button"
+                    onClick={() => setShowProfileImageModal(false)}
+                    className="absolute top-4 right-4 p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors backdrop-blur-sm z-10 shadow-lg"
+                    title="Close"
+                  >
+                    <X className="h-6 w-6" />
+                  </button>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

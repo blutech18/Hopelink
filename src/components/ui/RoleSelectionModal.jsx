@@ -2,10 +2,10 @@ import React, { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Gift, User, Users } from 'lucide-react'
 
-const RoleSelectionModal = ({ isOpen, onClose, onSelectRole }) => {
+const RoleSelectionModal = ({ isOpen, onClose, onSelectRole, enabledRoles = ['donor', 'recipient', 'volunteer'] }) => {
   const [selectedRole, setSelectedRole] = useState(null)
 
-  const roles = [
+  const allRoles = [
     {
       value: 'donor',
       label: 'Donor',
@@ -28,6 +28,9 @@ const RoleSelectionModal = ({ isOpen, onClose, onSelectRole }) => {
       color: 'bg-purple-900/30 border-purple-700/30 text-purple-300'
     }
   ]
+
+  // Filter roles based on enabled signup settings
+  const roles = allRoles.filter(role => enabledRoles.includes(role.value))
 
   const handleContinue = () => {
     if (selectedRole) {
@@ -79,7 +82,13 @@ const RoleSelectionModal = ({ isOpen, onClose, onSelectRole }) => {
 
             {/* Content */}
             <div className="p-6 space-y-3">
-              {roles.map((role) => {
+              {roles.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-gray-400 mb-2">Signup is currently disabled for all roles.</p>
+                  <p className="text-sm text-gray-500">Please contact the administrator for assistance.</p>
+                </div>
+              ) : (
+                roles.map((role) => {
                 const IconComponent = role.icon
                 return (
                   <label key={role.value} className="cursor-pointer block">
@@ -111,7 +120,7 @@ const RoleSelectionModal = ({ isOpen, onClose, onSelectRole }) => {
                     </div>
                   </label>
                 )
-              })}
+              }))}
             </div>
 
             {/* Footer */}

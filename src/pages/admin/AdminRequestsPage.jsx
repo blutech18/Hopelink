@@ -13,12 +13,19 @@ import {
   Calendar,
   Package,
   Filter,
-  X
+  X,
+  Download,
+  Printer,
+  ChevronDown,
+  Loader2,
+  Mail,
+  Phone
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/supabase'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
-import ConfirmationModal from '../../components/ui/ConfirmationModal'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 const AdminRequestsPage = () => {
   const { user } = useAuth()
@@ -28,11 +35,10 @@ const AdminRequestsPage = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
   const [urgencyFilter, setUrgencyFilter] = useState('all')
-  const [showStatusConfirmation, setShowStatusConfirmation] = useState(false)
-  const [requestToUpdate, setRequestToUpdate] = useState(null)
-  const [newStatus, setNewStatus] = useState(null)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [showModal, setShowModal] = useState(false)
+  const [updatingRequestId, setUpdatingRequestId] = useState(null)
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(null)
 
   useEffect(() => {
     loadRequests()
@@ -82,30 +88,360 @@ const AdminRequestsPage = () => {
     }
   }
 
+  const getRequestLocation = (request) => {
+    // First check if request has a location field
+    if (request.location) {
+      return request.location
+    }
+    
+    // Fall back to requester's location information
+    const requester = request.requester
+    if (!requester) {
+      return 'Location not specified'
+    }
+    
+    // Build location string from requester's address fields
+    const locationParts = []
+    if (requester.address_barangay) {
+      locationParts.push(requester.address_barangay)
+    }
+    if (requester.address) {
+      locationParts.push(requester.address)
+    }
+    if (requester.city) {
+      locationParts.push(requester.city)
+    }
+    if (requester.province) {
+      locationParts.push(requester.province)
+    }
+    
+    if (locationParts.length > 0) {
+      return locationParts.join(', ')
+    }
+    
+    return 'Location not specified'
+  }
+
+  const getStatusConfig = (status) => {
+    switch (status) {
+      case 'open':
+        return {
+          icon: Clock,
+          label: 'Open',
+          color: 'text-yellow-400',
+          bgColor: 'bg-yellow-500/20',
+          borderColor: 'border-yellow-500/30',
+          hoverColor: 'hover:bg-yellow-500/30'
+        }
+      case 'fulfilled':
+        return {
+          icon: CheckCircle,
+          label: 'Fulfilled',
+          color: 'text-green-400',
+          bgColor: 'bg-green-500/20',
+          borderColor: 'border-green-500/30',
+          hoverColor: 'hover:bg-green-500/30'
+        }
+      case 'cancelled':
+        return {
+          icon: XCircle,
+          label: 'Cancelled',
+          color: 'text-red-400',
+          bgColor: 'bg-red-500/20',
+          borderColor: 'border-red-500/30',
+          hoverColor: 'hover:bg-red-500/30'
+        }
+      case 'expired':
+        return {
+          icon: AlertTriangle,
+          label: 'Expired',
+          color: 'text-gray-400',
+          bgColor: 'bg-gray-500/20',
+          borderColor: 'border-gray-500/30',
+          hoverColor: 'hover:bg-gray-500/30'
+        }
+      default:
+        return {
+          icon: Clock,
+          label: status,
+          color: 'text-gray-400',
+          bgColor: 'bg-gray-500/20',
+          borderColor: 'border-gray-500/30',
+          hoverColor: 'hover:bg-gray-500/30'
+        }
+    }
+  }
+
   const handleViewRequest = (request) => {
     setSelectedRequest(request)
     setShowModal(true)
+    setStatusDropdownOpen(null) // Close any open dropdowns
   }
 
-  const handleUpdateRequestStatus = async (requestId, status) => {
-    setRequestToUpdate(requestId)
-    setNewStatus(status)
-    setShowStatusConfirmation(true)
-  }
-
-  const confirmUpdateRequestStatus = async () => {
-    if (!requestToUpdate || !newStatus) return
-
+  const handleStatusUpdate = async (requestId, newStatus) => {
     try {
-      await db.updateRequest(requestToUpdate, { status: newStatus })
+      setUpdatingRequestId(requestId)
+      await db.updateRequest(requestId, { status: newStatus })
       await loadRequests()
-      setShowStatusConfirmation(false)
-      setRequestToUpdate(null)
-      setNewStatus(null)
+      
+      // Update selected request if modal is open
+      if (selectedRequest && selectedRequest.id === requestId) {
+        setSelectedRequest({ ...selectedRequest, status: newStatus })
+      }
+      
+      // Close dropdown
+      setStatusDropdownOpen(null)
     } catch (error) {
       console.error('Error updating request status:', error)
       alert('Failed to update request status. Please try again.')
+    } finally {
+      setUpdatingRequestId(null)
     }
+  }
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (statusDropdownOpen && !event.target.closest('.status-dropdown-container')) {
+        setStatusDropdownOpen(null)
+      }
+    }
+    
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [statusDropdownOpen])
+
+  // PDF and Print functions
+  const generatePDF = async () => {
+    if (!filteredRequests || filteredRequests.length === 0) {
+      alert('No requests available to export')
+      return
+    }
+
+    try {
+      const doc = new jsPDF('landscape', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
+      
+      const primaryColor = [0, 26, 92]
+      const secondaryColor = [0, 35, 125]
+      
+      const addHeader = (pageNum, totalPages) => {
+        doc.setFillColor(...primaryColor)
+        doc.rect(0, 0, pageWidth, 40, 'F')
+        
+        doc.setFillColor(...secondaryColor)
+        doc.rect(0, 38, pageWidth, 2, 'F')
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(18)
+        doc.setFont('helvetica', 'bold')
+        doc.text('HopeLink', margin + 5, 20)
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(205, 215, 74)
+        doc.text('CFC-GK Community Platform', margin + 5, 28)
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(14)
+        doc.setFont('helvetica', 'bold')
+        const title = 'Requests Management Report'
+        doc.text(title, pageWidth - margin - doc.getTextWidth(title), 20)
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'italic')
+        doc.setTextColor(200, 200, 200)
+        doc.text('Donation Requests List', pageWidth - margin - doc.getTextWidth('Donation Requests List'), 28)
+        
+        doc.setTextColor(0, 0, 0)
+      }
+      
+      const addFooter = (pageNum, totalPages) => {
+        const footerY = pageHeight - 15
+        
+        doc.setFillColor(245, 245, 245)
+        doc.rect(0, footerY - 8, pageWidth, 15, 'F')
+        
+        doc.setDrawColor(200, 200, 200)
+        doc.setLineWidth(0.5)
+        doc.line(margin, footerY - 8, pageWidth - margin, footerY - 8)
+        
+        doc.setFontSize(8)
+        doc.setTextColor(100, 100, 100)
+        doc.setFont('helvetica', 'normal')
+        const genDate = new Date().toLocaleDateString('en-US', { 
+          year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        })
+        doc.text(`Generated: ${genDate}`, margin, footerY)
+        
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(0, 26, 92)
+        const pageText = `Page ${pageNum} of ${totalPages}`
+        doc.text(pageText, pageWidth - margin - doc.getTextWidth(pageText), footerY)
+        
+        doc.setFontSize(7)
+        doc.setTextColor(120, 120, 120)
+        doc.setFont('helvetica', 'italic')
+        const confidentialText = 'HopeLink - Confidential Report'
+        doc.text(confidentialText, pageWidth / 2 - doc.getTextWidth(confidentialText) / 2, footerY + 5)
+      }
+      
+      const tableData = filteredRequests.map(request => [
+        request.title || '',
+        request.requester?.name || 'Unknown',
+        request.requester?.email || 'N/A',
+        request.urgency || 'N/A',
+        request.status || 'N/A',
+        getRequestLocation(request),
+        new Date(request.created_at).toLocaleDateString()
+      ])
+      
+      const columns = ['Title', 'Requester', 'Email', 'Urgency', 'Status', 'Location', 'Created Date']
+      
+      let currentY = 50
+      doc.setFontSize(10)
+      doc.setTextColor(60, 60, 60)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Total Requests: ${filteredRequests.length}`, margin, currentY)
+      doc.text(`Open: ${filteredRequests.filter(r => r.status === 'open').length} | Fulfilled: ${filteredRequests.filter(r => r.status === 'fulfilled').length} | High Priority: ${filteredRequests.filter(r => r.urgency === 'high').length}`, margin + 60, currentY)
+      
+      currentY += 8
+      
+      autoTable(doc, {
+        startY: currentY,
+        head: [columns],
+        body: tableData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: primaryColor,
+          textColor: 255,
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [40, 40, 40]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 249, 250]
+        },
+        styles: {
+          cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
+          lineWidth: 0.1,
+          lineColor: [220, 220, 220],
+          overflow: 'linebreak',
+          cellWidth: 'wrap'
+        },
+        margin: { top: currentY, left: margin, right: margin, bottom: 20 },
+        didDrawPage: (data) => {
+          const pageNumber = data.pageNumber
+          addHeader(pageNumber, pageNumber)
+        }
+      })
+      
+      const totalPages = doc.internal.pages.length - 1
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i)
+        addHeader(i, totalPages)
+        addFooter(i, totalPages)
+      }
+      
+      doc.save(`requests_report_${new Date().toISOString().split('T')[0]}.pdf`)
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      alert('Error generating PDF. Please try again.')
+    }
+  }
+
+  const handlePrint = () => {
+    if (!filteredRequests || filteredRequests.length === 0) {
+      alert('No requests available to print')
+      return
+    }
+
+    const printWindow = window.open('', '_blank')
+    
+    const tableRows = filteredRequests.map(request => {
+      return `
+        <tr>
+          <td>${request.title || ''}</td>
+          <td>${request.requester?.name || 'Unknown'}</td>
+          <td>${request.requester?.email || 'N/A'}</td>
+          <td>${request.urgency || 'N/A'}</td>
+          <td>${request.status || 'N/A'}</td>
+          <td>${getRequestLocation(request)}</td>
+          <td>${new Date(request.created_at).toLocaleDateString()}</td>
+        </tr>
+      `
+    }).join('')
+    
+    const genDate = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Requests Management Report - HopeLink</title>
+          <meta charset="UTF-8">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Arial', 'Helvetica', sans-serif; padding: 0; color: #333; background: white; }
+            .header { background: linear-gradient(135deg, #001a5c 0%, #00237d 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #cdd74a; }
+            .header-left { display: flex; align-items: center; gap: 15px; }
+            .logo-container { width: 50px; height: 50px; background: white; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+            .logo-container img { max-width: 45px; max-height: 45px; }
+            .brand-info h1 { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+            .brand-info p { font-size: 12px; color: #cdd74a; }
+            .header-right { text-align: right; }
+            .header-right h2 { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+            .header-right p { font-size: 11px; color: #e0e0e0; font-style: italic; }
+            .content { padding: 30px; }
+            .summary { background: #f8f9fa; padding: 15px 20px; border-left: 4px solid #001a5c; margin-bottom: 25px; border-radius: 4px; }
+            .summary p { font-size: 14px; color: #555; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+            thead { background: #001a5c; color: white; }
+            th { padding: 10px 8px; text-align: left; font-weight: bold; font-size: 11px; }
+            td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 10px; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            .footer { background: #f5f5f5; padding: 15px 30px; border-top: 2px solid #ddd; margin-top: 30px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #666; }
+            .footer-center { text-align: center; font-style: italic; color: #888; }
+            .footer-right { font-weight: bold; color: #001a5c; }
+            @media print { body { padding: 0; } .header { page-break-after: avoid; } .footer { page-break-before: avoid; } table { page-break-inside: auto; } tr { page-break-inside: avoid; page-break-after: auto; } thead { display: table-header-group; } @page { margin: 1.5cm; size: A4 landscape; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-left">
+              <div class="logo-container"><img src="/hopelinklogo.png" alt="HopeLink Logo" onerror="this.style.display='none'"></div>
+              <div class="brand-info"><h1>HopeLink</h1><p>CFC-GK Community Platform</p></div>
+            </div>
+            <div class="header-right"><h2>Requests Management Report</h2><p>Donation Requests List</p></div>
+          </div>
+          <div class="content">
+            <div class="summary">
+              <p><strong>Total Requests:</strong> ${filteredRequests.length} | <strong>Open:</strong> ${filteredRequests.filter(r => r.status === 'open').length} | <strong>Fulfilled:</strong> ${filteredRequests.filter(r => r.status === 'fulfilled').length} | <strong>High Priority:</strong> ${filteredRequests.filter(r => r.urgency === 'high').length} | <strong>Generated:</strong> ${genDate}</p>
+            </div>
+            <table>
+              <thead><tr><th>Title</th><th>Requester</th><th>Email</th><th>Urgency</th><th>Status</th><th>Location</th><th>Created Date</th></tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
+          <div class="footer">
+            <div>© ${new Date().getFullYear()} HopeLink CFC-GK. All rights reserved.</div>
+            <div class="footer-center">HopeLink - Confidential Report</div>
+            <div class="footer-right">Generated: ${genDate}</div>
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    setTimeout(() => { printWindow.print() }, 500)
   }
 
   if (loading) {
@@ -121,14 +457,51 @@ const AdminRequestsPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center gap-3 sm:gap-4 mb-6">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
-              <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
-            </div>
+          <div className="flex items-center justify-between gap-3 sm:gap-4 mb-6">
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Requests Management</h1>
               <p className="text-yellow-300 text-xs sm:text-sm">Monitor and manage recipient requests</p>
             </div>
+            {filteredRequests.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    try {
+                      generatePDF().catch(err => {
+                        console.error('PDF generation error:', err)
+                        alert('Failed to generate PDF. Please try again.')
+                      })
+                    } catch (error) {
+                      console.error('PDF generation error:', error)
+                      alert('Failed to generate PDF. Please try again.')
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-yellow-400 hover:text-yellow-300 transition-colors active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  title="Download PDF"
+                  type="button"
+                  aria-label="Download PDF"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Download PDF</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handlePrint()
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-yellow-400 hover:text-yellow-300 transition-colors active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  title="Print"
+                  type="button"
+                  aria-label="Print"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span className="hidden sm:inline">Print</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Filters */}
@@ -280,7 +653,7 @@ const AdminRequestsPage = () => {
                         </div>
                         <div className="flex items-center mt-1 text-xs text-yellow-500">
                           <MapPin className="h-3 w-3 mr-1" />
-                          {request.pickup_location || request.city || 'Location not specified'}
+                          {getRequestLocation(request)}
                         </div>
                       </div>
                     </td>
@@ -312,7 +685,7 @@ const AdminRequestsPage = () => {
                     </td>
                     
                     <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end space-x-2">
+                      <div className="flex items-center justify-end gap-3">
                         <button
                           onClick={() => handleViewRequest(request)}
                           className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
@@ -320,13 +693,71 @@ const AdminRequestsPage = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        <button
-                          onClick={() => handleUpdateRequestStatus(request.id, request.status === 'open' ? 'cancelled' : 'open')}
-                          className="p-2 text-orange-400 hover:text-orange-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
-                          title={request.status === 'open' ? 'Close Request' : 'Reopen Request'}
-                        >
-                          {request.status === 'open' ? <XCircle className="h-4 w-4" /> : <CheckCircle className="h-4 w-4" />}
-                        </button>
+                        
+                        {/* Enhanced Status Dropdown */}
+                        <div className="relative status-dropdown-container">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setStatusDropdownOpen(statusDropdownOpen === request.id ? null : request.id)
+                            }}
+                            disabled={updatingRequestId === request.id}
+                            className={`
+                              flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
+                              ${getStatusColor(request.status)}
+                              ${updatingRequestId === request.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                              focus:outline-none focus:ring-2 focus:ring-yellow-500/50
+                            `}
+                            title="Change Status"
+                          >
+                            {updatingRequestId === request.id ? (
+                              <>
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                <span>Updating...</span>
+                              </>
+                            ) : (
+                              <>
+                                {(() => {
+                                  const StatusIcon = getStatusConfig(request.status).icon
+                                  return <StatusIcon className="h-3 w-3" />
+                                })()}
+                                <span className="capitalize">{request.status}</span>
+                                <ChevronDown className={`h-3 w-3 transition-transform ${statusDropdownOpen === request.id ? 'rotate-180' : ''}`} />
+                              </>
+                            )}
+                          </button>
+
+                          {/* Dropdown Menu */}
+                          {statusDropdownOpen === request.id && (
+                            <div className="absolute right-0 mt-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden">
+                              <div className="py-1">
+                                {['open', 'fulfilled', 'cancelled', 'expired'].map((status) => {
+                                  if (status === request.status) return null
+                                  const config = getStatusConfig(status)
+                                  const StatusIcon = config.icon
+                                  return (
+                                    <button
+                                      key={status}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleStatusUpdate(request.id, status)
+                                      }}
+                                      className={`
+                                        w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
+                                        ${config.color} ${config.hoverColor}
+                                        transition-all hover:bg-navy-700/50
+                                        border-l-2 ${config.borderColor}
+                                      `}
+                                    >
+                                      <StatusIcon className="h-4 w-4" />
+                                      <span>{config.label}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                   </motion.tr>
@@ -353,22 +784,23 @@ const AdminRequestsPage = () => {
 
       {/* Request Details Modal */}
       {showModal && selectedRequest && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowModal(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowModal(false)}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
-            className="card max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            exit={{ opacity: 0, scale: 0.95 }}
+            className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="sticky top-0 bg-navy-900 border-b-2 border-yellow-500/20 px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="w-10 h-10 rounded-lg bg-yellow-500/10 flex items-center justify-center flex-shrink-0">
-                  <AlertTriangle className="h-5 w-5 text-yellow-400" />
+            <div className="sticky top-0 bg-gradient-to-r from-navy-900 to-navy-800 border-b-2 border-yellow-500/30 px-6 py-4 flex items-center justify-between gap-4 z-10">
+              <div className="flex items-center gap-4 flex-1 min-w-0">
+                <div className="w-12 h-12 rounded-xl bg-yellow-500/10 flex items-center justify-center flex-shrink-0 border-2 border-yellow-500/20">
+                  <Package className="h-6 w-6 text-yellow-400" />
                 </div>
-                <div className="min-w-0">
-                  <h3 className="text-lg sm:text-xl font-bold text-white">Request Details</h3>
-                  <p className="text-xs text-gray-400 hidden sm:block">Complete request information</p>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-xl font-bold text-white truncate">{selectedRequest.title}</h3>
+                  <p className="text-sm text-gray-400">Request Details</p>
                 </div>
               </div>
               <button
@@ -380,110 +812,171 @@ const AdminRequestsPage = () => {
             </div>
 
             {/* Modal Content */}
-            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
-              {/* Basic Information */}
-              <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                    <Package className="h-4 w-4 text-blue-400" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-white">Basic Information</h4>
+            <div className="p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar">
+              {/* Request Header */}
+              <div className="bg-navy-800/50 rounded-xl p-5 border border-navy-700/50">
+                <div className="flex flex-wrap items-center gap-3 mb-4">
+                  <h4 className="text-lg font-bold text-white flex-1">{selectedRequest.title}</h4>
+                  <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold ${getStatusColor(selectedRequest.status)}`}>
+                    {(() => {
+                      const StatusIcon = getStatusConfig(selectedRequest.status).icon
+                      return <StatusIcon className="h-4 w-4" />
+                    })()}
+                    <span className="capitalize">{selectedRequest.status}</span>
+                  </span>
+                  <span className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold ${getUrgencyColor(selectedRequest.urgency)}`}>
+                    <AlertTriangle className="h-4 w-4" />
+                    <span className="capitalize">{selectedRequest.urgency} Priority</span>
+                  </span>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Title</label>
-                    <p className="text-sm text-white font-medium">{selectedRequest.title}</p>
+                <p className="text-sm text-gray-300 leading-relaxed">{selectedRequest.description}</p>
+              </div>
+
+              {/* Details Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-navy-800/50 rounded-xl p-5 border border-navy-700/50">
+                  <div className="flex items-center gap-3 mb-3">
+                    <Calendar className="h-5 w-5 text-yellow-400" />
+                    <h4 className="text-sm font-semibold text-white">Posted Date</h4>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
-                    <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(selectedRequest.status)}`}>
-                      {selectedRequest.status}
-                    </span>
+                  <p className="text-sm text-gray-300">
+                    {new Date(selectedRequest.created_at).toLocaleDateString('en-US', { 
+                      year: 'numeric', 
+                      month: 'long', 
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </p>
+                </div>
+
+                <div className="bg-navy-800/50 rounded-xl p-5 border border-navy-700/50">
+                  <div className="flex items-center gap-3 mb-3">
+                    <MapPin className="h-5 w-5 text-yellow-400" />
+                    <h4 className="text-sm font-semibold text-white">Location</h4>
                   </div>
-                  <div className="md:col-span-2">
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
-                    <p className="text-sm text-gray-300 leading-relaxed">{selectedRequest.description}</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Urgency</label>
-                    <span className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${getUrgencyColor(selectedRequest.urgency)}`}>
-                      {selectedRequest.urgency}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Created Date</label>
-                    <p className="text-sm text-white">{new Date(selectedRequest.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                  </div>
+                  <p className="text-sm text-gray-300">
+                    {getRequestLocation(selectedRequest)}
+                  </p>
                 </div>
               </div>
 
               {/* Requester Information */}
-              <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
-                  <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-green-400" />
-                  </div>
+              <div className="bg-navy-800/50 rounded-xl p-5 border border-navy-700/50">
+                <div className="flex items-center gap-3 mb-4 pb-3 border-b border-navy-700">
+                  <User className="h-5 w-5 text-yellow-400" />
                   <h4 className="text-sm font-semibold text-white">Requester Information</h4>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
-                    <p className="text-sm text-white font-medium">{selectedRequest.requester?.name || 'Unknown'}</p>
+                    <label className="block text-xs font-medium text-gray-400 mb-2">Name</label>
+                    <div className="flex items-center gap-2">
+                      <User className="h-4 w-4 text-gray-400" />
+                      <p className="text-sm text-white font-medium">{selectedRequest.requester?.name || 'Unknown'}</p>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
-                    <p className="text-sm text-white">{selectedRequest.requester?.email || 'Not provided'}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Location Information */}
-              <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
-                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                    <MapPin className="h-4 w-4 text-purple-400" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-white">Location Information</h4>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Location</label>
-                  <p className="text-sm text-white">{selectedRequest.pickup_location || selectedRequest.city || 'Not specified'}</p>
+                  {selectedRequest.requester?.email && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-2">Email</label>
+                      <div className="flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-gray-400" />
+                        <p className="text-sm text-white">{selectedRequest.requester.email}</p>
+                      </div>
+                    </div>
+                  )}
+                  {selectedRequest.requester?.phone_number && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-400 mb-2">Phone</label>
+                      <div className="flex items-center gap-2">
+                        <Phone className="h-4 w-4 text-gray-400" />
+                        <p className="text-sm text-white">{selectedRequest.requester.phone_number}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-navy-900 border-t border-navy-700 px-4 sm:px-6 py-4 flex justify-end">
+            <div className="sticky bottom-0 bg-navy-900 border-t-2 border-yellow-500/20 px-6 py-4 flex items-center justify-between gap-4">
               <button
                 onClick={() => setShowModal(false)}
-                className="px-6 py-3 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white rounded-lg font-bold transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg flex items-center gap-2"
+                className="px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-gray-300 hover:text-white rounded-lg font-medium transition-all duration-200 flex items-center gap-2 border border-navy-700"
               >
-                <CheckCircle className="h-4 w-4 flex-shrink-0" />
+                <X className="h-4 w-4" />
                 Close
               </button>
+              
+              {/* Enhanced Status Dropdown in Footer */}
+              <div className="relative status-dropdown-container">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setStatusDropdownOpen(statusDropdownOpen === `modal-${selectedRequest.id}` ? null : `modal-${selectedRequest.id}`)
+                  }}
+                  disabled={updatingRequestId === selectedRequest.id}
+                  className={`
+                    flex items-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border transition-all
+                    ${getStatusColor(selectedRequest.status)}
+                    ${updatingRequestId === selectedRequest.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                    focus:outline-none focus:ring-2 focus:ring-yellow-500/50
+                  `}
+                  title="Change Status"
+                >
+                  {updatingRequestId === selectedRequest.id ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Updating...</span>
+                    </>
+                  ) : (
+                    <>
+                      {(() => {
+                        const StatusIcon = getStatusConfig(selectedRequest.status).icon
+                        return <StatusIcon className="h-4 w-4" />
+                      })()}
+                      <span className="capitalize">Change Status</span>
+                      <ChevronDown className={`h-4 w-4 transition-transform ${statusDropdownOpen === `modal-${selectedRequest.id}` ? 'rotate-180' : ''}`} />
+                    </>
+                  )}
+                </button>
+
+                {/* Dropdown Menu */}
+                {statusDropdownOpen === `modal-${selectedRequest.id}` && (
+                  <div className="absolute right-0 bottom-full mb-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden">
+                    <div className="py-1">
+                      {['open', 'fulfilled', 'cancelled', 'expired'].map((status) => {
+                        if (status === selectedRequest.status) return null
+                        const config = getStatusConfig(status)
+                        const StatusIcon = config.icon
+                        return (
+                          <button
+                            key={status}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleStatusUpdate(selectedRequest.id, status)
+                            }}
+                            className={`
+                              w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
+                              ${config.color} ${config.hoverColor}
+                              transition-all hover:bg-navy-700/50
+                              border-l-2 ${config.borderColor}
+                            `}
+                          >
+                            <StatusIcon className="h-4 w-4" />
+                            <span>{config.label}</span>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </motion.div>
         </div>
       )}
-
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        isOpen={showStatusConfirmation}
-        onClose={() => {
-          setShowStatusConfirmation(false)
-          setRequestToUpdate(null)
-          setNewStatus(null)
-        }}
-        onConfirm={confirmUpdateRequestStatus}
-        title={`${newStatus === 'cancelled' ? 'Close' : 'Reopen'} Request`}
-        message={`Are you sure you want to ${newStatus === 'cancelled' ? 'close' : 'reopen'} this request?`}
-        confirmText={`Yes, ${newStatus === 'cancelled' ? 'Close' : 'Reopen'}`}
-        cancelText="Cancel"
-        type="warning"
-        confirmButtonVariant={newStatus === 'cancelled' ? 'danger' : 'primary'}
-      />
     </div>
   )
 }
 
-export default AdminRequestsPage 
+export default AdminRequestsPage

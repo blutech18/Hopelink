@@ -83,6 +83,89 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
       const startDate = new Date(event.start_date)
       const endDate = new Date(event.end_date)
       
+      // Helper function to generate unique IDs
+      const generateUniqueId = (prefix, index) => {
+        return `${prefix}-${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`
+      }
+      
+      // Helper function to parse JSONB fields (handle string or object)
+      const parseJSONB = (value, defaultValue = []) => {
+        if (!value) return defaultValue
+        if (typeof value === 'string') {
+          try {
+            return JSON.parse(value)
+          } catch (e) {
+            console.warn('Failed to parse JSONB field:', e)
+            return defaultValue
+          }
+        }
+        return value
+      }
+      
+      // Parse JSONB fields
+      const scheduleData = parseJSONB(event.schedule, [])
+      const requirementsData = parseJSONB(event.requirements, [])
+      const whatToBringData = parseJSONB(event.what_to_bring, [])
+      const contactInfoData = parseJSONB(event.contact_info, {})
+      
+      // Ensure all items have IDs - validate and generate if missing or invalid
+      const donationItems = Array.isArray(event.event_items) && event.event_items.length > 0
+        ? event.event_items.map((item, index) => ({
+            ...item,
+            id: (item.id && typeof item.id === 'string' && item.id.trim() !== '') 
+              ? item.id 
+              : generateUniqueId('donation', index)
+          }))
+        : []
+      
+      const scheduleItems = Array.isArray(scheduleData) && scheduleData.length > 0
+        ? scheduleData.map((item, index) => {
+            // Ensure item has time and activity properties
+            const scheduleItem = typeof item === 'object' ? item : { time: '', activity: '' }
+            return {
+              time: scheduleItem.time || '',
+              activity: scheduleItem.activity || '',
+              id: (scheduleItem.id && typeof scheduleItem.id === 'string' && scheduleItem.id.trim() !== '') 
+                ? scheduleItem.id 
+                : generateUniqueId('schedule', index)
+            }
+          })
+        : []
+      
+      // Convert requirements from array of strings to array of objects with ids
+      const requirementsItems = Array.isArray(requirementsData) && requirementsData.length > 0
+        ? requirementsData.map((req, index) => {
+            // If it's already an object with an id, use it; otherwise create new
+            if (req && typeof req === 'object' && req.id && typeof req.id === 'string' && req.id.trim() !== '') {
+              return {
+                id: req.id,
+                value: req.value || ''
+              }
+            }
+            return {
+              id: generateUniqueId('requirement', index),
+              value: typeof req === 'string' ? req : (req?.value || '')
+            }
+          })
+        : []
+      
+      // Convert what_to_bring from array of strings to array of objects with ids
+      const whatToBringItems = Array.isArray(whatToBringData) && whatToBringData.length > 0
+        ? whatToBringData.map((item, index) => {
+            // If it's already an object with an id, use it; otherwise create new
+            if (item && typeof item === 'object' && item.id && typeof item.id === 'string' && item.id.trim() !== '') {
+              return {
+                id: item.id,
+                value: item.value || ''
+              }
+            }
+            return {
+              id: generateUniqueId('whattobring', index),
+              value: typeof item === 'string' ? item : (item?.value || '')
+            }
+          })
+        : []
+      
       setFormData({
         name: event.name || '',
         description: event.description || '',
@@ -94,13 +177,13 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
         end_time: endDate.toTimeString().slice(0, 5),
         max_participants: event.max_participants?.toString() || '',
         image_url: event.image_url || '',
-        donation_items: event.event_items || [],
-        schedule: event.schedule || [],
-        requirements: event.requirements || [],
-        what_to_bring: event.what_to_bring || [],
-        contact_coordinator: event.contact_info?.coordinator || '',
-        contact_phone: event.contact_info?.phone || '',
-        contact_email: event.contact_info?.email || ''
+        donation_items: donationItems,
+        schedule: scheduleItems,
+        requirements: requirementsItems,
+        what_to_bring: whatToBringItems,
+        contact_coordinator: contactInfoData?.coordinator || '',
+        contact_phone: contactInfoData?.phone || '',
+        contact_email: contactInfoData?.email || ''
       })
       setImagePreview(event.image_url || null)
       setImageFile(null)
@@ -150,6 +233,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
     setFormData(prev => ({
       ...prev,
       donation_items: [...prev.donation_items, {
+        id: `donation-${Date.now()}-${Math.random()}`,
         name: '',
         category: 'Food & Beverages',
         quantity: 1,
@@ -159,19 +243,33 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
     }))
   }
 
-  const removeDonationItem = (index) => {
+  const removeDonationItem = (id) => {
+    if (!id) return
     setFormData(prev => ({
       ...prev,
-      donation_items: prev.donation_items.filter((_, i) => i !== index)
+      donation_items: prev.donation_items
+        .map(item => {
+          // Ensure item has a valid ID
+          if (!item.id || typeof item.id !== 'string' || item.id.trim() === '') {
+            return { ...item, id: `donation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` }
+          }
+          return item
+        })
+        .filter(item => item.id !== id)
     }))
   }
 
-  const updateDonationItem = (index, field, value) => {
+  const updateDonationItem = (id, field, value) => {
+    if (!id) return
     setFormData(prev => ({
       ...prev,
-      donation_items: prev.donation_items.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
-      )
+      donation_items: prev.donation_items.map(item => {
+        // Ensure item has a valid ID
+        const validId = item.id && typeof item.id === 'string' && item.id.trim() !== '' 
+          ? item.id 
+          : `donation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+        return validId === id ? { ...item, id: validId, [field]: value } : { ...item, id: validId }
+      })
     }))
   }
 
@@ -179,22 +277,22 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
   const addScheduleItem = () => {
     setFormData(prev => ({
       ...prev,
-      schedule: [...prev.schedule, { time: '', activity: '' }]
+      schedule: [...prev.schedule, { id: `schedule-${Date.now()}-${Math.random()}`, time: '', activity: '' }]
     }))
   }
 
-  const removeScheduleItem = (index) => {
+  const removeScheduleItem = (id) => {
     setFormData(prev => ({
       ...prev,
-      schedule: prev.schedule.filter((_, i) => i !== index)
+      schedule: prev.schedule.filter(item => item.id !== id)
     }))
   }
 
-  const updateScheduleItem = (index, field, value) => {
+  const updateScheduleItem = (id, field, value) => {
     setFormData(prev => ({
       ...prev,
-      schedule: prev.schedule.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
+      schedule: prev.schedule.map(item => 
+        item.id === id ? { ...item, [field]: value } : item
       )
     }))
   }
@@ -203,22 +301,22 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
   const addRequirement = () => {
     setFormData(prev => ({
       ...prev,
-      requirements: [...prev.requirements, '']
+      requirements: [...prev.requirements, { id: `requirement-${Date.now()}-${Math.random()}`, value: '' }]
     }))
   }
 
-  const removeRequirement = (index) => {
+  const removeRequirement = (id) => {
     setFormData(prev => ({
       ...prev,
-      requirements: prev.requirements.filter((_, i) => i !== index)
+      requirements: prev.requirements.filter(item => item.id !== id)
     }))
   }
 
-  const updateRequirement = (index, value) => {
+  const updateRequirement = (id, value) => {
     setFormData(prev => ({
       ...prev,
-      requirements: prev.requirements.map((item, i) => 
-        i === index ? value : item
+      requirements: prev.requirements.map(item => 
+        item.id === id ? { ...item, value } : item
       )
     }))
   }
@@ -227,22 +325,22 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
   const addWhatToBring = () => {
     setFormData(prev => ({
       ...prev,
-      what_to_bring: [...prev.what_to_bring, '']
+      what_to_bring: [...prev.what_to_bring, { id: `whattobring-${Date.now()}-${Math.random()}`, value: '' }]
     }))
   }
 
-  const removeWhatToBring = (index) => {
+  const removeWhatToBring = (id) => {
     setFormData(prev => ({
       ...prev,
-      what_to_bring: prev.what_to_bring.filter((_, i) => i !== index)
+      what_to_bring: prev.what_to_bring.filter(item => item.id !== id)
     }))
   }
 
-  const updateWhatToBring = (index, value) => {
+  const updateWhatToBring = (id, value) => {
     setFormData(prev => ({
       ...prev,
-      what_to_bring: prev.what_to_bring.map((item, i) => 
-        i === index ? value : item
+      what_to_bring: prev.what_to_bring.map(item => 
+        item.id === id ? { ...item, value } : item
       )
     }))
   }
@@ -353,9 +451,9 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
         target_goal: formData.event_type,
         status: 'active',
         image_url: imageUrl,
-        schedule: formData.schedule.filter(item => item.time && item.activity),
-        requirements: formData.requirements.filter(req => req.trim()),
-        what_to_bring: formData.what_to_bring.filter(item => item.trim()),
+        schedule: formData.schedule.filter(item => item.time && item.activity).map(({ id, ...item }) => item),
+        requirements: formData.requirements.filter(req => req.value && req.value.trim()).map(req => req.value),
+        what_to_bring: formData.what_to_bring.filter(item => item.value && item.value.trim()).map(item => item.value),
         contact_info: {
           coordinator: formData.contact_coordinator || 'Event Coordinator',
           phone: formData.contact_phone || 'N/A',
@@ -364,12 +462,15 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
       }
 
       // Remove donation_items from eventData as it will be handled separately
-      const { donation_items, ...eventDataToSave } = eventData
+      // Clean donation_items by removing temporary ids and keeping only necessary fields
+      const donationItemsToSave = formData.donation_items
+        .filter(item => item.name && item.name.trim())
+        .map(({ id, ...item }) => item)
 
       if (event) {
-        await db.updateEvent(event.id, eventDataToSave, formData.donation_items)
+        await db.updateEvent(event.id, eventDataToSave, donationItemsToSave)
       } else {
-        await db.createEvent(eventDataToSave, formData.donation_items)
+        await db.createEvent(eventDataToSave, donationItemsToSave)
       }
 
       success(
@@ -392,9 +493,11 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
   if (!isOpen) return null
 
   return (
-    <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <AnimatePresence mode="wait">
+      {isOpen && (
+        <div key="modal" className="fixed inset-0 z-50 flex items-center justify-center p-4">
         <motion.div
+            key="backdrop"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
@@ -403,6 +506,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
         />
         
         <motion.div
+            key="content"
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -661,12 +765,12 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
               )}
 
               {formData.donation_items.map((item, index) => (
-                <div key={index} className="bg-navy-800 p-4 rounded-lg border border-navy-700">
+                <div key={item?.id || `donation-fallback-${index}`} className="bg-navy-800 p-4 rounded-lg border border-navy-700">
                   <div className="flex items-center justify-between mb-4">
                     <h4 className="text-white font-medium">Donation Item {index + 1}</h4>
                     <button
                       type="button"
-                      onClick={() => removeDonationItem(index)}
+                      onClick={() => removeDonationItem(item.id)}
                       className="text-red-400 hover:text-red-300 p-1"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -679,7 +783,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                       <input
                         type="text"
                         value={item.name}
-                        onChange={(e) => updateDonationItem(index, 'name', e.target.value)}
+                        onChange={(e) => updateDonationItem(item.id, 'name', e.target.value)}
                         className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
                         placeholder="e.g., Canned Goods, Rice Bags"
                         required
@@ -690,7 +794,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                       <label className="block text-yellow-200 text-xs sm:text-sm mb-1">Category *</label>
                       <select
                         value={item.category}
-                        onChange={(e) => updateDonationItem(index, 'category', e.target.value)}
+                        onChange={(e) => updateDonationItem(item.id, 'category', e.target.value)}
                         className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
                         required
                       >
@@ -705,7 +809,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                       <input
                         type="number"
                         value={item.quantity}
-                        onChange={(e) => updateDonationItem(index, 'quantity', parseInt(e.target.value) || 1)}
+                        onChange={(e) => updateDonationItem(item.id, 'quantity', parseInt(e.target.value) || 1)}
                         className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
                         min="1"
                         required
@@ -717,7 +821,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                       <input
                         type="text"
                         value={item.description}
-                        onChange={(e) => updateDonationItem(index, 'description', e.target.value)}
+                        onChange={(e) => updateDonationItem(item.id, 'description', e.target.value)}
                         className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
                         placeholder="Optional details about the item"
                       />
@@ -753,12 +857,12 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
               )}
 
               {formData.schedule.map((item, index) => (
-                <div key={index} className="bg-navy-800 p-4 rounded-lg border border-navy-700">
+                <div key={item?.id || `schedule-fallback-${index}`} className="bg-navy-800 p-4 rounded-lg border border-navy-700">
                   <div className="flex items-center justify-between mb-3">
                     <h4 className="text-white font-medium text-sm">Schedule Item {index + 1}</h4>
                     <button
                       type="button"
-                      onClick={() => removeScheduleItem(index)}
+                      onClick={() => removeScheduleItem(item.id)}
                       className="text-red-400 hover:text-red-300 p-1"
                     >
                       <Trash2 className="h-4 w-4" />
@@ -771,7 +875,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                       <input
                         type="text"
                         value={item.time}
-                        onChange={(e) => updateScheduleItem(index, 'time', e.target.value)}
+                        onChange={(e) => updateScheduleItem(item.id, 'time', e.target.value)}
                         className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
                         placeholder="e.g., 9:00 AM"
                       />
@@ -782,7 +886,7 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
                       <input
                         type="text"
                         value={item.activity}
-                        onChange={(e) => updateScheduleItem(index, 'activity', e.target.value)}
+                        onChange={(e) => updateScheduleItem(item.id, 'activity', e.target.value)}
                         className="w-full px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
                         placeholder="e.g., Registration & Orientation"
                       />
@@ -818,17 +922,17 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
               )}
 
               {formData.requirements.map((req, index) => (
-                <div key={index} className="flex items-center gap-3 bg-navy-800 p-3 rounded-lg border border-navy-700">
+                <div key={req?.id || `requirement-fallback-${index}`} className="flex items-center gap-3 bg-navy-800 p-3 rounded-lg border border-navy-700">
                   <input
                     type="text"
-                    value={req}
-                    onChange={(e) => updateRequirement(index, e.target.value)}
+                    value={req.value}
+                    onChange={(e) => updateRequirement(req.id, e.target.value)}
                     className="flex-1 px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-yellow-500"
                     placeholder="e.g., Must be able to lift up to 25 lbs"
                   />
                   <button
                     type="button"
-                    onClick={() => removeRequirement(index)}
+                    onClick={() => removeRequirement(req.id)}
                     className="text-red-400 hover:text-red-300 p-2"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -862,17 +966,17 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
               )}
 
               {formData.what_to_bring.map((item, index) => (
-                <div key={index} className="flex items-center gap-3 bg-navy-800 p-3 rounded-lg border border-navy-700">
+                <div key={item?.id || `whattobring-fallback-${index}`} className="flex items-center gap-3 bg-navy-800 p-3 rounded-lg border border-navy-700">
                   <input
                     type="text"
-                    value={item}
-                    onChange={(e) => updateWhatToBring(index, e.target.value)}
+                    value={item.value}
+                    onChange={(e) => updateWhatToBring(item.id, e.target.value)}
                     className="flex-1 px-3 py-2 bg-navy-700 border border-navy-600 rounded text-white text-sm focus:outline-none focus:ring-1 focus:ring-skyblue-500"
                     placeholder="e.g., Water bottle, Comfortable work clothes"
                   />
                   <button
                     type="button"
-                    onClick={() => removeWhatToBring(index)}
+                    onClick={() => removeWhatToBring(item.id)}
                     className="text-red-400 hover:text-red-300 p-2"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -950,7 +1054,6 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
           </form>
           </div>
         </motion.div>
-      </div>
 
       {/* Location Picker Modal */}
       <LocationPicker
@@ -960,6 +1063,8 @@ const CreateEventModal = ({ isOpen, onClose, event = null, onSave }) => {
         initialLocation={selectedLocationData?.coordinates || null}
         title="Select Event Location"
       />
+      </div>
+      )}
     </AnimatePresence>
   )
 }

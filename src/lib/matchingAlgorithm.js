@@ -13,29 +13,79 @@
 
 import { db } from './supabase.js'
 
-// Matching criteria weights (sum should equal 1.0)
-const MATCHING_WEIGHTS = {
-  DONOR_RECIPIENT: {
-    geographic_proximity: 0.25,    // Distance between donor and recipient
-    item_compatibility: 0.30,      // How well donation matches request
-    urgency_alignment: 0.20,       // Priority matching
-    user_reliability: 0.15,        // User ratings and history
-    delivery_compatibility: 0.10   // Delivery method preferences
-  },
-  VOLUNTEER_TASK: {
-    geographic_proximity: 0.30,    // Distance from volunteer to pickup/delivery
-    availability_match: 0.25,     // Volunteer schedule vs task timing
-    skill_compatibility: 0.20,    // Volunteer experience with task type
-    user_reliability: 0.15,       // Volunteer ratings and completion rate
-    urgency_response: 0.10        // Volunteer's ability to handle urgent tasks
-  },
-  DONOR_VOLUNTEER: {
-    geographic_proximity: 0.25,
-    reliability_match: 0.30,       // Volunteer reliability for donor's items
-    delivery_preference: 0.20,     // Volunteer delivery capabilities
-    communication_style: 0.15,    // User interaction preferences
-    timing_flexibility: 0.10      // Schedule compatibility
+// Default matching criteria weights (fallback if database parameters are unavailable)
+// These will be overridden by database parameters when available
+// Unified weights for donor-recipient-volunteer matching
+const DEFAULT_MATCHING_WEIGHTS = {
+  DONOR_RECIPIENT_VOLUNTEER: {
+    geographic_proximity: 0.30,    // Shared: Distance between donor, recipient, and volunteer
+    item_compatibility: 0.25,      // Shared: Donor's item matches recipient's request and volunteer's preferred delivery types
+    urgency_alignment: 0.20,       // Priority matching for urgent requests
+    user_reliability: 0.15,        // User ratings and history for all parties
+    delivery_compatibility: 0.10   // Shared: Delivery method preferences across all parties
   }
+}
+
+// Cache for matching parameters (refresh every 5 minutes)
+let matchingParametersCache = {
+  data: null,
+  timestamp: null,
+  ttl: 5 * 60 * 1000 // 5 minutes
+}
+
+/**
+ * Load matching parameters from database
+ * @returns {Promise<Object>} Matching parameters object
+ */
+async function loadMatchingParameters() {
+  const now = Date.now()
+  
+  // Return cached data if still valid
+  if (matchingParametersCache.data && 
+      matchingParametersCache.timestamp && 
+      (now - matchingParametersCache.timestamp) < matchingParametersCache.ttl) {
+    return matchingParametersCache.data
+  }
+  
+  try {
+    const params = await db.getMatchingParameters()
+    matchingParametersCache.data = params
+    matchingParametersCache.timestamp = now
+    return params
+  } catch (error) {
+    console.warn('Failed to load matching parameters from database, using defaults:', error)
+    // Return default weights if database load fails
+    return {
+      DONOR_RECIPIENT_VOLUNTEER: {
+        weights: DEFAULT_MATCHING_WEIGHTS.DONOR_RECIPIENT_VOLUNTEER,
+        auto_match_enabled: false,
+        auto_match_threshold: 0.75,
+        auto_claim_threshold: 0.85,
+        max_distance_km: 50,
+        min_quantity_match_ratio: 0.8,
+        perishable_geographic_boost: 0.35,
+        critical_urgency_boost: 0.30
+      }
+    }
+  }
+}
+
+/**
+ * Get matching weights for a specific parameter group
+ * @param {string} group - Parameter group name (e.g., 'DONOR_RECIPIENT_VOLUNTEER')
+ * @returns {Promise<Object>} Matching weights object
+ */
+async function getMatchingWeights(group = 'DONOR_RECIPIENT_VOLUNTEER') {
+  const params = await loadMatchingParameters()
+  // Support both new unified group and legacy groups for backward compatibility
+  const groupParams = params[group] || params.DONOR_RECIPIENT_VOLUNTEER || params.DONOR_RECIPIENT
+  
+  if (groupParams && groupParams.weights) {
+    return groupParams.weights
+  }
+  
+  // Fallback to default weights
+  return DEFAULT_MATCHING_WEIGHTS[group] || DEFAULT_MATCHING_WEIGHTS.DONOR_RECIPIENT_VOLUNTEER
 }
 
 // Normalization functions for different criterion types
@@ -181,7 +231,7 @@ function calculateDistance(lat1, lon1, lat2, lon2) {
  */
 class IntelligentMatcher {
   constructor() {
-    this.weights = MATCHING_WEIGHTS
+    // Weights will be loaded from database dynamically
     this.normalize = normalizationFunctions
     // Simple in-memory caches with TTL to avoid redundant heavy computations
     this.distanceCache = new Map()
@@ -215,10 +265,16 @@ class IntelligentMatcher {
         .sort((a, b) => b.quickScore - a.quickScore)
         .slice(0, Math.min(maxResults * 2, candidates.length)) // keep 2x for safety
 
-      // 3) Detailed scoring in parallel for top candidates
+      // 3) Get parameter-driven weights from database
+      const params = await loadMatchingParameters()
+      const baseWeights = await getMatchingWeights('DONOR_RECIPIENT_VOLUNTEER')
+      // Support both new unified group and legacy groups for backward compatibility
+      const groupParams = params.DONOR_RECIPIENT_VOLUNTEER || params.DONOR_RECIPIENT
+      
+      // 4) Detailed scoring in parallel for top candidates
       const detailedMatches = await Promise.all(quickRanked.map(async ({ donation }) => {
-        const weights = this.getContextualWeights(request, donation)
-        const scores = await this.calculateDetailedScores(request, donation)
+        const weights = await this.getContextualWeights(request, donation, baseWeights)
+        const scores = await this.calculateDetailedScores(request, donation, groupParams)
         const totalScore = Object.keys(weights).reduce((sum, criterion) => sum + ((scores[criterion] || 0) * (weights[criterion] || 0)), 0)
         return {
           donation,
@@ -251,20 +307,30 @@ class IntelligentMatcher {
         availableVolunteers = await this.getAvailableVolunteers()
       }
 
+      // Get parameter-driven weights from database (using unified matching weights)
+      const unifiedWeights = await getMatchingWeights('DONOR_RECIPIENT_VOLUNTEER')
+      // Map volunteer-specific scores to unified weights
+      // For volunteers, we use the shared criteria from unified matching
+      const weights = {
+        geographic_proximity: unifiedWeights.geographic_proximity || 0.30,
+        item_compatibility: unifiedWeights.item_compatibility || 0.25, // Volunteer's preferred delivery types
+        urgency_alignment: unifiedWeights.urgency_alignment || 0.20,
+        user_reliability: unifiedWeights.user_reliability || 0.15,
+        delivery_compatibility: unifiedWeights.delivery_compatibility || 0.10
+      }
       const matches = []
-      const weights = this.weights.VOLUNTEER_TASK
 
       for (const volunteer of availableVolunteers) {
         const scores = {
           geographic_proximity: this.calculateVolunteerProximity(task, volunteer),
-          availability_match: await this.calculateAvailabilityMatch(task, volunteer),
-          skill_compatibility: await this.calculateSkillCompatibility(task, volunteer),
+          item_compatibility: await this.calculateVolunteerItemCompatibility(task, volunteer), // Use volunteer's preferred delivery types
+          urgency_alignment: this.calculateUrgencyResponse(task, volunteer), // Map urgency_response to urgency_alignment
           user_reliability: await this.calculateUserReliability(volunteer.id, 'volunteer'),
-          urgency_response: this.calculateUrgencyResponse(task, volunteer)
+          delivery_compatibility: await this.calculateAvailabilityMatch(task, volunteer) // Map availability to delivery compatibility
         }
 
         const totalScore = Object.keys(weights).reduce((sum, criterion) => {
-          return sum + (scores[criterion] * weights[criterion])
+          return sum + ((scores[criterion] || 0) * (weights[criterion] || 0))
         }, 0)
 
         matches.push({
@@ -281,6 +347,76 @@ class IntelligentMatcher {
     } catch (error) {
       console.error('Error in matchVolunteersToTask:', error)
       throw error
+    }
+  }
+
+  /**
+   * Calculate match score for a single task for a specific volunteer
+   * This is used to score tasks from the volunteer's perspective
+   * @param {Object} task - Delivery task object
+   * @param {Object} volunteer - Volunteer profile object
+   * @returns {Promise<Object>} Match score and details
+   */
+  async calculateTaskScoreForVolunteer(task, volunteer) {
+    try {
+      // Get parameter-driven weights from database (using unified matching weights)
+      const unifiedWeights = await getMatchingWeights('DONOR_RECIPIENT_VOLUNTEER')
+      
+      // Map volunteer-specific scores to unified weights
+      const weights = {
+        geographic_proximity: unifiedWeights.geographic_proximity || 0.30,
+        item_compatibility: unifiedWeights.item_compatibility || 0.25,
+        urgency_alignment: unifiedWeights.urgency_alignment || 0.20,
+        user_reliability: unifiedWeights.user_reliability || 0.15,
+        delivery_compatibility: unifiedWeights.delivery_compatibility || 0.10
+      }
+
+      // Prepare task object with location data for proximity calculation
+      // Handle different task structures (from getAvailableVolunteerTasks vs direct task objects)
+      const taskWithLocations = {
+        ...task,
+        // Extract latitude/longitude from donor object
+        pickup_latitude: task.donor?.latitude || task.pickup_latitude || null,
+        pickup_longitude: task.donor?.longitude || task.pickup_longitude || null,
+        // Extract latitude/longitude from recipient object
+        delivery_latitude: task.recipient?.latitude || task.delivery_latitude || null,
+        delivery_longitude: task.recipient?.longitude || task.delivery_longitude || null,
+        // Ensure request and donation objects exist for compatibility
+        request: task.request || { category: task.category, urgency: task.urgency },
+        donation: task.donation || { category: task.category },
+        // Ensure category is available
+        category: task.category || task.donation?.category || task.request?.category
+      }
+
+      // Calculate scores using unified criteria
+      const scores = {
+        geographic_proximity: this.calculateVolunteerProximity(taskWithLocations, volunteer),
+        item_compatibility: await this.calculateVolunteerItemCompatibility(taskWithLocations, volunteer),
+        urgency_alignment: this.calculateUrgencyResponse(taskWithLocations, volunteer),
+        user_reliability: await this.calculateUserReliability(volunteer.id, 'volunteer'),
+        delivery_compatibility: await this.calculateAvailabilityMatch(taskWithLocations, volunteer)
+      }
+
+      // Calculate total weighted score
+      const totalScore = Object.keys(weights).reduce((sum, criterion) => {
+        return sum + ((scores[criterion] || 0) * (weights[criterion] || 0))
+      }, 0)
+
+      return {
+        score: totalScore,
+        criteriaScores: scores,
+        matchReason: this.generateMatchReason(scores, weights),
+        weights
+      }
+    } catch (error) {
+      console.error('Error calculating task score for volunteer:', error)
+      // Return neutral score on error
+      return {
+        score: 0.5,
+        criteriaScores: {},
+        matchReason: 'Unable to calculate match score',
+        weights: {}
+      }
     }
   }
 
@@ -372,14 +508,87 @@ class IntelligentMatcher {
     return this.normalize.normalizeDistance(distance)
   }
 
-  calculateItemCompatibility(category1, category2, title1, title2, needed, available) {
+  calculateItemCompatibility(category1, category2, title1, title2, needed, available, donorPreferences = null, recipientPreferences = null) {
     const categoryScore = this.normalize.normalizeCategoryMatch(category1, category2)
     const quantityScore = this.normalize.normalizeQuantityMatch(available, needed)
     
     // Improved text similarity (Jaccard)
     const titleSimilarity = this.calculateTextSimilarity(title1, title2)
     
-    return (categoryScore * 0.5) + (quantityScore * 0.3) + (titleSimilarity * 0.2)
+    // Base compatibility score
+    let baseScore = (categoryScore * 0.5) + (quantityScore * 0.3) + (titleSimilarity * 0.2)
+    
+    // Apply preference-based adjustments if preferences are available
+    let preferenceBoost = 0
+    
+    // Check if donor's donation_types preferences match the item category
+    if (donorPreferences && Array.isArray(donorPreferences.donation_types) && donorPreferences.donation_types.length > 0) {
+      const normalizedCategory = category1?.toLowerCase().trim()
+      const matchesDonorPreference = donorPreferences.donation_types.some(type => {
+        const normalizedType = type.toLowerCase().trim()
+        // Map profile donation types to categories
+        const typeToCategoryMap = {
+          'food & beverages': ['food', 'groceries', 'meals'],
+          'clothing & accessories': ['clothing', 'apparel'],
+          'medical supplies': ['medical', 'medicine'],
+          'educational materials': ['educational', 'books', 'education'],
+          'household items': ['household', 'home'],
+          'electronics & technology': ['electronics', 'technology', 'tech'],
+          'toys & recreation': ['toys', 'recreation'],
+          'personal care items': ['personal care', 'care'],
+          'emergency supplies': ['emergency'],
+          'financial assistance': ['financial'],
+          'transportation': ['transportation'],
+          'other': []
+        }
+        
+        // Check if category matches any mapped categories for this preference type
+        const mappedCategories = typeToCategoryMap[normalizedType] || []
+        return mappedCategories.some(mapped => normalizedCategory?.includes(mapped)) || 
+               normalizedCategory?.includes(normalizedType) ||
+               normalizedType?.includes(normalizedCategory)
+      })
+      
+      if (matchesDonorPreference) {
+        preferenceBoost += 0.15 // Boost for matching donor preference
+      }
+    }
+    
+    // Check if recipient's assistance_needs preferences match the item category
+    if (recipientPreferences && Array.isArray(recipientPreferences.assistance_needs) && recipientPreferences.assistance_needs.length > 0) {
+      const normalizedCategory = category2?.toLowerCase().trim()
+      const matchesRecipientPreference = recipientPreferences.assistance_needs.some(need => {
+        const normalizedNeed = need.toLowerCase().trim()
+        // Map profile assistance needs to categories
+        const needToCategoryMap = {
+          'food & beverages': ['food', 'groceries', 'meals'],
+          'clothing & accessories': ['clothing', 'apparel'],
+          'medical supplies': ['medical', 'medicine'],
+          'educational materials': ['educational', 'books', 'education'],
+          'household items': ['household', 'home'],
+          'financial assistance': ['financial'],
+          'personal care items': ['personal care', 'care'],
+          'transportation': ['transportation'],
+          'emergency supplies': ['emergency'],
+          'other': []
+        }
+        
+        // Check if category matches any mapped categories for this preference type
+        const mappedCategories = needToCategoryMap[normalizedNeed] || []
+        return mappedCategories.some(mapped => normalizedCategory?.includes(mapped)) || 
+               normalizedCategory?.includes(normalizedNeed) ||
+               normalizedNeed?.includes(normalizedCategory)
+      })
+      
+      if (matchesRecipientPreference) {
+        preferenceBoost += 0.15 // Boost for matching recipient preference
+      }
+    }
+    
+    // Apply preference boost (capped at 0.3 to prevent score from exceeding 1.0)
+    const finalScore = Math.min(1.0, baseScore + preferenceBoost)
+    
+    return finalScore
   }
 
   calculateTextSimilarity(text1, text2) {
@@ -484,20 +693,85 @@ class IntelligentMatcher {
     return urgencyScores[urgencyLevel] || 0.8
   }
 
+  async calculateVolunteerItemCompatibility(task, volunteer) {
+    // Calculate item compatibility based on volunteer's preferred delivery types
+    // This checks if the volunteer is willing/interested in delivering items of this category
+    try {
+      // Get the donation/request category from the task
+      const itemCategory = task.donation?.category || task.request?.category
+      if (!itemCategory) return 0.7 // Default neutral score if category is unknown
+      
+      // Get volunteer's preferred delivery types
+      const preferredTypes = volunteer.preferred_delivery_types || []
+      if (!preferredTypes || preferredTypes.length === 0) {
+        // If no preferences set, return neutral score
+        return 0.7
+      }
+      
+      // Normalize function to handle case-insensitive matching
+      const normalize = (str) => str?.toLowerCase().trim().replace(/\s+/g, ' ').replace(/[\/-]/g, ' ')
+      
+      // Map item categories (from donations/requests) to delivery types (from volunteer preferences)
+      // Categories are typically: food, groceries, meals, clothing, electronics, furniture, medical, books, toys, etc.
+      // Delivery types are: "Food Items", "Clothing", "Electronics", "Furniture", "Medical Supplies", "Books/Educational", "Toys", "Household Items"
+      const categoryToDeliveryTypes = {
+        'food': ['Food Items'],
+        'groceries': ['Food Items', 'Household Items'],
+        'meals': ['Food Items'],
+        'clothing': ['Clothing'],
+        'electronics': ['Electronics'],
+        'furniture': ['Furniture', 'Household Items'],
+        'medical': ['Medical Supplies'],
+        'books': ['Books/Educational'],
+        'toys': ['Toys'],
+        'household': ['Household Items'],
+        'educational': ['Books/Educational']
+      }
+      
+      const normalizedCategory = normalize(itemCategory)
+      const matchingDeliveryTypes = categoryToDeliveryTypes[normalizedCategory] || []
+      
+      // Check for exact match
+      const normalizedPreferredTypes = preferredTypes.map(normalize)
+      for (const deliveryType of matchingDeliveryTypes) {
+        if (normalizedPreferredTypes.includes(normalize(deliveryType))) {
+          return 1.0 // Perfect match
+        }
+      }
+      
+      // Check for partial match (category name appears in delivery type or vice versa)
+      for (const preferredType of preferredTypes) {
+        const normalizedPreferred = normalize(preferredType)
+        if (normalizedPreferred.includes(normalizedCategory) || normalizedCategory.includes(normalizedPreferred)) {
+          return 0.8 // Good match
+        }
+      }
+      
+      // Check for "Household Items" which is a catch-all category
+      if (normalizedPreferredTypes.includes(normalize('Household Items'))) {
+        return 0.7 // Moderate match
+      }
+      
+      return 0.5 // Low compatibility
+    } catch (error) {
+      console.error('Error calculating volunteer item compatibility:', error)
+      return 0.7 // Default neutral score on error
+    }
+  }
+
   async getAvailableVolunteers() {
     // Get volunteers who are active and not overloaded
     try {
-      const { data: volunteers, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('role', 'volunteer')
-        .eq('is_active', true)
+      // Use db helper function to get volunteers (filter by status: 'active')
+      const volunteers = await db.getVolunteers({ status: 'active' })
       
-      if (error) throw error
+      if (!volunteers || volunteers.length === 0) {
+        return []
+      }
       
       // Filter out overloaded volunteers
       const availableVolunteers = []
-      for (const volunteer of volunteers || []) {
+      for (const volunteer of volunteers) {
         const activeDeliveries = await db.getDeliveries({
           volunteer_id: volunteer.id,
           status: 'assigned'
@@ -586,18 +860,64 @@ class IntelligentMatcher {
     return (categoryScore * 0.6) + (quantityScore * 0.4)
   }
 
-  async calculateDetailedScores(request, donation) {
+  async calculateDetailedScores(request, donation, params = null) {
+    // Get max distance from parameters if available
+    const maxDistance = params?.max_distance_km || 50
+    
+    // Extract user profile preferences from already-loaded data to avoid extra DB calls
+    let donorPreferences = null
+    let recipientPreferences = null
+    
+    try {
+      // Use donor data from donation object if available (from join query)
+      // This avoids an extra database call since donation.donor is already populated
+      if (donation.donor) {
+        donorPreferences = {
+          donation_types: Array.isArray(donation.donor.donation_types) ? donation.donor.donation_types : []
+        }
+      } else if (donation.donor_id) {
+        // Fallback: Only fetch if donor data is not in donation object
+        const donorProfile = await db.getProfile(donation.donor_id)
+        if (donorProfile) {
+          donorPreferences = {
+            donation_types: Array.isArray(donorProfile.donation_types) ? donorProfile.donation_types : []
+          }
+        }
+      }
+      
+      // Use requester data from request object if available (from join query)
+      // This avoids an extra database call since request.requester is already populated
+      if (request.requester) {
+        recipientPreferences = {
+          assistance_needs: Array.isArray(request.requester.assistance_needs) ? request.requester.assistance_needs : []
+        }
+      } else if (request.requester_id) {
+        // Fallback: Only fetch if requester data is not in request object
+        const recipientProfile = await db.getProfile(request.requester_id)
+        if (recipientProfile) {
+          recipientPreferences = {
+            assistance_needs: Array.isArray(recipientProfile.assistance_needs) ? recipientProfile.assistance_needs : []
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Error fetching user preferences for matching:', error)
+      // Continue without preferences if fetch fails
+    }
+    
     // Geographic score using cached distance when possible
     const dist = this.getCachedDistance(
       request.requester?.latitude, request.requester?.longitude,
       donation.donor?.latitude, donation.donor?.longitude
     )
-    const geographic_proximity = this.normalize.normalizeDistance(dist)
+    const geographic_proximity = this.normalize.normalizeDistance(dist, maxDistance)
 
     const item_compatibility = this.calculateItemCompatibility(
       request.category, donation.category,
       request.title, donation.title,
-      request.quantity_needed, donation.quantity
+      request.quantity_needed, donation.quantity,
+      donorPreferences, // Pass donor preferences (donation_types)
+      recipientPreferences // Pass recipient preferences (assistance_needs)
     )
 
     const urgency_alignment = this.normalize.normalizeUrgencyAlignment(
@@ -619,26 +939,35 @@ class IntelligentMatcher {
     }
   }
 
-  getContextualWeights(request, donation) {
-    const base = { ...this.weights.DONOR_RECIPIENT }
+  async getContextualWeights(request, donation, baseWeights) {
+    const base = { ...baseWeights }
+    const params = await loadMatchingParameters()
+    // Support both new unified group and legacy groups for backward compatibility
+    const groupParams = params?.DONOR_RECIPIENT_VOLUNTEER || params?.DONOR_RECIPIENT
+    
     const category = (donation?.category || '').toLowerCase()
     const perishableCategories = new Set(['food', 'groceries', 'meals'])
 
-    if (perishableCategories.has(category)) {
-      base.geographic_proximity = 0.35
-      base.item_compatibility = 0.30
-      base.urgency_alignment = 0.20
-      base.delivery_compatibility = 0.10
-      base.user_reliability = 0.05
+    // Apply contextual adjustments based on parameters if available
+    if (perishableCategories.has(category) && groupParams?.perishable_geographic_boost) {
+      // Adjust weights for perishable items
+      const boost = groupParams.perishable_geographic_boost
+      base.geographic_proximity = boost
+      base.item_compatibility = base.item_compatibility || 0.25
+      base.urgency_alignment = base.urgency_alignment || 0.20
+      base.delivery_compatibility = base.delivery_compatibility || 0.10
+      base.user_reliability = Math.max(0.05, 1 - (boost + base.item_compatibility + base.urgency_alignment + base.delivery_compatibility))
       return base
     }
 
-    if (request?.urgency === 'critical') {
-      base.urgency_alignment = 0.30
-      base.item_compatibility = 0.30
-      base.geographic_proximity = 0.25
-      base.delivery_compatibility = 0.10
-      base.user_reliability = 0.05
+    if (request?.urgency === 'critical' && groupParams?.critical_urgency_boost) {
+      // Adjust weights for critical urgency
+      const boost = groupParams.critical_urgency_boost
+      base.urgency_alignment = boost
+      base.item_compatibility = base.item_compatibility || 0.25
+      base.geographic_proximity = base.geographic_proximity || 0.30
+      base.delivery_compatibility = base.delivery_compatibility || 0.10
+      base.user_reliability = Math.max(0.05, 1 - (boost + base.item_compatibility + base.geographic_proximity + base.delivery_compatibility))
       return base
     }
 
@@ -672,5 +1001,5 @@ class IntelligentMatcher {
 
 // Export the matcher instance and utility functions
 export const intelligentMatcher = new IntelligentMatcher()
-export { normalizationFunctions, calculateDistance, MATCHING_WEIGHTS }
+export { normalizationFunctions, calculateDistance, DEFAULT_MATCHING_WEIGHTS, loadMatchingParameters, getMatchingWeights }
 export default IntelligentMatcher

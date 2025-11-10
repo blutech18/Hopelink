@@ -15,7 +15,8 @@ import {
   Award,
   AlertCircle,
   Navigation,
-  ArrowLeft
+  ArrowLeft,
+  Flag
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -23,6 +24,7 @@ import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import DeliveryConfirmationModal from '../../components/ui/DeliveryConfirmationModal'
 import PickupManagementModal from '../../components/ui/PickupManagementModal'
 import DirectDeliveryManagementModal from '../../components/ui/DirectDeliveryManagementModal'
+import ReportUserModal from '../../components/ui/ReportUserModal'
 import { db, supabase } from '../../lib/supabase'
 
 const MyApprovedDonationsPage = () => {
@@ -39,6 +41,9 @@ const MyApprovedDonationsPage = () => {
   const [showPickupModal, setShowPickupModal] = useState(false)
   const [directDeliveryConfirmationNotifications, setDirectDeliveryConfirmationNotifications] = useState([])
   const [showDirectDeliveryModal, setShowDirectDeliveryModal] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportUser, setReportUser] = useState(null)
+  const [reportTransactionContext, setReportTransactionContext] = useState(null)
 
   const loadApprovedDonations = useCallback(async () => {
     if (!user?.id) return
@@ -713,6 +718,59 @@ const MyApprovedDonationsPage = () => {
                             Received
                           </button>
                         )}
+
+                        {/* Report Buttons for Completed Transactions */}
+                        {claim.status === 'completed' && (
+                          <>
+                            {/* Report Donor */}
+                            {claim.donation?.donor?.id && claim.donation.donor.id !== user?.id && (
+                              <button
+                                onClick={() => {
+                                  setReportUser({
+                                    id: claim.donation.donor.id,
+                                    name: claim.donation.donor.name,
+                                    role: 'donor'
+                                  })
+                                  setReportTransactionContext({
+                                    type: 'donation',
+                                    id: claim.donation.id,
+                                    title: claim.donation.title
+                                  })
+                                  setShowReportModal(true)
+                                }}
+                                className="px-3 sm:px-4 py-2 sm:py-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 active:scale-95"
+                                title="Report donor"
+                              >
+                                <Flag className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                Report Donor
+                              </button>
+                            )}
+                            
+                            {/* Report Volunteer */}
+                            {delivery?.volunteer?.id && delivery.volunteer.id !== user?.id && (
+                              <button
+                                onClick={() => {
+                                  setReportUser({
+                                    id: delivery.volunteer.id,
+                                    name: delivery.volunteer.name,
+                                    role: 'volunteer'
+                                  })
+                                  setReportTransactionContext({
+                                    type: 'delivery',
+                                    id: delivery.id,
+                                    title: claim.donation.title
+                                  })
+                                  setShowReportModal(true)
+                                }}
+                                className="px-3 sm:px-4 py-2 sm:py-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 text-xs sm:text-sm font-semibold rounded-lg transition-all flex items-center gap-1.5 sm:gap-2 active:scale-95"
+                                title="Report volunteer"
+                              >
+                                <Flag className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                                Report Volunteer
+                              </button>
+                            )}
+                          </>
+                        )}
                         
                         <button
                           onClick={() => handleViewDetails(claim)}
@@ -980,6 +1038,22 @@ const MyApprovedDonationsPage = () => {
               setSelectedConfirmationNotification(null)
             }}
             onComplete={handleConfirmationComplete}
+          />
+        )}
+
+        {/* Report User Modal */}
+        {reportUser && (
+          <ReportUserModal
+            isOpen={showReportModal}
+            onClose={() => {
+              setShowReportModal(false)
+              setReportUser(null)
+              setReportTransactionContext(null)
+            }}
+            reportedUserId={reportUser.id}
+            reportedUserName={reportUser.name}
+            reportedUserRole={reportUser.role}
+            transactionContext={reportTransactionContext}
           />
         )}
       </div>

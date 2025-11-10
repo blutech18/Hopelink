@@ -319,33 +319,6 @@ const MyDeliveriesPage = () => {
                 </div>
               )}
             </div>
-            
-            {/* Status Legend */}
-            <div className="card p-4 sm:p-5 flex-shrink-0">
-              <h3 className="text-xs font-semibold text-yellow-300 uppercase tracking-wide mb-3">Status Legend</h3>
-              <div className="flex flex-wrap gap-2 sm:gap-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-blue-500"></div>
-                  <span className="text-xs text-gray-300">Assigned</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-purple-500"></div>
-                  <span className="text-xs text-gray-300">Accepted</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
-                  <span className="text-xs text-gray-300">Picked Up</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-orange-500"></div>
-                  <span className="text-xs text-gray-300">In Transit</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-full bg-green-500"></div>
-                  <span className="text-xs text-gray-300">Delivered</span>
-                </div>
-              </div>
-            </div>
           </div>
         </motion.div>
 
@@ -400,6 +373,40 @@ const MyDeliveriesPage = () => {
               </div>
             </motion.div>
           ))}
+        </motion.div>
+
+        {/* Status Legend */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.15 }}
+          className="mb-6 sm:mb-8"
+        >
+          <div className="card p-4 sm:p-5 w-full">
+            <h3 className="text-xs sm:text-sm font-semibold text-yellow-300 uppercase tracking-wide mb-3 sm:mb-4">Status Legend</h3>
+            <div className="flex flex-wrap gap-3 sm:gap-4 justify-center sm:justify-start">
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                <span className="text-xs sm:text-sm text-gray-300">Assigned</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-purple-500"></div>
+                <span className="text-xs sm:text-sm text-gray-300">Accepted</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                <span className="text-xs sm:text-sm text-gray-300">Picked Up</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-orange-500"></div>
+                <span className="text-xs sm:text-sm text-gray-300">In Transit</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                <span className="text-xs sm:text-sm text-gray-300">Delivered</span>
+              </div>
+            </div>
+          </div>
         </motion.div>
 
         {/* Deliveries List */}

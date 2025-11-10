@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import { 
@@ -20,13 +20,21 @@ import {
   Eye,
   X,
   Phone,
-  Mail
+  Mail,
+  Flag,
+  Camera,
+  Building2,
+  Globe,
+  Users,
+  MessageSquare,
+  Truck
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
+import ReportUserModal from '../../components/ui/ReportUserModal'
 import { db } from '../../lib/supabase'
 
 const BrowseDonationsPage = () => {
@@ -44,8 +52,23 @@ const BrowseDonationsPage = () => {
   const [selectedDonation, setSelectedDonation] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showDonorProfileModal, setShowDonorProfileModal] = useState(false)
+  const [showDonorProfileImageModal, setShowDonorProfileImageModal] = useState(false)
   const [selectedDonor, setSelectedDonor] = useState(null)
   const [loadingDonorProfile, setLoadingDonorProfile] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+
+  // Helper function to calculate age from birthdate
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null
+    const today = new Date()
+    const birth = new Date(birthDate)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age
+  }
 
   const categories = [
     'Food',
@@ -70,8 +93,9 @@ const BrowseDonationsPage = () => {
   const loadDonations = useCallback(async () => {
     try {
       setLoading(true)
-      // Get available donations
-      const availableDonations = await db.getAvailableDonations()
+      // Get available donations with reduced limit for faster initial load
+      // Load only 30 donations initially for better performance
+      const availableDonations = await db.getAvailableDonations({ limit: 30 })
       setDonations(availableDonations || [])
       
       // Load requested donations from localStorage
@@ -127,7 +151,9 @@ const BrowseDonationsPage = () => {
           donation_id: donation.id,
           requester_id: user.id,
           requester_name: profile.name,
+          requester_email: profile.email,
           requester_phone: profile.phone_number,
+          requester_address: profile.address,
           delivery_mode: donation.delivery_mode
         }
       })
@@ -149,22 +175,26 @@ const BrowseDonationsPage = () => {
     }
   }
 
-  const filteredDonations = donations.filter(donation => {
-    // Exclude donations that are destined for organization only (CFC-GK)
-    if (donation.donation_destination === 'organization') {
-      return false
-    }
-    
-    const matchesSearch = donation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         donation.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         donation.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
-    
-    const matchesCategory = !selectedCategory || donation.category === selectedCategory
-    const matchesCondition = !selectedCondition || donation.condition === selectedCondition
-    const matchesUrgent = !showUrgentOnly || donation.is_urgent
+  // Memoize filtered donations to avoid recalculating on every render
+  const filteredDonations = useMemo(() => {
+    return donations.filter(donation => {
+      // Exclude donations that are destined for organization only (CFC-GK)
+      if (donation.donation_destination === 'organization') {
+        return false
+      }
+      
+      const matchesSearch = !searchTerm || 
+        donation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        donation.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        donation.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+      
+      const matchesCategory = !selectedCategory || donation.category === selectedCategory
+      const matchesCondition = !selectedCondition || donation.condition === selectedCondition
+      const matchesUrgent = !showUrgentOnly || donation.is_urgent
 
-    return matchesSearch && matchesCategory && matchesCondition && matchesUrgent
-  })
+      return matchesSearch && matchesCategory && matchesCondition && matchesUrgent
+    })
+  }, [donations, searchTerm, selectedCategory, selectedCondition, showUrgentOnly])
 
   const getConditionColor = (condition) => {
     switch (condition) {
@@ -174,6 +204,93 @@ const BrowseDonationsPage = () => {
       case 'fair': return 'text-orange-400 bg-orange-900/20'
       default: return 'text-gray-400 bg-gray-900/20'
     }
+  }
+
+  // Helper function to check if a value is a placeholder or invalid
+  const isValidLocationValue = (value) => {
+    if (!value || typeof value !== 'string') return false
+    const trimmed = value.trim().toLowerCase()
+    // Filter out placeholder values and invalid entries
+    const invalidValues = [
+      'to be completed',
+      'not provided',
+      'n/a',
+      'na',
+      'null',
+      'undefined',
+      '',
+      'tbd',
+      'to be determined'
+    ]
+    return trimmed !== '' && !invalidValues.includes(trimmed)
+  }
+
+  // Helper function to format location with priority: specific details first
+  // Note: Excludes address_house and address_subdivision for security reasons
+  const formatLocation = (donation) => {
+    const donor = donation?.donor
+    const locationParts = []
+    
+    // Priority 1: Street (without house/unit number for security)
+    if (isValidLocationValue(donor?.address_street)) {
+      locationParts.push(donor.address_street.trim())
+    }
+    
+    // Priority 2: Barangay (very important for Philippines)
+    if (isValidLocationValue(donor?.address_barangay)) {
+      locationParts.push(donor.address_barangay.trim())
+    }
+    
+    // Priority 3: Landmark (if no street address)
+    if (isValidLocationValue(donor?.address_landmark) && !isValidLocationValue(donor?.address_street)) {
+      locationParts.push(`Near ${donor.address_landmark.trim()}`)
+    }
+    
+    // Priority 4: Full address (if it's more specific than just city/province)
+    if (isValidLocationValue(donor?.address) && !locationParts.length) {
+      const addressStr = donor.address.trim()
+      // Check if address is generic (like just "Cagayan de Oro City" or "Philippines, Cagayan de Oro City")
+      const isGenericAddress = /^(Philippines|Philippines,?\s*[A-Za-z\s]+(?: City)?|[A-Za-z\s]+ City)$/i.test(addressStr)
+      // Also check if it contains "To be completed"
+      if (!isGenericAddress && !addressStr.toLowerCase().includes('to be completed')) {
+        locationParts.push(addressStr)
+      }
+    }
+    
+    // Priority 5: City
+    if (isValidLocationValue(donor?.city)) {
+      locationParts.push(donor.city.trim())
+    }
+    
+    // Priority 6: Province
+    if (isValidLocationValue(donor?.province)) {
+      locationParts.push(donor.province.trim())
+    }
+    
+    // If we have specific details, return them (don't include generic location)
+    if (locationParts.length > 0) {
+      return locationParts.join(', ')
+    }
+    
+    // Fallback: Use donation.pickup_location only if no specific details available
+    if (donation?.pickup_location) {
+      const locationStr = donation.pickup_location.trim()
+      // Filter out placeholder values from pickup_location too
+      if (isValidLocationValue(locationStr)) {
+        // Check if location is just generic (like "Philippines, Cagayan de Oro City" or similar patterns)
+        const hasGenericPattern = /^(Philippines|Philippines,?\s*[A-Za-z\s]+(?: City)?)$/i.test(locationStr)
+        
+        if (!hasGenericPattern) {
+          // Location has specific details, use it
+          return locationStr
+        }
+        // If it's generic, still show it but it will be the same for all
+        return locationStr
+      }
+    }
+    
+    // Last resort: Return a message
+    return 'Location details not specified'
   }
 
   const getDeliveryModeColor = (mode) => {
@@ -187,10 +304,12 @@ const BrowseDonationsPage = () => {
 
   const getDeliveryModeLabel = (mode) => {
     switch (mode) {
-      case 'pickup': return '📍 Self Pickup'
-      case 'volunteer': return '🚚 Volunteer Delivery'
-      case 'direct': return '🤝 Direct Delivery'
-      default: return '📦 Pickup'
+      case 'pickup': return 'Self Pickup'
+      case 'volunteer': return 'Volunteer Delivery'
+      case 'direct': return 'Direct Delivery'
+      case 'donor_delivery': return 'Donor Delivery'
+      case 'organization_pickup': return 'Organization Pickup'
+      default: return mode ? mode.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) : 'Pickup'
     }
   }
 
@@ -406,7 +525,7 @@ const BrowseDonationsPage = () => {
                     {/* Sample Image or Placeholder */}
                     <div className="flex-shrink-0">
                       {donation.images && donation.images.length > 0 ? (
-                        <div className="relative w-full sm:w-56 lg:w-64 h-36 sm:h-40 rounded-lg overflow-hidden border-2 border-yellow-500/30">
+                        <div className="relative w-full sm:w-56 lg:w-64 h-48 sm:h-56 lg:h-64 rounded-lg overflow-hidden border-2 border-yellow-500/30">
                           <img 
                             src={donation.images[0]} 
                             alt={donation.title}
@@ -414,7 +533,7 @@ const BrowseDonationsPage = () => {
                           />
                         </div>
                       ) : (
-                        <div className="w-full sm:w-56 lg:w-64 h-36 sm:h-40 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600">
+                        <div className="w-full sm:w-56 lg:w-64 h-48 sm:h-56 lg:h-64 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600">
                           <Gift className="h-12 w-12 text-yellow-400 mb-2" />
                           <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
                         </div>
@@ -519,11 +638,11 @@ const BrowseDonationsPage = () => {
                           </div>
                         )}
                         
-                        {donation.pickup_location && (
+                        {(donation.pickup_location || donation.donor) && (
                           <div className="flex items-center gap-1.5 col-span-2">
                             <MapPin className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                             <span className="text-yellow-400 font-medium">Location:</span>
-                            <span className="text-gray-300 truncate">{donation.pickup_location}</span>
+                            <span className="text-gray-300 truncate">{formatLocation(donation)}</span>
                           </div>
                         )}
                       </div>
@@ -572,25 +691,16 @@ const BrowseDonationsPage = () => {
                       <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    {selectedDonation.donor && (
-                      <button
-                        onClick={() => handleViewDonorProfile(selectedDonation.donor)}
-                        className="text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 border border-yellow-500/30 hover:border-yellow-500/50 active:scale-95"
-                      >
-                        <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                        <span className="hidden sm:inline">View Donor Profile</span>
-                        <span className="sm:hidden">View</span>
-                      </button>
-                    )}
+                  {selectedDonation.donor && (
                     <button
-                      onClick={() => setShowDetailsModal(false)}
-                      className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg active:scale-95 flex-shrink-0"
-                      aria-label="Close modal"
+                      onClick={() => handleViewDonorProfile(selectedDonation.donor)}
+                      className="text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 border border-yellow-500/30 hover:border-yellow-500/50 active:scale-95"
                     >
-                      <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                      <span className="hidden sm:inline">View Donor Profile</span>
+                      <span className="sm:hidden">View</span>
                     </button>
-                  </div>
+                  )}
                 </div>
 
                 {/* Content with Custom Scrollbar */}
@@ -625,96 +735,98 @@ const BrowseDonationsPage = () => {
                     </div>
 
                     {/* Details Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Quantity Available</label>
-                        </div>
-                        <p className="text-white text-base sm:text-lg font-medium">{selectedDonation.quantity}</p>
-                      </div>
-                      
-                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <CheckCircle className="h-4 w-4 text-green-400 flex-shrink-0" />
-                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Condition</label>
-                        </div>
-                        <p className="text-white text-base sm:text-lg font-medium">{selectedDonation.condition?.replace('_', ' ') || 'Unknown'}</p>
-                      </div>
-                      
-                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                        <div className="flex items-center justify-between mb-2">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-green-400 flex-shrink-0" />
-                            <label className="text-xs sm:text-sm font-semibold text-yellow-300">Donated By</label>
+                            <Package className="h-4 w-4 text-blue-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Quantity Available</label>
                           </div>
-                          {selectedDonation.donor && (
-                            <button
-                              onClick={() => handleViewDonorProfile(selectedDonation.donor)}
-                              className="text-xs px-2 py-1 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 rounded-md transition-colors flex items-center gap-1"
-                            >
-                              <Eye className="h-3 w-3" />
-                              View Profile
-                            </button>
-                          )}
+                          <p className="text-white text-lg font-medium">{selectedDonation.quantity}</p>
                         </div>
-                        <p className="text-white text-base sm:text-lg font-medium">{selectedDonation.donor?.name || 'Anonymous'}</p>
+                      </div>
+                      
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Condition</label>
+                          </div>
+                          <p className="text-white text-lg font-medium capitalize">{selectedDonation.condition?.replace('_', ' ') || 'Unknown'}</p>
+                        </div>
+                      </div>
+                      
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-green-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Donated By</label>
+                          </div>
+                          <p className="text-white text-lg font-medium">{selectedDonation.donor?.name || 'Anonymous'}</p>
+                        </div>
                       </div>
 
                       {selectedDonation.estimated_value && (
-                        <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Star className="h-4 w-4 text-yellow-400 flex-shrink-0" />
-                            <label className="text-xs sm:text-sm font-semibold text-yellow-300">Estimated Value</label>
+                        <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Star className="h-4 w-4 text-yellow-400" />
+                              <label className="text-sm font-semibold text-yellow-300">Estimated Value</label>
+                            </div>
+                            <p className="text-white text-lg font-medium">₱{parseInt(selectedDonation.estimated_value).toLocaleString()}</p>
                           </div>
-                          <p className="text-white text-base sm:text-lg font-medium">₱{parseInt(selectedDonation.estimated_value).toLocaleString()}</p>
                         </div>
                       )}
                     </div>
 
                     {/* Location */}
-                    {selectedDonation.pickup_location && (
-                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <MapPin className="h-4 w-4 text-purple-400 flex-shrink-0" />
-                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Pickup Location</label>
+                    {(selectedDonation.pickup_location || selectedDonation.donor) && (
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-purple-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                          </div>
+                          <p className="text-white text-center max-w-[60%] break-words">{formatLocation(selectedDonation)}</p>
                         </div>
-                        <p className="text-sm sm:text-base text-white">{selectedDonation.pickup_location}</p>
                       </div>
                     )}
 
-                    {/* Delivery Mode */}
-                    <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Package className="h-4 w-4 text-yellow-400 flex-shrink-0" />
-                        <label className="text-xs sm:text-sm font-semibold text-yellow-300">Delivery Mode</label>
-                      </div>
-                      <div className={`badge ${getDeliveryModeColor(selectedDonation.delivery_mode)} mb-2`}>
-                        {getDeliveryModeLabel(selectedDonation.delivery_mode)}
-                      </div>
-                      <p className="text-sm text-yellow-200">💡 {getDeliveryInstructions(selectedDonation.delivery_mode)}</p>
-                    </div>
-
-                    {/* Dates */}
+                    {/* Delivery Mode and Posted Date */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Calendar className="h-4 w-4 text-orange-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-yellow-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Delivery Mode</label>
+                          </div>
+                          <p className="text-white text-lg font-medium">{getDeliveryModeLabel(selectedDonation.delivery_mode)}</p>
                         </div>
-                        <p className="text-white">{formatDate(selectedDonation.created_at)}</p>
                       </div>
 
-                      {selectedDonation.expiry_date && (
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                          <div className="flex items-center gap-2 mb-2">
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-orange-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                          </div>
+                          <p className="text-white">{formatDate(selectedDonation.created_at)}</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Expiry Date */}
+                    {selectedDonation.expiry_date && (
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-red-400" />
                             <label className="text-sm font-semibold text-yellow-300">Expires On</label>
                           </div>
                           <p className="text-white">{formatDate(selectedDonation.expiry_date)}</p>
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
 
                     {/* Tags */}
                     {selectedDonation.tags && selectedDonation.tags.length > 0 && (
@@ -790,68 +902,66 @@ const BrowseDonationsPage = () => {
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.2 }}
-                className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-2xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
               >
                 {/* Header */}
-                <div className="flex justify-between items-center mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-yellow-500/20">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg">
-                      <User className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400" />
+                <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0 gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                    <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                      <User className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-bold text-white">Donor Profile</h3>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">Donor Profile</h3>
+                      <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => setShowDonorProfileModal(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg"
-                    aria-label="Close profile modal"
-                  >
-                    <X className="h-5 w-5 sm:h-6 sm:w-6" />
-                  </button>
                 </div>
 
-                {/* Profile Content */}
-                <div className="space-y-4 sm:space-y-6">
+                {/* Content with Custom Scrollbar */}
+                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 custom-scrollbar">
+                  <div className="space-y-4 sm:space-y-6">
                   {loadingDonorProfile ? (
-                    <div className="flex flex-col items-center justify-center py-8 sm:py-12">
-                      <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-yellow-400 mb-3"></div>
+                    <div className="flex flex-col items-center justify-center py-6 sm:py-8">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-400 mb-3"></div>
                       <p className="text-yellow-300 text-sm">Loading profile...</p>
                     </div>
                   ) : (
                     <>
                       {/* Profile Header */}
-                      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4">
-                        <div className="flex-shrink-0">
+                      <div className="relative flex items-center gap-4">
+                        <div className="relative flex-shrink-0">
+                          <div 
+                            className="h-28 w-28 sm:h-36 sm:w-36 rounded-full overflow-hidden border-2 border-yellow-500 shadow-lg flex items-center justify-center cursor-pointer hover:border-yellow-400 transition-colors"
+                            onClick={() => setShowDonorProfileImageModal(true)}
+                            title="View profile picture"
+                          >
                           {selectedDonor?.profile_image_url ? (
                             <img 
                               src={selectedDonor.profile_image_url} 
                               alt={selectedDonor?.name || 'Donor'}
-                              className="h-20 w-20 sm:h-24 sm:w-24 rounded-full object-cover border-2 border-yellow-500 shadow-lg"
+                              className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-navy-700 flex items-center justify-center border-2 border-yellow-500/30 shadow-lg">
-                              <User className="h-10 w-10 sm:h-12 sm:w-12 text-yellow-400" />
+                            <div className="h-full w-full bg-navy-700 flex items-center justify-center">
+                              <User className="h-16 w-16 sm:h-20 sm:w-20 text-yellow-400" />
                             </div>
                           )}
+                          </div>
+                          {/* View Overlay - Shows on hover */}
+                          <div
+                            className="absolute inset-0 h-28 w-28 sm:h-36 sm:w-36 rounded-full bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity pointer-events-none cursor-pointer"
+                          >
+                            <Camera className="h-6 w-6 text-white" />
+                          </div>
                         </div>
                         
-                        <div className="flex-grow text-center sm:text-left">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                            <h4 className="text-white font-bold text-lg sm:text-xl">
-                              {selectedDonor?.name || selectedDonor?.full_name || 'Anonymous'}
-                            </h4>
-                            <div className="flex justify-center sm:justify-end">
-                              <IDVerificationBadge
-                                idStatus={selectedDonor?.id_verification_status}
-                                hasIdUploaded={selectedDonor?.primary_id_type && selectedDonor?.primary_id_number}
-                                size="sm"
-                                showText={true}
-                                showDescription={false}
-                              />
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs sm:text-sm">
-                            <span className="text-yellow-400 flex items-center gap-1">
-                              <Calendar className="h-3.5 w-3.5" />
+                        <div className="flex flex-col justify-center min-w-0 flex-1">
+                          <h4 className="text-white font-bold text-base sm:text-lg mb-1">
+                            {selectedDonor?.name || selectedDonor?.full_name || 'Anonymous'}
+                          </h4>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="text-yellow-400 flex items-center gap-1 whitespace-nowrap">
+                              <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
                               {(() => {
                                 const memberDate = selectedDonor?.created_at || selectedDonor?.user_created_at || selectedDonor?.joined_at || selectedDonor?.signup_date;
                                 if (memberDate) {
@@ -860,7 +970,7 @@ const BrowseDonationsPage = () => {
                                     if (!isNaN(date.getTime())) {
                                       return `Member since ${date.toLocaleDateString('en-US', { 
                                         year: 'numeric', 
-                                        month: 'long', 
+                                        month: 'short', 
                                         day: 'numeric' 
                                       })}`;
                                     }
@@ -871,119 +981,260 @@ const BrowseDonationsPage = () => {
                                 return 'New member';
                               })()}
                             </span>
+                            {selectedDonor?.account_type && selectedDonor.account_type !== 'individual' && (
+                              <span className="text-yellow-400 flex items-center gap-1 whitespace-nowrap">
+                                <Building2 className="h-3.5 w-3.5 flex-shrink-0" />
+                                {selectedDonor.account_type === 'business' ? 'Business' : 'Organization'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ID Verification Badge - Top Right Corner */}
+                        <div className="absolute top-0 right-0 flex-shrink-0">
+                          <IDVerificationBadge
+                            idStatus={selectedDonor?.id_verification_status}
+                            hasIdUploaded={selectedDonor?.primary_id_type && selectedDonor?.primary_id_number}
+                            size="sm"
+                            showText={true}
+                            showDescription={false}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Basic Information and Contact Information - 2 Column Layout */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Basic Information */}
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <User className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Basic Information
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Birthdate:</span>
+                              <span className={`break-words flex-1 ${selectedDonor?.birthdate ? 'text-white' : 'text-gray-400 italic'}`}>
+                                {selectedDonor?.birthdate ? (
+                                  new Date(selectedDonor.birthdate).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })
+                                ) : (
+                                  'Not provided'
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Age:</span>
+                              <span className={`break-words flex-1 ${selectedDonor?.birthdate ? 'text-white' : 'text-gray-400 italic'}`}>
+                                {selectedDonor?.birthdate ? (calculateAge(selectedDonor.birthdate) || 'Not available') : 'Not provided'}
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Account Type:</span>
+                              <span className={`break-words flex-1 ${selectedDonor?.account_type ? 'text-white' : 'text-gray-400 italic'}`}>
+                                {selectedDonor?.account_type ? (selectedDonor.account_type === 'business' ? 'Business/Organization' : 'Individual') : 'Not provided'}
+                              </span>
+                            </div>
+                            {selectedDonor?.account_type === 'business' && (
+                              <>
+                                <div className="flex items-start gap-2 min-w-0">
+                                  <span className="text-yellow-400 font-medium flex-shrink-0">Organization:</span>
+                                  <span className={`break-words flex-1 ${selectedDonor?.organization_name ? 'text-white' : 'text-gray-400 italic'}`}>
+                                    {selectedDonor?.organization_name || 'Not provided'}
+                                  </span>
+                                </div>
+                                <div className="flex items-start gap-2 min-w-0">
+                                  <span className="text-yellow-400 font-medium flex-shrink-0">Website:</span>
+                                  {selectedDonor?.website_link ? (
+                                    <a
+                                      href={selectedDonor.website_link}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-yellow-300 hover:text-yellow-200 break-all flex-1 flex items-center gap-1"
+                                    >
+                                      <Globe className="h-3 w-3 flex-shrink-0" />
+                                      {selectedDonor.website_link}
+                                    </a>
+                                  ) : (
+                                    <span className="text-gray-400 italic break-words flex-1">Not provided</span>
+                                  )}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Contact Information */}
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <Phone className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Contact Information
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Phone:</span>
+                              <span className="text-white break-words flex-1">
+                                {selectedDonor?.phone_number || selectedDonor?.phone ? (
+                                  <a
+                                    href={`tel:${selectedDonor.phone_number || selectedDonor.phone}`}
+                                    className="text-white hover:text-yellow-300 transition-colors break-all"
+                                  >
+                                    {selectedDonor.phone_number || selectedDonor.phone}
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400 italic">Not provided</span>
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Email:</span>
+                              <span className="text-white break-words flex-1">
+                                {selectedDonor?.email ? (
+                                  <a
+                                    href={`mailto:${selectedDonor.email}`}
+                                    className="text-white hover:text-yellow-300 transition-colors break-all"
+                                  >
+                                    {selectedDonor.email}
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400 italic">Not provided</span>
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Contact Information */}
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                        <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
-                          <Phone className="h-4 w-4 text-yellow-400" />
-                          Contact Information
+                      {/* Address Details - Combined Location and Address */}
+                      <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                        <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                          <MapPin className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                          Address Details
                         </h5>
-                        <div className="space-y-3 text-sm">
-                          <div className="flex items-start justify-between gap-4">
-                            <span className="text-yellow-400 font-medium">Phone:</span>
-                            {selectedDonor?.phone_number || selectedDonor?.phone ? (
-                              <a
-                                href={`tel:${selectedDonor.phone_number || selectedDonor.phone}`}
-                                className="text-white hover:text-yellow-300 transition-colors flex items-center gap-1"
-                              >
-                                <Phone className="h-3.5 w-3.5" />
-                                {selectedDonor.phone_number || selectedDonor.phone}
-                              </a>
-                            ) : (
-                              <span className="text-gray-400 italic">Not provided</span>
-                            )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs sm:text-sm">
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className="text-yellow-400 font-medium flex-shrink-0">Street:</span>
+                            <span className={`break-words flex-1 ${selectedDonor?.address_street ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedDonor?.address_street || 'Not provided'}
+                            </span>
                           </div>
-                          <div className="flex items-start justify-between gap-4">
-                            <span className="text-yellow-400 font-medium">Email:</span>
-                            {selectedDonor?.email ? (
-                              <a
-                                href={`mailto:${selectedDonor.email}`}
-                                className="text-white hover:text-yellow-300 transition-colors break-all text-right"
-                              >
-                                {selectedDonor.email}
-                              </a>
-                            ) : (
-                              <span className="text-gray-400 italic">Not provided</span>
-                            )}
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className="text-yellow-400 font-medium flex-shrink-0">Barangay:</span>
+                            <span className={`break-words flex-1 ${selectedDonor?.address_barangay ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedDonor?.address_barangay || 'Not provided'}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className="text-yellow-400 font-medium flex-shrink-0">Landmark:</span>
+                            <span className={`break-words flex-1 ${selectedDonor?.address_landmark ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedDonor?.address_landmark || 'Not provided'}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className="text-yellow-400 font-medium flex-shrink-0">City:</span>
+                            <span className={`break-words flex-1 ${selectedDonor?.city ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedDonor?.city || 'Not provided'}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className="text-yellow-400 font-medium flex-shrink-0">Province:</span>
+                            <span className={`break-words flex-1 ${selectedDonor?.province ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedDonor?.province || 'Not provided'}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2 min-w-0">
+                            <span className="text-yellow-400 font-medium flex-shrink-0">ZIP Code:</span>
+                            <span className={`break-words flex-1 ${selectedDonor?.zip_code ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedDonor?.zip_code || 'Not provided'}
+                            </span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Location Information */}
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                        <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
-                          <MapPin className="h-4 w-4 text-yellow-400" />
-                          Location Information
-                        </h5>
-                        <div className="space-y-3 text-sm">
-                          <div className="flex items-start justify-between gap-4">
-                            <span className="text-yellow-400 font-medium">City:</span>
-                            <span className="text-white text-right">
-                              {selectedDonor?.city ? (
-                                selectedDonor.city
-                              ) : (
-                                <span className="text-gray-400 italic">Not specified</span>
-                              )}
-                            </span>
-                          </div>
-                          <div className="flex items-start justify-between gap-4">
-                            <span className="text-yellow-400 font-medium">Province:</span>
-                            <span className="text-white text-right">
-                              {selectedDonor?.province ? (
-                                selectedDonor.province
-                              ) : (
-                                <span className="text-gray-400 italic">Not specified</span>
-                              )}
-                            </span>
-                          </div>
-                          {selectedDonor?.address && (
-                            <div className="flex items-start justify-between gap-4">
-                              <span className="text-yellow-400 font-medium">Address:</span>
-                              <span className="text-white text-right leading-relaxed">
-                                {selectedDonor.address}
+                      {/* Emergency Contact and Donation Preferences - 2 Column Layout */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Emergency Contact */}
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <AlertCircle className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Emergency Contact
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Name:</span>
+                              <span className={`break-words flex-1 ${selectedDonor?.emergency_contact_name ? 'text-white' : 'text-gray-400 italic'}`}>
+                                {selectedDonor?.emergency_contact_name || 'Not provided'}
                               </span>
                             </div>
-                          )}
-                          {selectedDonor?.address_barangay && (
-                            <div className="flex items-start justify-between gap-4">
-                              <span className="text-yellow-400 font-medium">Barangay:</span>
-                              <span className="text-white text-right">
-                                {selectedDonor.address_barangay}
-                              </span>
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Phone:</span>
+                              {selectedDonor?.emergency_contact_phone ? (
+                                <a
+                                  href={`tel:${selectedDonor.emergency_contact_phone}`}
+                                  className="text-white hover:text-yellow-300 transition-colors break-all flex-1"
+                                >
+                                  {selectedDonor.emergency_contact_phone}
+                                </a>
+                              ) : (
+                                <span className="text-gray-400 italic break-words flex-1">Not provided</span>
+                              )}
                             </div>
-                          )}
-                          {(selectedDonor?.city || selectedDonor?.province) && (
-                            <div className="pt-2 border-t border-yellow-500/20">
-                              <div className="flex items-center gap-2 text-yellow-300">
-                                <MapPin className="h-3.5 w-3.5" />
-                                <span>
-                                  {[selectedDonor?.city, selectedDonor?.province].filter(Boolean).join(', ')}
-                                </span>
+                          </div>
+                        </div>
+
+                        {/* Donation Preferences */}
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <Gift className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Donation Preferences
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            {selectedDonor?.donation_types?.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {selectedDonor.donation_types.map((type, i) => (
+                                  <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded-full text-yellow-300 border border-yellow-500/30 font-medium break-words">
+                                    {type}
+                                  </span>
+                                ))}
                               </div>
-                            </div>
-                          )}
+                            ) : (
+                              <p className="text-gray-400 italic text-xs">Not provided</p>
+                            )}
+                          </div>
                         </div>
                       </div>
 
-                      {/* Bio */}
-                      {selectedDonor?.bio && (
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                          <h5 className="text-white font-semibold mb-3">About</h5>
-                          <p className="text-white text-sm leading-relaxed">{selectedDonor.bio}</p>
-                        </div>
-                      )}
+                      {/* Bio/About */}
+                      <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                        <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                          <MessageSquare className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                          About
+                        </h5>
+                        <p className={`text-xs sm:text-sm leading-relaxed break-words ${selectedDonor?.bio ? 'text-yellow-200' : 'text-gray-400 italic'}`}>
+                          {selectedDonor?.bio || 'Not provided'}
+                        </p>
+                      </div>
                     </>
                   )}
+                  </div>
                 </div>
 
                 {/* Footer */}
-                <div className="pt-4 mt-6 border-t-2 border-yellow-500/20">
+                <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t-2 border-yellow-500/20 flex flex-col sm:flex-row justify-between gap-3 flex-shrink-0">
+                  {selectedDonor?.id && user?.id && selectedDonor.id !== user.id && (
+                    <button
+                      onClick={() => setShowReportModal(true)}
+                      className="px-4 sm:px-6 py-2.5 bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 rounded-lg font-semibold transition-all flex items-center justify-center gap-2"
+                    >
+                      <Flag className="h-4 w-4" />
+                      Report User
+                    </button>
+                  )}
                   <button
                     onClick={() => setShowDonorProfileModal(false)}
-                    className="w-full px-4 py-2.5 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg font-semibold transition-all shadow-lg hover:shadow-xl active:scale-95"
+                    className={`px-4 sm:px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600 ${selectedDonor?.id && user?.id && selectedDonor.id !== user.id ? 'flex-1' : 'w-full'}`}
                   >
                     Close
                   </button>
@@ -992,6 +1243,79 @@ const BrowseDonationsPage = () => {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Donor Profile Image Viewer Modal */}
+        <AnimatePresence>
+          {showDonorProfileImageModal && selectedDonor && (
+            <div className="fixed inset-0 z-[60]">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowDonorProfileImageModal(false)}
+                className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+              />
+              
+              {/* Image Container */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative w-full h-full flex items-center justify-center p-4 sm:p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {selectedDonor?.profile_image_url ? (
+                  <>
+                    <img
+                      src={selectedDonor.profile_image_url}
+                      alt={selectedDonor?.name || 'Donor'}
+                      className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                    />
+                    {/* Close Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowDonorProfileImageModal(false)}
+                      className="absolute top-4 right-4 p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors backdrop-blur-sm z-10 shadow-lg"
+                      title="Close"
+                      aria-label="Close image viewer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="relative flex flex-col items-center justify-center text-center">
+                    <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-navy-800 border-4 border-navy-700 flex items-center justify-center mb-4">
+                      <User className="h-16 w-16 sm:h-20 sm:w-20 text-yellow-400" />
+                    </div>
+                    <p className="text-gray-400 text-sm sm:text-base">No profile picture uploaded</p>
+                    {/* Close Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowDonorProfileImageModal(false)}
+                      className="absolute top-4 right-4 p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors backdrop-blur-sm z-10 shadow-lg"
+                      title="Close"
+                      aria-label="Close image viewer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Report User Modal */}
+        {selectedDonor && (
+          <ReportUserModal
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            reportedUserId={selectedDonor.id}
+            reportedUserName={selectedDonor.name || selectedDonor.full_name}
+            reportedUserRole={selectedDonor.role}
+          />
+        )}
       </div>
     </div>
   )

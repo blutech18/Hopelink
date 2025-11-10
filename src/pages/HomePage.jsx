@@ -279,9 +279,9 @@ const HomePage = () => {
           </motion.div>
 
           {loadingEvents ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {[1, 2, 3].map((i) => (
-                <div key={i} className="bg-navy-800 rounded-lg p-6 border border-gray-600 animate-pulse">
+                <div key={i} className="rounded-lg p-6 border border-gray-600 animate-pulse" style={{backgroundColor: '#001a5c'}}>
                   <div className="h-6 bg-gray-600 rounded mb-4"></div>
                   <div className="h-4 bg-gray-600 rounded mb-3"></div>
                   <div className="space-y-2 mb-4">
@@ -294,7 +294,7 @@ const HomePage = () => {
               ))}
             </div>
           ) : upcomingEvents.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               {upcomingEvents.map((event, index) => (
                 <motion.div
                   key={event.id}
@@ -302,7 +302,8 @@ const HomePage = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                   viewport={{ once: true }}
-                  className="bg-navy-800 rounded-lg p-6 border border-gray-600 hover:border-yellow-400 transition-colors"
+                  className="rounded-lg p-6 border border-gray-600 hover:border-yellow-400 transition-colors"
+                  style={{backgroundColor: '#001a5c'}}
                 >
                   <div className="flex items-center justify-between mb-4">
                     <span className="px-3 py-1 bg-yellow-500 text-navy-950 text-sm font-semibold rounded-full">
@@ -431,7 +432,7 @@ const HomePage = () => {
             >
               {/* Background Pattern */}
               <div className="absolute inset-0 opacity-5 pointer-events-none" style={{
-                backgroundImage: 'radial-gradient(circle at 20% 50%, #fbbf24 2px, transparent 2px), radial-gradient(circle at 80% 80%, #fbbf24 2px, transparent 2px)',
+                backgroundImage: 'radial-gradient(circle at 20% 50%, #cdd74a 2px, transparent 2px), radial-gradient(circle at 80% 80%, #cdd74a 2px, transparent 2px)',
                 backgroundSize: '50px 50px'
               }}></div>
               
@@ -460,7 +461,7 @@ const HomePage = () => {
             >
               {/* Background Pattern */}
               <div className="absolute inset-0 opacity-5 pointer-events-none" style={{
-                backgroundImage: 'radial-gradient(circle at 20% 50%, #fbbf24 2px, transparent 2px), radial-gradient(circle at 80% 80%, #fbbf24 2px, transparent 2px)',
+                backgroundImage: 'radial-gradient(circle at 20% 50%, #cdd74a 2px, transparent 2px), radial-gradient(circle at 80% 80%, #cdd74a 2px, transparent 2px)',
                 backgroundSize: '50px 50px'
               }}></div>
               
@@ -607,14 +608,12 @@ const HomePage = () => {
               viewport={{ once: true }}
               className="mt-12 text-center"
             >
-              <div className="bg-yellow-900/20 border border-yellow-400/30 rounded-lg p-6 max-w-3xl mx-auto">
                 <h4 className="text-xl font-semibold text-yellow-300 mb-3">Thank You for Your Generosity!</h4>
-                <p className="text-gray-300 leading-relaxed">
+              <p className="text-gray-300 leading-relaxed max-w-3xl mx-auto">
                   Your monetary donations help us provide essential resources to those in need. 
                   Every contribution, no matter the size, makes a significant difference in someone's life. 
                   After donating, please send us a screenshot of your transaction to <span className="text-yellow-400 font-medium">cfcgkmisor@gmail.com</span> for our records.
                 </p>
-              </div>
             </motion.div>
           </motion.div>
         </div>

@@ -88,7 +88,7 @@ const LoginPage = () => {
           >
             <img src="/hopelinklogo.png" alt="HopeLink" className="h-20 rounded mx-auto mb-8" />
             <h1 className="text-4xl font-bold text-white mb-6">Welcome Back</h1>
-            <p className="text-xl text-yellow-200 mb-8 max-w-md">
+            <p className="text-xl mb-8 max-w-md" style={{color: '#e8ebc4'}}>
               Continue making a difference in your community through HopeLink
             </p>
             
@@ -96,7 +96,7 @@ const LoginPage = () => {
         </div>
 
         {/* Right Column - Login Form (yellow background column) */}
-        <div className="w-full lg:w-1/2 flex flex-col justify-center py-6 px-6 sm:px-8" style={{backgroundColor: '#fbbf24'}}>
+        <div className="w-full lg:w-1/2 flex flex-col justify-center py-6 px-6 sm:px-8" style={{backgroundColor: '#cdd74a'}}>
           <motion.div
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -223,7 +223,7 @@ const LoginPage = () => {
                     <div className="w-full border-t border-gray-300" />
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-2 text-yellow-200" style={{backgroundColor: '#001a5c'}}>Or continue with</span>
+                    <span className="px-2" style={{backgroundColor: '#001a5c', color: '#e8ebc4'}}>Or continue with</span>
                   </div>
                 </div>
 
@@ -257,14 +257,17 @@ const LoginPage = () => {
                     <div className="w-full border-t border-gray-300" />
                   </div>
                   <div className="relative flex justify-center text-sm">
-                    <span className="px-2 text-yellow-200" style={{backgroundColor: '#001a5c'}}>New to HopeLink?</span>
+                    <span className="px-2" style={{backgroundColor: '#001a5c', color: '#e8ebc4'}}>New to HopeLink?</span>
                   </div>
                 </div>
 
                 <div className="mt-6">
                   <Link
                     to="/signup"
-                    className="w-full flex justify-center py-2 px-4 border border-yellow-400 rounded-lg text-sm font-medium text-yellow-400 hover:bg-yellow-400/10 transition-colors"
+                    className="w-full flex justify-center py-2 px-4 border rounded-lg text-sm font-medium transition-colors"
+                    style={{borderColor: '#cdd74a', color: '#cdd74a'}}
+                    onMouseEnter={(e) => e.currentTarget.style.backgroundColor = 'rgba(205, 215, 74, 0.1)'}
+                    onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                   >
                     Create an account
                   </Link>

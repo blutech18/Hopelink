@@ -354,9 +354,6 @@ const AdminSettingsPage = () => {
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
-                <Settings className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
-              </div>
               <div className="min-w-0">
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Platform Settings</h1>
                 <p className="text-yellow-300 text-xs sm:text-sm">Configure and manage your HopeLink platform</p>

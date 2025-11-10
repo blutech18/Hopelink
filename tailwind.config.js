@@ -100,6 +100,19 @@ export default {
           800: '#991b1b',
           900: '#7f1d1d',
         },
+        // Custom yellow color - stronger, more vibrant
+        yellow: {
+          50: '#e8ebc4',
+          100: '#e1e5b8',
+          200: '#d9dfac',
+          300: '#d2d9a0',
+          400: '#cdd74a', // Main yellow
+          500: '#cdd74a', // Main yellow
+          600: '#b8c242', // Darker
+          700: '#a3ad3a', // Darker
+          800: '#8e9832', // Darker
+          900: '#79832a', // Darkest
+        },
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],

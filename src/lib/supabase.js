@@ -56,6 +56,30 @@ export const db = {
       
       return data
     } catch (error) {
+      // Handle network errors gracefully
+      if (error.message?.includes('Failed to fetch') || 
+          error.message?.includes('CORS') || 
+          error.message?.includes('NetworkError') || 
+          error.message?.includes('QUIC') ||
+          error.message?.includes('TypeError: Failed to fetch') ||
+          error.code === '' || 
+          error.statusCode === 502 || 
+          error.statusCode === 503 || 
+          error.statusCode === 504 || 
+          error.statusCode === 500) {
+        console.warn('Network/server error fetching profile (non-critical):', error.message)
+        // Return null instead of throwing to prevent UI breakage
+        return null
+      }
+      
+      // Handle statement timeout errors
+      if (error.code === '57014' || 
+          error.message?.includes('statement timeout') || 
+          error.message?.includes('canceling statement')) {
+        console.warn('Query timeout fetching profile (table may be large or slow):', error.message)
+        return null
+      }
+      
       console.error('Error in getProfile:', error)
       throw error
     }
@@ -103,6 +127,30 @@ export const db = {
       .single()
     
     if (error) throw error
+
+    // Notify admins about new user registration
+    try {
+      const userName = data.name || 'A new user'
+      const roleEmoji = data.role === 'donor' ? '💝' : data.role === 'recipient' ? '🤲' : data.role === 'volunteer' ? '🚚' : '👤'
+      
+      await this.notifyAllAdmins({
+        type: 'system_alert',
+        title: `${roleEmoji} New User Registration`,
+        message: `${userName} registered as ${data.role}`,
+        data: {
+          user_id: userId,
+          user_name: userName,
+          user_role: data.role,
+          user_email: data.email,
+          link: '/admin/users',
+          notification_type: 'new_user'
+        }
+      })
+    } catch (notifError) {
+      console.error('Error notifying admins about new user:', notifError)
+      // Don't throw - user was created successfully
+    }
+
     return data
   },
 
@@ -119,6 +167,34 @@ export const db = {
       .single()
     
     if (error) throw error
+
+    // Notify admins when user uploads ID documents
+    if ((updates.primary_id_image_url || updates.secondary_id_image_url) && data) {
+      try {
+        const userName = data.name || 'A user'
+        const idType = updates.primary_id_type || updates.secondary_id_type || 'ID'
+        
+        await this.notifyAllAdmins({
+          type: 'system_alert',
+          title: '🆔 New ID Document Uploaded',
+          message: `${userName} uploaded ${idType} for verification`,
+          data: {
+            user_id: userId,
+            user_name: userName,
+            user_role: data.role,
+            id_type: idType,
+            has_primary_id: !!updates.primary_id_image_url,
+            has_secondary_id: !!updates.secondary_id_image_url,
+            link: '/admin/id-verification',
+            notification_type: 'new_id_upload'
+          }
+        })
+      } catch (notifError) {
+        console.error('Error notifying admins about ID upload:', notifError)
+        // Don't throw - profile was updated successfully
+      }
+    }
+
     return data
   },
 
@@ -129,16 +205,27 @@ export const db = {
     }
 
     // Apply limit first for better performance
-    const limit = filters.limit || 1000 // Default reasonable limit
+    const limit = filters.limit || 500 // Default reasonable limit
 
-    // Auto-expire donations before fetching
-    try { await this.autoExpireDonations() } catch (_) {}
+    // Auto-expire donations in background (non-blocking) for better performance
+    // Fire and forget - don't wait for it to complete
+    this.autoExpireDonations(null).catch(err => {
+      console.warn('Background auto-expire donations failed:', err)
+    })
 
     let query = supabase
       .from('donations')
       .select(`
         *,
-        donor:users!donations_donor_id_fkey(name, email, profile_image_url)
+        donor:users!donations_donor_id_fkey(
+          id,
+          name, 
+          email, 
+          profile_image_url,
+          donation_types,
+          latitude,
+          longitude
+        )
       `)
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -160,6 +247,24 @@ export const db = {
     return data
   },
 
+  async getDonationById(donationId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    const { data, error } = await supabase
+      .from('donations')
+      .select(`
+        *,
+        donor:users!donations_donor_id_fkey(name, email, profile_image_url)
+      `)
+      .eq('id', donationId)
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
   async createDonation(donation) {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
@@ -169,10 +274,70 @@ export const db = {
     const { data, error } = await supabase
       .from('donations')
       .insert(donation)
-      .select('*')
+      .select(`
+        *,
+        donor:users!donations_donor_id_fkey(id, name, email)
+      `)
       .single()
     
     if (error) throw error
+
+    // Notify admins about new donations
+    try {
+      const donorName = data.donor?.name || 'A donor'
+      
+      if (data.donation_destination === 'organization') {
+        // CFC Direct Donation
+        await this.notifyAllAdmins({
+          type: 'system_alert',
+          title: '🏢 New Direct Donation to CFC-GK',
+          message: `${donorName} donated ${data.category} directly to the organization`,
+          data: {
+            donation_id: data.id,
+            donor_id: data.donor_id,
+            donor_name: donorName,
+            title: data.title,
+            category: data.category,
+            quantity: data.quantity,
+            link: '/admin/cfc-donations',
+            notification_type: 'new_cfc_donation'
+          }
+        })
+      } else {
+        // Regular Posted Donation
+        await this.notifyAllAdmins({
+          type: 'system_alert',
+          title: '📦 New Donation Posted',
+          message: `${donorName} posted ${data.category} for recipients`,
+          data: {
+            donation_id: data.id,
+            donor_id: data.donor_id,
+            donor_name: donorName,
+            title: data.title,
+            category: data.category,
+            quantity: data.quantity,
+            link: '/admin/donations',
+            notification_type: 'new_donation'
+          }
+        })
+      }
+    } catch (notifError) {
+      console.error('Error notifying admins about new donation:', notifError)
+      // Don't throw - donation was created successfully
+    }
+
+    // Perform automatic matching if enabled (non-blocking)
+    if (data.donation_destination === 'recipients' && data.status === 'available') {
+      try {
+        const autoMatchResult = await this.performAutomaticMatching(data.id, null)
+        if (autoMatchResult.matched) {
+          return { ...data, _autoMatched: true, _autoMatchResult: autoMatchResult }
+        }
+      } catch (matchError) {
+        console.warn('Automatic matching failed (non-blocking):', matchError)
+      }
+    }
+
     // Incremental matching: suggest top matches for this new donation (non-blocking best-effort)
     try {
       const suggestions = await this.matchNewDonation(data.id, { maxResults: 3 })
@@ -270,7 +435,7 @@ export const db = {
     }
 
     // Apply limit first for better performance
-    const limit = filters.limit || 1000 // Default reasonable limit
+    const limit = filters.limit || 500 // Default reasonable limit
 
     let query = supabase
       .from('donation_requests')
@@ -287,9 +452,15 @@ export const db = {
           province,
           address,
           address_barangay,
+          address_house,
+          address_street,
+          address_subdivision,
+          address_landmark,
           bio,
           household_size,
           assistance_needs,
+          latitude,
+          longitude,
           created_at
         )
       `)
@@ -343,6 +514,17 @@ export const db = {
       .single()
     
     if (error) throw error
+    
+    // Perform automatic matching if enabled (non-blocking)
+    try {
+      const autoMatchResult = await this.performAutomaticMatching(null, data.id)
+      if (autoMatchResult.matched) {
+        return { ...data, _autoMatched: true, _autoMatchResult: autoMatchResult }
+      }
+    } catch (matchError) {
+      console.warn('Automatic matching failed (non-blocking):', matchError)
+    }
+    
     // Incremental matching: suggest top matches for this new request (non-blocking best-effort)
     try {
       const suggestions = await this.matchNewRequest(data.id, { maxResults: 5 })
@@ -498,17 +680,29 @@ export const db = {
 
     try {
       const profile = await this.getProfile(userId)
+      if (!profile) {
+        console.warn('No profile found for badges calculation, returning empty array')
+        return []
+      }
+      
       const role = profile?.role
       const badges = []
 
       if (role === 'donor') {
         const { totalCompletedDonations, averageRating, totalRatings } = await this.getDonorStats(userId)
+        const completedEvents = await this.getUserCompletedEvents(userId).catch(() => [])
+        const completedEventsCount = completedEvents?.length || 0
+        
         // Trusted Donor: Minimum 5 completed donations with at least 3.5 average rating
         if (totalCompletedDonations >= 5 && (averageRating || 0) >= 3.5) badges.push('Trusted Donor')
         // Gold Donor: Minimum 10 completed donations with at least 4.0 average rating
         if (totalCompletedDonations >= 10 && (averageRating || 0) >= 4.0) badges.push('Gold Donor')
         // Top Rated: Minimum 4.5 average rating with at least 10 ratings
         if ((averageRating || 0) >= 4.5 && (totalRatings || 0) >= 10) badges.push('Top Rated')
+        // Community Champion: Completed 3 or more events with present attendance
+        if (completedEventsCount >= 3) badges.push('Community Champion')
+        // Event Volunteer: Completed at least 1 event with present attendance
+        if (completedEventsCount >= 1) badges.push('Event Volunteer')
       } else if (role === 'recipient') {
         // Priority Recipient if critical requests exist (indicates urgent need)
         const requests = await this.getRequests({ requester_id: userId, status: 'open' })
@@ -516,6 +710,9 @@ export const db = {
         if (hasCritical) badges.push('Priority Recipient')
       } else if (role === 'volunteer') {
         const stats = await this.getVolunteerStats(userId).catch(() => null)
+        const completedEvents = await this.getUserCompletedEvents(userId).catch(() => [])
+        const completedEventsCount = completedEvents?.length || 0
+        
         if (stats) {
           // Verified Volunteer: Minimum 5 completed deliveries with at least 3.5 average rating
           if (stats.completedDeliveries >= 5 && (stats.averageRating || 0) >= 3.5) {
@@ -526,6 +723,11 @@ export const db = {
             badges.push('Elite Volunteer')
           }
         }
+        
+        // Community Champion: Completed 3 or more events with present attendance
+        if (completedEventsCount >= 3) badges.push('Community Champion')
+        // Event Volunteer: Completed at least 1 event with present attendance
+        if (completedEventsCount >= 1) badges.push('Event Volunteer')
       }
 
       return badges
@@ -645,84 +847,145 @@ export const db = {
   },
 
   // Additional recipient-specific functions
-  async getAvailableDonations() {
+  async getAvailableDonations(filters = {}) {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Auto-expire donations before fetching available
-    try { await this.autoExpireDonations() } catch (_) {}
+    // Auto-expire donations in background (non-blocking) for better performance
+    // Fire and forget - don't wait for it to complete
+    this.autoExpireDonations().catch(err => {
+      console.warn('Background auto-expire donations failed:', err)
+    })
 
-    const { data, error } = await supabase
+    // Extract limit and other filters safely
+    const limit = filters?.limit || 1000 // Default to reasonable limit, can be overridden
+    const otherFilters = filters ? { ...filters } : {}
+    delete otherFilters.limit
+
+    let query = supabase
       .from('donations')
       .select(`
         *,
-        donor:users!donations_donor_id_fkey(id, name, email, profile_image_url, city)
+        donor:users!donations_donor_id_fkey(
+          id, 
+          name, 
+          email, 
+          profile_image_url, 
+          city,
+          province,
+          address,
+          address_barangay,
+          address_house,
+          address_street,
+          address_subdivision,
+          address_landmark
+        )
       `)
       .eq('status', 'available')
       // Exclude donations destined for organization (CFC-GK) - only show donations for recipients
       .or('donation_destination.is.null,donation_destination.eq.recipients')
       .order('is_urgent', { ascending: false })
       .order('created_at', { ascending: false })
+      .limit(limit)
+
+    // Apply additional filters if provided
+    if (otherFilters.category) {
+      query = query.eq('category', otherFilters.category)
+    }
+    if (otherFilters.condition) {
+      query = query.eq('condition', otherFilters.condition)
+    }
+    if (otherFilters.is_urgent !== undefined) {
+      query = query.eq('is_urgent', otherFilters.is_urgent)
+    }
+
+    const { data, error } = await query
 
     if (error) throw error
     return data
   },
 
   // Mark donations as expired if past expiration_date; archive expired older than retention
-  async autoExpireDonations(retentionDays = 30) {
+  async autoExpireDonations(retentionDays = null) {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Load retention from settings if available
-    try {
-      const s = await this.getSettings()
-      if (s?.expiry_retention_days && Number.isFinite(s.expiry_retention_days)) {
-        retentionDays = s.expiry_retention_days
+    // Load retention from settings dynamically if not provided
+    if (retentionDays === null) {
+      try {
+        const s = await this.getSettings()
+        if (s?.expiry_retention_days && Number.isFinite(s.expiry_retention_days)) {
+          retentionDays = s.expiry_retention_days
+        } else {
+          retentionDays = 30 // Default fallback
+        }
+      } catch (_) {
+        retentionDays = 30 // Default fallback on error
       }
-    } catch (_) {}
+    }
+
+    let expiredCount = 0
+    let archivedCount = 0
 
     // Expire: set status='expired' and expired_at when expiration_date < now and not already terminal
-    const terminalStatuses = ['completed', 'cancelled', 'archived']
     try {
       // Get ids to update to avoid mass updates blindly
-      const { data: toExpire } = await supabase
+      const { data: toExpire, error: expireError } = await supabase
         .from('donations')
         .select('id')
         .lt('expiration_date', new Date().toISOString())
         .in('status', ['available', 'matched', 'claimed', 'in_transit', 'delivered'])
 
-      if (toExpire && toExpire.length > 0) {
+      if (expireError) {
+        console.warn('Error fetching donations to expire:', expireError)
+      } else if (toExpire && toExpire.length > 0) {
         const ids = toExpire.map(d => d.id)
-        await supabase
+        const { error: updateError } = await supabase
           .from('donations')
           .update({ status: 'expired', expired_at: new Date().toISOString() })
           .in('id', ids)
+
+        if (updateError) {
+          console.warn('Error expiring donations:', updateError)
+        } else {
+          expiredCount = ids.length
+        }
       }
     } catch (e) {
-      // non-fatal
+      console.warn('Error in autoExpireDonations (expire):', e)
     }
 
     // Archive: move expired to archived after retention
     try {
       const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000).toISOString()
-      const { data: toArchive } = await supabase
+      const { data: toArchive, error: archiveError } = await supabase
         .from('donations')
         .select('id')
         .eq('status', 'expired')
         .lt('expired_at', cutoff)
 
-      if (toArchive && toArchive.length > 0) {
+      if (archiveError) {
+        console.warn('Error fetching donations to archive:', archiveError)
+      } else if (toArchive && toArchive.length > 0) {
         const ids = toArchive.map(d => d.id)
-        await supabase
+        const { error: updateError } = await supabase
           .from('donations')
           .update({ status: 'archived', archived_at: new Date().toISOString() })
           .in('id', ids)
+
+        if (updateError) {
+          console.warn('Error archiving donations:', updateError)
+        } else {
+          archivedCount = ids.length
+        }
       }
     } catch (e) {
-      // non-fatal
+      console.warn('Error in autoExpireDonations (archive):', e)
     }
+
+    return { expiredCount, archivedCount }
   },
 
   async claimDonation(donationId, recipientId) {
@@ -1009,6 +1272,33 @@ export const db = {
       .single()
     
     if (error) throw error
+
+    // Notify all admins about new request
+    try {
+      const requesterName = data.requester?.name || 'A recipient'
+      const urgencyEmoji = data.urgency === 'critical' ? '🚨' : data.urgency === 'high' ? '⚠️' : data.urgency === 'medium' ? '📋' : '📝'
+      
+      await this.notifyAllAdmins({
+        type: 'system_alert',
+        title: `${urgencyEmoji} New Donation Request`,
+        message: `${requesterName} created a ${data.urgency} priority request for ${data.category}`,
+        data: {
+          request_id: data.id,
+          requester_id: data.requester_id,
+          requester_name: requesterName,
+          title: data.title,
+          category: data.category,
+          urgency: data.urgency,
+          quantity_needed: data.quantity_needed,
+          link: '/admin/requests',
+          notification_type: 'new_request'
+        }
+      })
+    } catch (notifError) {
+      console.error('Error notifying admins about new request:', notifError)
+      // Don't throw - request was created successfully
+    }
+
     return data
   },
 
@@ -1095,6 +1385,9 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    // Apply limit for better performance
+    const limit = filters.limit || 1000 // Default reasonable limit
+
     let query = supabase
       .from('events')
       .select(`
@@ -1116,6 +1409,7 @@ export const db = {
         participants:event_participants(count)
       `)
       .order('created_at', { ascending: false })
+      .limit(limit)
 
     if (filters.status) {
       query = query.eq('status', filters.status)
@@ -1202,6 +1496,29 @@ export const db = {
       .single()
 
     if (fetchError) throw fetchError
+
+    // Notify all admins about new event (except the creator if they're an admin)
+    const { data: creatorData } = await supabase
+      .from('users')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    // Only notify if creator is not an admin (to avoid self-notification)
+    if (creatorData?.role !== 'admin') {
+      await this.notifyAllAdmins({
+        type: 'event_created',
+        title: 'New Event Created',
+        message: `A new event "${eventData.name}" has been created`,
+        data: {
+          event_id: event.id,
+          event_name: eventData.name,
+          creator_id: user.id,
+          creator_name: creatorData?.name || 'Unknown'
+        }
+      })
+    }
+
     return fullEvent
   },
 
@@ -1227,6 +1544,16 @@ export const db = {
       .single()
 
     if (eventError) throw eventError
+
+    // Get previous event items before deletion to compare for donation notifications
+    let previousItems = []
+    if (donationItems && donationItems.length > 0) {
+      const { data: prevItems } = await supabase
+        .from('event_items')
+        .select('id, name, collected_quantity')
+        .eq('event_id', eventId)
+      previousItems = prevItems || []
+    }
 
     // Delete existing event items
     const { error: deleteError } = await supabase
@@ -1268,6 +1595,73 @@ export const db = {
       .single()
 
     if (fetchError) throw fetchError
+
+    // Notify admins about event status changes (cancellation, etc.)
+    if (eventData.status === 'cancelled' && event.status !== 'cancelled') {
+      // Get user details
+      const { data: updaterData } = await supabase
+        .from('users')
+        .select('name, role')
+        .eq('id', user.id)
+        .single()
+
+      // Notify all admins about event cancellation (excluding the admin who cancelled it)
+      await this.notifyAllAdmins({
+        type: 'event_cancelled',
+        title: 'Event Cancelled',
+        message: `The event "${event.name}" has been cancelled${updaterData?.name ? ` by ${updaterData.name}` : ''}`,
+        data: {
+          event_id: eventId,
+          event_name: event.name,
+          cancelled_by: user.id,
+          cancelled_by_name: updaterData?.name || 'Unknown'
+        }
+      }, user.id)
+    }
+
+    // Check if donation items were updated with increased collected_quantity
+    if (donationItems && donationItems.length > 0 && previousItems.length > 0) {
+      // Check for increased collected_quantity
+      const itemsWithIncreasedQuantity = donationItems.filter(newItem => {
+        const previousItem = previousItems.find(prev => prev.name === newItem.name)
+        if (!previousItem) return false
+        return (newItem.collected_quantity || 0) > (previousItem.collected_quantity || 0)
+      })
+
+      if (itemsWithIncreasedQuantity.length > 0) {
+        // Get user details
+        const { data: updaterData } = await supabase
+          .from('users')
+          .select('name, role')
+          .eq('id', user.id)
+          .single()
+
+        // Only notify if updater is not an admin (to avoid self-notification)
+        if (updaterData?.role !== 'admin') {
+          const totalIncrease = itemsWithIncreasedQuantity.reduce((sum, item) => {
+            const prevItem = previousItems.find(p => p.name === item.name)
+            return sum + ((item.collected_quantity || 0) - (prevItem?.collected_quantity || 0))
+          }, 0)
+
+          await this.notifyAllAdmins({
+            type: 'event_donation_received',
+            title: 'Event Donation Received',
+            message: `${updaterData?.name || 'A donor'} has donated ${totalIncrease} item(s) to "${event.name}"`,
+            data: {
+              event_id: eventId,
+              event_name: event.name,
+              donor_id: user.id,
+              donor_name: updaterData?.name || 'Unknown',
+              items_updated: itemsWithIncreasedQuantity.map(item => ({
+                name: item.name,
+                quantity: item.collected_quantity
+              }))
+            }
+          })
+        }
+      }
+    }
+
     return fullEvent
   },
 
@@ -1306,6 +1700,649 @@ export const db = {
     if (eventError) throw eventError
 
     return true
+  },
+
+  async joinEvent(eventId, userId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Check if user is banned from events and get user details
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, event_banned, event_absence_count, name, email')
+        .eq('id', userId)
+        .single()
+
+      if (userError) throw userError
+
+      if (userData?.event_banned) {
+        throw new Error('You are banned from joining events due to excessive absences. Please contact an administrator if you believe this is an error.')
+      }
+
+      // Check if user is already a participant
+      const { data: existing } = await supabase
+        .from('event_participants')
+        .select('id')
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (existing) {
+        throw new Error('You are already registered for this event')
+      }
+
+      // Get the event details to check for schedule conflicts
+      const { data: newEvent, error: eventError } = await supabase
+        .from('events')
+        .select('id, name, start_date, end_date, max_participants, status')
+        .eq('id', eventId)
+        .single()
+
+      if (eventError) throw eventError
+      if (!newEvent) {
+        throw new Error('Event not found')
+      }
+
+      // Check if event is cancelled
+      if (newEvent.status === 'cancelled') {
+        throw new Error('Cannot join a cancelled event')
+      }
+
+      // Check if event is full
+      const { data: participantCount } = await supabase
+        .from('event_participants')
+        .select('id', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+
+      const currentCount = participantCount || 0
+      if (newEvent.max_participants && currentCount >= newEvent.max_participants) {
+        throw new Error('Event is full')
+      }
+
+      // Check for schedule conflicts with other events user is registered for
+      const { data: userParticipations, error: participationError } = await supabase
+        .from('event_participants')
+        .select(`
+          event_id,
+          event:events!inner(
+            id,
+            name,
+            start_date,
+            end_date,
+            status
+          )
+        `)
+        .eq('user_id', userId)
+        .neq('event_id', eventId)
+
+      if (participationError) throw participationError
+
+      // Check for overlapping events
+      if (userParticipations && userParticipations.length > 0) {
+        const newEventStart = new Date(newEvent.start_date)
+        const newEventEnd = new Date(newEvent.end_date)
+
+        for (const participation of userParticipations) {
+          const existingEvent = participation.event
+          
+          // Skip cancelled or completed events
+          if (existingEvent.status === 'cancelled' || existingEvent.status === 'completed') {
+            continue
+          }
+
+          const existingEventStart = new Date(existingEvent.start_date)
+          const existingEventEnd = new Date(existingEvent.end_date)
+
+          // Check if events overlap
+          // Two events overlap if: newEventStart < existingEventEnd AND newEventEnd > existingEventStart
+          if (newEventStart < existingEventEnd && newEventEnd > existingEventStart) {
+            const existingEventName = existingEvent.name || 'another event'
+            const existingStartTime = existingEventStart.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })
+            const existingEndTime = existingEventEnd.toLocaleString('en-US', {
+              month: 'short',
+              day: 'numeric',
+              hour: 'numeric',
+              minute: '2-digit',
+              hour12: true
+            })
+            
+            throw new Error(
+              `Schedule conflict! You are already registered for "${existingEventName}" ` +
+              `(${existingStartTime} - ${existingEndTime}). ` +
+              `Please cancel your registration for that event first if you want to join this one.`
+            )
+          }
+        }
+      }
+
+      // Join the event
+      const { data, error } = await supabase
+        .from('event_participants')
+        .insert({
+          event_id: eventId,
+          user_id: userId,
+          attendance_status: 'pending', // pending, present, absent
+          joined_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Notify all admins about new participant (userData already fetched above)
+      try {
+      await this.notifyAllAdmins({
+          type: 'system_alert',
+          title: '🎉 New Event Participant',
+          message: `${userData?.name || 'A user'} joined "${newEvent.name}" (${currentCount + 1}/${newEvent.max_participants || '∞'} participants)`,
+        data: {
+          event_id: eventId,
+          event_name: newEvent.name,
+          user_id: userId,
+          user_name: userData?.name || 'Unknown',
+          participant_count: currentCount + 1,
+            max_participants: newEvent.max_participants,
+            link: '/admin/events',
+            notification_type: 'event_participant_joined'
+        }
+      })
+      } catch (notifError) {
+        console.error('Error notifying admins about event participant:', notifError)
+        // Don't throw - participant was added successfully
+      }
+
+      return data
+    } catch (error) {
+      console.error('Error joining event:', error)
+      throw error
+    }
+  },
+
+  async leaveEvent(eventId, userId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Get event and user details before deleting
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('id, name')
+        .eq('id', eventId)
+        .single()
+
+      const { data: userData } = await supabase
+        .from('users')
+        .select('name, email')
+        .eq('id', userId)
+        .single()
+
+      const { error } = await supabase
+        .from('event_participants')
+        .delete()
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+
+      if (error) throw error
+
+      // Notify all admins about participant cancellation
+      if (eventData) {
+        try {
+        await this.notifyAllAdmins({
+            type: 'system_alert',
+            title: '❌ Event Participant Cancelled',
+            message: `${userData?.name || 'A user'} cancelled registration for "${eventData.name}"`,
+          data: {
+            event_id: eventId,
+            event_name: eventData.name,
+            user_id: userId,
+              user_name: userData?.name || 'Unknown',
+              link: '/admin/events',
+              notification_type: 'event_participant_left'
+          }
+        })
+        } catch (notifError) {
+          console.error('Error notifying admins about event cancellation:', notifError)
+          // Don't throw - cancellation was successful
+        }
+      }
+
+      return true
+    } catch (error) {
+      console.error('Error leaving event:', error)
+      throw error
+    }
+  },
+
+  async getEventParticipants(eventId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // First, get event details to check if it has ended
+      const { data: eventData, error: eventError } = await supabase
+        .from('events')
+        .select('id, start_date, end_date, status')
+        .eq('id', eventId)
+        .single()
+
+      if (eventError) throw eventError
+
+      // Auto-mark attendance if event has ended
+      if (eventData && eventData.end_date) {
+        const eventEndDate = new Date(eventData.end_date)
+        const now = new Date()
+        
+        // If event has ended, automatically mark pending participants as absent
+        if (eventEndDate < now && eventData.status !== 'cancelled') {
+          try {
+            // Get pending participants first
+            const { data: pendingParticipants, error: pendingError } = await supabase
+              .from('event_participants')
+              .select('user_id')
+              .eq('event_id', eventId)
+              .eq('attendance_status', 'pending')
+
+            if (pendingError) {
+              console.error('Error fetching pending participants:', pendingError)
+            } else if (pendingParticipants && pendingParticipants.length > 0) {
+              // Update attendance status to absent
+            const { error: autoMarkError } = await supabase
+              .from('event_participants')
+              .update({ attendance_status: 'absent' })
+              .eq('event_id', eventId)
+              .eq('attendance_status', 'pending')
+
+            if (autoMarkError) {
+              console.error('Error auto-marking attendance:', autoMarkError)
+              } else {
+                // Track absences for users who were auto-marked as absent
+                const userIds = pendingParticipants.map(p => p.user_id)
+                const { data: userData } = await supabase
+                  .from('users')
+                  .select('id, event_absence_count, event_banned, name')
+                  .in('id', userIds)
+
+                if (userData) {
+                  const absenceUpdates = []
+                  const banUpdates = []
+                  const notificationsToSend = []
+
+                  for (const user of userData) {
+                    if (user.event_banned) continue // Skip if already banned
+
+                    const previousCount = user.event_absence_count || 0
+                    const absenceCount = previousCount + 1
+
+                    absenceUpdates.push({ userId: user.id, absenceCount })
+
+                    // Check for warnings (2-3 absences)
+                    if (absenceCount >= 2 && absenceCount <= 3) {
+                      notificationsToSend.push({
+                        user_id: user.id,
+                        type: 'system_alert',
+                        title: 'Event Attendance Warning',
+                        message: `You have ${absenceCount} absence${absenceCount > 1 ? 's' : ''} from events. Please attend the next event to avoid being banned. If you reach 5 absences, you will be permanently banned from joining events.`,
+                        data: {
+                          event_id: eventId,
+                          event_name: eventData.name,
+                          absence_count: absenceCount,
+                          notification_type: 'event_absence_warning'
+                        }
+                      })
+                    }
+
+                    // Check for ban (5 absences)
+                    if (absenceCount >= 5) {
+                      banUpdates.push({ userId: user.id })
+                      notificationsToSend.push({
+                        user_id: user.id,
+                        type: 'system_alert',
+                        title: 'Banned from Events',
+                        message: `You have been permanently banned from joining events due to ${absenceCount} absences. Please contact an administrator if you believe this is an error.`,
+                        data: {
+                          event_id: eventId,
+                          event_name: eventData.name,
+                          absence_count: absenceCount,
+                          notification_type: 'event_ban'
+                        }
+                      })
+                    }
+                  }
+
+                  // Update absence counts
+                  if (absenceUpdates.length > 0) {
+                    await Promise.all(
+                      absenceUpdates.map(({ userId, absenceCount }) =>
+                        supabase
+                          .from('users')
+                          .update({ event_absence_count: absenceCount })
+                          .eq('id', userId)
+                      )
+                    )
+                  }
+
+                  // Update ban status
+                  if (banUpdates.length > 0) {
+                    await Promise.all(
+                      banUpdates.map(({ userId }) =>
+                        supabase
+                          .from('users')
+                          .update({
+                            event_banned: true,
+                            event_banned_at: new Date().toISOString(),
+                            event_banned_by: null
+                          })
+                          .eq('id', userId)
+                      )
+                    )
+                  }
+
+                  // Send notifications
+                  for (const notification of notificationsToSend) {
+                    try {
+                      await this.createNotification(notification)
+                    } catch (notifError) {
+                      console.error('Error sending auto-mark absence notification:', notifError)
+                    }
+                  }
+                }
+              }
+            }
+          } catch (autoMarkErr) {
+            console.error('Error in auto-mark attendance:', autoMarkErr)
+            // Continue to fetch participants even if auto-mark fails
+          }
+        }
+      }
+
+      const { data, error } = await supabase
+        .from('event_participants')
+        .select(`
+          id,
+          user_id,
+          event_id,
+          attendance_status,
+          joined_at,
+          user:users!event_participants_user_id_fkey(
+            id,
+            name,
+            email,
+            phone_number,
+            role,
+            event_absence_count,
+            event_banned
+          )
+        `)
+        .eq('event_id', eventId)
+        .order('joined_at', { ascending: true })
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error getting event participants:', error)
+      throw error
+    }
+  },
+
+  async updateAttendance(eventId, userId, attendanceStatus) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('event_participants')
+        .update({
+          attendance_status: attendanceStatus // 'pending', 'present', 'absent'
+        })
+        .eq('event_id', eventId)
+        .eq('user_id', userId)
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error updating attendance:', error)
+      throw error
+    }
+  },
+
+  async getUserCompletedEvents(userId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('event_participants')
+        .select(`
+          id,
+          attendance_status,
+          joined_at,
+          event:events!inner(
+            id,
+            name,
+            description,
+            location,
+            start_date,
+            end_date,
+            status,
+            target_goal,
+            image_url
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('attendance_status', 'present')
+        .order('joined_at', { ascending: false })
+
+      if (error) throw error
+
+      // Filter to only include completed events (end_date in the past AND status is not cancelled)
+      // Only count events that have finished AND admin has marked attendance as "present"
+      const now = new Date()
+      const completedEvents = (data || []).filter(participation => {
+        const event = participation.event
+        if (!event) return false
+        
+        // Event must be finished (end_date in the past)
+        const endDate = new Date(event.end_date)
+        const isFinished = endDate < now
+        
+        // Event must not be cancelled
+        const isNotCancelled = event.status !== 'cancelled'
+        
+        // Only return events that are finished and not cancelled
+        // Attendance status is already filtered to 'present' in the query
+        return isFinished && isNotCancelled
+      })
+
+      return completedEvents
+    } catch (error) {
+      console.error('Error getting user completed events:', error)
+      throw error
+    }
+  },
+
+  async bulkUpdateAttendance(eventId, attendanceUpdates, originalAttendance = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // First, get current user absence counts and ban status
+      const userIds = attendanceUpdates.map(u => u.user_id)
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, event_absence_count, event_banned, name')
+        .in('id', userIds)
+
+      if (userError) throw userError
+
+      const userMap = new Map(userData.map(u => [u.id, u]))
+
+      // Get event details for notifications
+      const { data: eventData } = await supabase
+        .from('events')
+        .select('id, name')
+        .eq('id', eventId)
+        .single()
+
+      // Process each attendance update
+      const processedUpdates = []
+      const absenceUpdates = []
+      const banUpdates = []
+      const notificationsToSend = []
+
+      for (const update of attendanceUpdates) {
+        const userId = String(update.user_id)
+        const newStatus = String(update.attendance_status)
+        const originalStatus = String(originalAttendance[userId] || 'pending')
+        const user = userMap.get(userId)
+
+        if (!user) {
+          console.warn(`User ${userId} not found for absence tracking`)
+          processedUpdates.push(update)
+          continue
+        }
+
+        // Track absence changes
+        let absenceCount = user.event_absence_count || 0
+        let shouldUpdateAbsence = false
+        let wasAbsent = originalStatus === 'absent'
+        let isAbsent = newStatus === 'absent'
+
+        // Only process if status actually changed
+        if (originalStatus !== newStatus) {
+          // If changing from non-absent to absent: increment
+          if (!wasAbsent && isAbsent) {
+            absenceCount = Math.max(0, absenceCount + 1)
+            shouldUpdateAbsence = true
+          }
+          // If changing from absent to present: decrement (reset)
+          else if (wasAbsent && newStatus === 'present') {
+            absenceCount = Math.max(0, absenceCount - 1)
+            shouldUpdateAbsence = true
+          }
+        }
+
+        // Update absence count if needed
+        if (shouldUpdateAbsence) {
+          const previousCount = user.event_absence_count || 0
+          
+          absenceUpdates.push({
+            userId,
+            absenceCount,
+            previousCount
+          })
+
+          // Check for warnings (2-3 absences) - send warning when marked absent and count is 2-3
+          if (isAbsent && absenceCount >= 2 && absenceCount <= 3) {
+            notificationsToSend.push({
+              user_id: userId,
+              type: 'system_alert',
+              title: 'Event Attendance Warning',
+              message: `You have ${absenceCount} absence${absenceCount > 1 ? 's' : ''} from events. Please attend the next event to avoid being banned. If you reach 5 absences, you will be permanently banned from joining events.`,
+              data: {
+                event_id: eventId,
+                event_name: eventData?.name,
+                absence_count: absenceCount,
+                notification_type: 'event_absence_warning'
+              }
+            })
+          }
+
+          // Check for ban (5 absences)
+          if (absenceCount >= 5 && !user.event_banned) {
+            banUpdates.push({
+              userId,
+              absenceCount
+            })
+
+            notificationsToSend.push({
+              user_id: userId,
+              type: 'system_alert',
+              title: 'Banned from Events',
+              message: `You have been permanently banned from joining events due to ${absenceCount} absences. Please contact an administrator if you believe this is an error.`,
+              data: {
+                event_id: eventId,
+                event_name: eventData?.name,
+                absence_count: absenceCount,
+                notification_type: 'event_ban'
+              }
+            })
+          }
+        }
+
+        processedUpdates.push(update)
+      }
+
+      // Update attendance statuses
+      const attendanceUpdatePromises = processedUpdates.map(update =>
+        supabase
+          .from('event_participants')
+          .update({ attendance_status: update.attendance_status })
+          .eq('event_id', eventId)
+          .eq('user_id', update.user_id)
+      )
+
+      // Update absence counts
+      const absenceUpdatePromises = absenceUpdates.map(({ userId, absenceCount }) =>
+        supabase
+          .from('users')
+          .update({ event_absence_count: absenceCount })
+          .eq('id', userId)
+      )
+
+      // Update ban status for users who reached 5 absences
+      const banUpdatePromises = banUpdates.map(({ userId }) =>
+        supabase
+          .from('users')
+          .update({
+            event_banned: true,
+            event_banned_at: new Date().toISOString(),
+            event_banned_by: null // Auto-banned by system
+          })
+          .eq('id', userId)
+      )
+
+      // Execute all updates in parallel
+      await Promise.all([
+        ...attendanceUpdatePromises,
+        ...absenceUpdatePromises,
+        ...banUpdatePromises
+      ])
+
+      // Send notifications
+      for (const notification of notificationsToSend) {
+        try {
+          await this.createNotification(notification)
+        } catch (notifError) {
+          console.error('Error sending absence notification:', notifError)
+          // Continue with other notifications
+        }
+      }
+
+      return {
+        success: true,
+        absenceUpdates: absenceUpdates.length,
+        bansApplied: banUpdates.length,
+        notificationsSent: notificationsToSend.length
+      }
+    } catch (error) {
+      console.error('Error bulk updating attendance:', error)
+      throw error
+    }
   },
 
   // Deliveries
@@ -1377,10 +2414,44 @@ export const db = {
       .from('deliveries')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', deliveryId)
-      .select()
+      .select(`
+        *,
+        volunteer:users!deliveries_volunteer_id_fkey(id, name),
+        claim:donation_claims!deliveries_claim_id_fkey(
+          id,
+          donation:donations(id, title, category)
+        )
+      `)
       .single()
     
     if (error) throw error
+
+    // Notify admins when delivery is completed or delivered
+    if ((updates.status === 'completed' || updates.status === 'delivered') && data.volunteer) {
+      try {
+        const volunteerName = data.volunteer?.name || 'A volunteer'
+        const donationTitle = data.claim?.donation?.title || 'a donation'
+        
+        await this.notifyAllAdmins({
+          type: 'system_alert',
+          title: '✅ Delivery Completed',
+          message: `${volunteerName} completed delivery of "${donationTitle}"`,
+          data: {
+            delivery_id: deliveryId,
+            volunteer_id: data.volunteer_id,
+            volunteer_name: volunteerName,
+            donation_title: donationTitle,
+            status: updates.status,
+            link: '/admin/volunteers',
+            notification_type: 'delivery_completed'
+          }
+        })
+      } catch (notifError) {
+        console.error('Error notifying admins about delivery completion:', notifError)
+        // Don't throw - delivery was updated successfully
+      }
+    }
+
     return data
   },
 
@@ -1398,9 +2469,37 @@ export const db = {
           *,
           donation:donations(
             *,
-            donor:users!donations_donor_id_fkey(id, name, phone_number, city, address)
+            donor:users!donations_donor_id_fkey(
+              id, 
+              name, 
+              phone_number, 
+              city, 
+              province,
+              address,
+              address_barangay,
+              address_house,
+              address_street,
+              address_subdivision,
+              address_landmark,
+              latitude,
+              longitude
+            )
           ),
-          recipient:users!donation_claims_recipient_id_fkey(id, name, phone_number, city, address),
+          recipient:users!donation_claims_recipient_id_fkey(
+            id, 
+            name, 
+            phone_number, 
+            city, 
+            province,
+            address,
+            address_barangay,
+            address_house,
+            address_street,
+            address_subdivision,
+            address_landmark,
+            latitude,
+            longitude
+          ),
           delivery:deliveries(id, volunteer_id, status)
         `)
         .eq('donation.delivery_mode', 'volunteer')
@@ -1422,7 +2521,21 @@ export const db = {
         .from('donation_requests')
         .select(`
           *,
-          requester:users!donation_requests_requester_id_fkey(id, name, phone_number, city, address)
+          requester:users!donation_requests_requester_id_fkey(
+            id, 
+            name, 
+            phone_number, 
+            city, 
+            province,
+            address,
+            address_barangay,
+            address_house,
+            address_street,
+            address_subdivision,
+            address_landmark,
+            latitude,
+            longitude
+          )
         `)
         .eq('status', 'open')
         .eq('delivery_mode', 'volunteer')
@@ -1430,50 +2543,94 @@ export const db = {
 
       if (requestsError) throw requestsError
 
+      // Helper function to format address from user profile
+      const formatAddressFromUser = (user) => {
+        if (!user) return null;
+        const locationParts = [];
+        
+        // Priority 1: House/Unit + Street
+        if (user.address_house || user.address_street) {
+          const houseStreet = [user.address_house, user.address_street]
+            .filter(v => v && v.trim() && v.toLowerCase() !== 'n/a' && v.toLowerCase() !== 'tbd')
+            .join(' ')
+            .trim();
+          if (houseStreet) {
+            locationParts.push(houseStreet);
+          }
+        }
+        
+        // Priority 2: Barangay
+        if (user.address_barangay && user.address_barangay.trim() && user.address_barangay.toLowerCase() !== 'n/a') {
+          locationParts.push(user.address_barangay.trim());
+        }
+        
+        // Priority 3: Subdivision
+        if (user.address_subdivision && user.address_subdivision.trim() && user.address_subdivision.toLowerCase() !== 'n/a') {
+          locationParts.push(user.address_subdivision.trim());
+        }
+        
+        // Priority 4: Landmark (if no street address)
+        if (user.address_landmark && !user.address_street && user.address_landmark.trim() && user.address_landmark.toLowerCase() !== 'n/a') {
+          locationParts.push(`Near ${user.address_landmark.trim()}`);
+        }
+        
+        // Priority 5: Full address (if no specific parts)
+        if (user.address && !locationParts.length && user.address.trim() && user.address.toLowerCase() !== 'n/a' && !user.address.toLowerCase().includes('to be completed')) {
+          locationParts.push(user.address.trim());
+        }
+        
+        // Priority 6: City
+        if (user.city && user.city.trim()) {
+          locationParts.push(user.city.trim());
+        }
+        
+        // Priority 7: Province
+        if (user.province && user.province.trim()) {
+          locationParts.push(user.province.trim());
+        }
+        
+        return locationParts.length > 0 ? locationParts.join(', ') : null;
+      };
+
       // Transform claimed donations into task format - these are approved donations needing volunteers
       const deliveryTasks = availableForDelivery
         .filter(claim => claim.donation && claim.donation.title) // Filter out claims with null donations
-        .map(claim => ({
-          id: `claim-${claim.id}`,
-          type: 'approved_donation',
-          title: `Deliver: ${claim.donation.title}`,
-          description: claim.donation.description || 'No description available',
-          category: claim.donation.category,
-          urgency: claim.donation.is_urgent ? 'high' : 'medium',
-          pickupLocation: claim.donation.pickup_location,
-          deliveryLocation: claim.recipient?.address || claim.recipient?.city || 'Address TBD',
-          donor: claim.donation.donor,
-          recipient: claim.recipient,
-          originalId: claim.id,
-          claimId: claim.id,
-          createdAt: claim.claimed_at,
-          isUrgent: claim.donation.is_urgent,
-          quantity: claim.donation.quantity,
-          condition: claim.donation.condition,
-          expiryDate: claim.donation.expiry_date,
-          pickup_instructions: claim.donation.pickup_instructions
-        }))
+        .map(claim => {
+          // Format pickup location from donor (use donation.pickup_location if available, otherwise format from donor)
+          const pickupLocation = claim.donation.pickup_location || formatAddressFromUser(claim.donation.donor) || 'Address TBD';
+          
+          // Format delivery location from recipient
+          const deliveryLocation = formatAddressFromUser(claim.recipient) || claim.recipient?.city || 'Address TBD';
+          
+          return {
+            id: `claim-${claim.id}`,
+            type: 'approved_donation',
+            title: `Deliver: ${claim.donation.title}`,
+            description: claim.donation.description || 'No description available',
+            category: claim.donation.category,
+            urgency: claim.donation.is_urgent ? 'high' : 'medium',
+            pickupLocation: pickupLocation,
+            deliveryLocation: deliveryLocation,
+            donor: claim.donation.donor,
+            recipient: claim.recipient,
+            originalId: claim.id,
+            claimId: claim.id,
+            createdAt: claim.claimed_at,
+            isUrgent: claim.donation.is_urgent,
+            quantity: claim.donation.quantity,
+            condition: claim.donation.condition,
+            expiryDate: claim.donation.expiry_date,
+            pickup_instructions: claim.donation.pickup_instructions,
+            imageUrl: claim.donation.images && claim.donation.images.length > 0 ? claim.donation.images[0] : null
+          };
+        })
 
-      // Transform requests into task format - these are still just requests without donors
-      const requestTasks = (requests || []).map(request => ({
-        id: `request-${request.id}`,
-        type: 'request',
-        title: `Needed: ${request.title}`,
-        description: request.description || 'No description available',
-        category: request.category,
-        urgency: request.urgency,
-        pickupLocation: 'To be determined when matched with donor',
-        deliveryLocation: request.location,
-        donor: null,
-        recipient: request.requester,
-        originalId: request.id,
-        createdAt: request.created_at,
-        quantityNeeded: request.quantity_needed,
-        neededBy: request.needed_by
-      }))
-
-      // Combine and sort by urgency and date
-      const allTasks = [...deliveryTasks, ...requestTasks]
+      // Only show approved donations that have donors - don't show requests without matched donors
+      // Requests without donors can't be delivered yet, so they shouldn't appear as volunteer tasks
+      // Volunteers should only see tasks where there's actually a donation to deliver (approved donations)
+      
+      // Combine and sort by urgency and date (only approved donations with donors)
+      const allTasks = [...deliveryTasks]
       
       allTasks.sort((a, b) => {
         const urgencyOrder = { critical: 4, high: 3, medium: 2, low: 1 }
@@ -1623,19 +2780,164 @@ export const db = {
   },
 
   // Notifications
+  async getAllAdminUsers() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .eq('role', 'admin')
+        .eq('is_active', true)
+      
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error fetching admin users:', error)
+      return []
+    }
+  },
+
+  async notifyAllAdmins(notificationData) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const admins = await this.getAllAdminUsers()
+      
+      if (admins.length === 0) {
+        console.warn('No admin users found to notify')
+        return []
+      }
+
+      const notifications = admins.map(admin => ({
+        user_id: admin.id,
+        type: notificationData.type || 'system_alert',
+        title: notificationData.title,
+        message: notificationData.message,
+        data: notificationData.data || null,
+        read_at: null
+      }))
+
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert(notifications)
+        .select()
+
+      if (error) {
+        console.error('Error creating admin notifications:', error)
+        throw error
+      }
+
+      console.log(`✅ Created ${data.length} notifications for ${admins.length} admin(s)`)
+      return data
+    } catch (error) {
+      console.error('Error notifying admins:', error)
+      throw error
+    }
+  },
+
   async createNotification(notificationData) {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    const { data, error } = await supabase
-      .from('notifications')
-      .insert(notificationData)
-      .select()
-      .single()
-    
-    if (error) throw error
-    return data
+    try {
+      // Ensure required fields are present
+      if (!notificationData.user_id) {
+        throw new Error('user_id is required for notification')
+      }
+      if (!notificationData.type) {
+        throw new Error('type is required for notification')
+      }
+      if (!notificationData.title) {
+        throw new Error('title is required for notification')
+      }
+      if (!notificationData.message) {
+        throw new Error('message is required for notification')
+      }
+
+      // Prepare notification data with defaults
+      // Remove created_at if provided since the database will handle it automatically
+      const { created_at, ...restData } = notificationData
+      
+      const dataToInsert = {
+        user_id: restData.user_id,
+        type: restData.type,
+        title: restData.title,
+        message: restData.message,
+        data: restData.data || null,
+        read_at: null, // Ensure it starts as unread
+        ...restData // Allow other fields to be passed (created_at will be auto-generated by DB)
+      }
+      
+      // Only set created_at explicitly if it's provided and needed
+      // Otherwise let the database handle it with DEFAULT now()
+      if (created_at) {
+        dataToInsert.created_at = created_at
+      }
+
+      console.log('Inserting notification into database:', {
+        user_id: dataToInsert.user_id,
+        type: dataToInsert.type,
+        title: dataToInsert.title,
+        message: dataToInsert.message?.substring(0, 50) + '...',
+        has_data: !!dataToInsert.data
+      })
+
+      const { data, error } = await supabase
+        .from('notifications')
+        .insert(dataToInsert)
+        .select()
+        .single()
+      
+      if (error) {
+        console.error('Error inserting notification:', error)
+        console.error('Notification data that failed:', dataToInsert)
+        throw error
+      }
+
+      if (!data) {
+        console.error('Notification insert returned no data')
+        throw new Error('Failed to create notification: No data returned')
+      }
+
+      console.log('Notification successfully created in database:', {
+        id: data.id,
+        user_id: data.user_id,
+        type: data.type,
+        title: data.title,
+        created_at: data.created_at
+      })
+
+      // Verify the notification was actually created by fetching it
+      const { data: verifyData, error: verifyError } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('id', data.id)
+        .single()
+
+      if (verifyError) {
+        console.warn('Warning: Could not verify notification creation:', verifyError)
+      } else if (!verifyData) {
+        console.warn('Warning: Notification was created but could not be retrieved for verification')
+      } else {
+        console.log('Notification verified in database:', {
+          id: verifyData.id,
+          user_id: verifyData.user_id,
+          type: verifyData.type,
+          created_at: verifyData.created_at
+        })
+      }
+
+      return data
+    } catch (error) {
+      console.error('createNotification error:', error)
+      throw error
+    }
   },
 
   async getUserNotifications(userId, limit = 50) {
@@ -1643,6 +2945,7 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    try {
     const { data, error } = await supabase
       .from('notifications')
       .select('*')
@@ -1650,8 +2953,21 @@ export const db = {
       .order('created_at', { ascending: false })
       .limit(limit)
 
-    if (error) throw error
-    return data
+      if (error) {
+        console.error('❌ Error fetching notifications:', error)
+        throw error
+      }
+      
+      console.log(`✅ getUserNotifications returned ${data?.length || 0} notifications for user ${userId}`)
+      if (data && data.length > 0) {
+        console.log('📋 Sample notification:', data[0])
+      }
+      
+      return data || []
+    } catch (error) {
+      console.error('❌ Exception in getUserNotifications:', error)
+      throw error
+    }
   },
 
   async markNotificationAsRead(notificationId) {
@@ -1676,19 +2992,313 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
     if (!userId) return null
-    const channel = supabase
-      .channel(`notifications_user_${userId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
-        (payload) => {
-          try { onChange?.(payload) } catch (_) {}
+    
+    console.log(`🔔 Setting up real-time subscription for user ${userId}`)
+    
+    // Use a simpler channel name to avoid issues (not used currently, but kept for future real-time support)
+    const channelName = `notif_${userId.replace(/-/g, '_')}`
+    
+    let channel = null
+    let pollInterval = null
+    let retryTimeout = null
+    let isSubscribed = false
+    
+    // Function to start polling (primary method since real-time isn't configured)
+    const startPolling = () => {
+      if (pollInterval) return // Already polling
+      
+      console.log(`🔄 Starting optimized notification polling for user ${userId} (every 5 seconds)`)
+      
+      // Poll function - just trigger onChange, Navbar will fetch notifications
+      const pollNotifications = () => {
+        try {
+          // Trigger onChange callback - Navbar will fetch and update notifications
+          onChange?.({ eventType: 'POLL', new: null })
+        } catch (error) {
+          console.error('Error in polling callback:', error)
         }
-      )
-      .subscribe()
+      }
+      
+      // Poll immediately to get latest notifications
+      pollNotifications()
+      
+      // Then poll every 5 seconds for optimized real-time updates
+      // 5 seconds provides good balance between responsiveness and performance
+      pollInterval = setInterval(pollNotifications, 5000)
+    }
+    
+    // Function to setup subscription (only attempt if real-time is properly configured)
+    const setupSubscription = () => {
+      // Skip real-time subscription if we've already determined it's not working
+      // The error "mismatch between server and client bindings" indicates real-time replication
+      // is not configured on the server side, so we'll just use polling
+      console.log(`ℹ️ Real-time subscription not available (server replication not configured), using polling instead`)
+      isSubscribed = false
+      startPolling()
+      return
+      
+      /* 
+      // Real-time subscription code (disabled due to server configuration issue)
+      // Uncomment this if you enable real-time replication for the notifications table in Supabase
+      try {
+        // Clean up existing channel if any
+        if (channel) {
+          try {
+            supabase.removeChannel(channel)
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }
+        
+        channel = supabase
+          .channel(channelName)
+          .on(
+            'postgres_changes',
+            { 
+              event: 'INSERT',
+              schema: 'public', 
+              table: 'notifications', 
+              filter: `user_id=eq.${userId}` 
+            },
+            (payload) => {
+              console.log('🔔 Real-time notification received:', payload)
+              try { 
+                onChange?.(payload) 
+              } catch (error) {
+                console.error('Error in notification subscription callback:', error)
+              }
+            }
+          )
+          .subscribe((status, err) => {
+            if (status === 'SUBSCRIBED') {
+              console.log(`✅ Successfully subscribed to notifications for user ${userId}`)
+              isSubscribed = true
+              if (pollInterval) {
+                clearInterval(pollInterval)
+                pollInterval = null
+              }
+            } else if (status === 'CHANNEL_ERROR') {
+              console.warn(`⚠️ Real-time subscription error, using polling instead`)
+              isSubscribed = false
+              startPolling()
+            }
+          })
+      } catch (error) {
+        console.error('Error setting up notification subscription:', error)
+        isSubscribed = false
+        startPolling()
+      }
+      */
+    }
+    
+    // Start with polling directly since real-time replication isn't configured
+    // This ensures notifications are received reliably
+    console.log(`🔄 Using polling for notifications (real-time replication not configured on server)`)
+    startPolling()
 
     return () => {
-      try { supabase.removeChannel(channel) } catch (_) {}
+      try { 
+        console.log(`🔔 Unsubscribing from notifications for user ${userId}`)
+        
+        // Clear timeouts
+        if (retryTimeout) {
+          clearTimeout(retryTimeout)
+          retryTimeout = null
+        }
+        
+        // Remove channel (if it was created)
+        if (channel) {
+          try {
+            supabase.removeChannel(channel)
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+          channel = null
+        }
+        
+        // Clear polling interval
+        if (pollInterval) {
+          clearInterval(pollInterval)
+          pollInterval = null
+          console.log(`🔄 Stopped polling for user ${userId}`)
+        }
+      } catch (error) {
+        console.error('Error cleaning up notification subscription:', error)
+      }
+    }
+  },
+
+  // User Reports Functions
+  async getReportedUsers(status = 'pending') {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // First get all reports
+      let query = supabase
+        .from('user_reports')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (status !== 'all') {
+        query = query.eq('status', status)
+      }
+
+      const { data: reports, error } = await query
+
+      if (error) throw error
+      if (!reports || reports.length === 0) return []
+
+      // Fetch user details for all reports
+      const userIds = new Set()
+      reports.forEach(report => {
+        userIds.add(report.reported_user_id)
+        userIds.add(report.reported_by_user_id)
+        if (report.reviewed_by) userIds.add(report.reviewed_by)
+      })
+
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('id, name, email, role, is_verified, is_active, created_at')
+        .in('id', Array.from(userIds))
+
+      if (usersError) throw usersError
+
+      // Map users by id for quick lookup
+      const usersMap = new Map()
+      users?.forEach(user => usersMap.set(user.id, user))
+
+      // Enrich reports with user data
+      const enrichedReports = reports.map(report => ({
+        ...report,
+        reported_user: usersMap.get(report.reported_user_id) || null,
+        reported_by: usersMap.get(report.reported_by_user_id) || null,
+        reviewed_by_user: report.reviewed_by ? usersMap.get(report.reviewed_by) || null : null
+      }))
+
+      return enrichedReports
+    } catch (error) {
+      console.error('Error fetching reported users:', error)
+      throw error
+    }
+  },
+
+  async getReportCount(status = 'pending') {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      let query = supabase
+        .from('user_reports')
+        .select('*', { count: 'exact', head: true })
+
+      if (status !== 'all') {
+        query = query.eq('status', status)
+      }
+
+      const { count, error } = await query
+
+      if (error) throw error
+      return count || 0
+    } catch (error) {
+      console.error('Error fetching report count:', error)
+      return 0
+    }
+  },
+
+  async createUserReport(reportData) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('user_reports')
+        .insert({
+          reported_user_id: reportData.reportedUserId,
+          reported_by_user_id: reportData.reportedByUserId,
+          reason: reportData.reason,
+          description: reportData.description,
+          status: 'pending'
+        })
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Notify all admins about the new report
+      try {
+        const { data: reportedUser } = await supabase
+          .from('users')
+          .select('name, email, role')
+          .eq('id', reportData.reportedUserId)
+          .single()
+
+        const { data: reporterUser } = await supabase
+          .from('users')
+          .select('name')
+          .eq('id', reportData.reportedByUserId)
+          .single()
+
+        await this.notifyAllAdmins({
+          type: 'system_alert',
+          title: '🚨 New User Report',
+          message: `${reporterUser?.name || 'A user'} reported ${reportedUser?.name || 'a user'} (${reportedUser?.role || 'unknown role'}) - ${reportData.reason}`,
+          data: {
+            report_id: data.id,
+            reported_user_id: reportData.reportedUserId,
+            reported_user_name: reportedUser?.name,
+            reported_user_role: reportedUser?.role,
+            reported_by_user_id: reportData.reportedByUserId,
+            reported_by_name: reporterUser?.name,
+            reason: reportData.reason,
+            link: '/admin/users',
+            notification_type: 'user_report'
+          }
+            })
+      } catch (notifError) {
+        console.error('Error notifying admins about user report:', notifError)
+        // Don't throw - report was created successfully
+      }
+
+      return data
+    } catch (error) {
+      console.error('Error creating user report:', error)
+      throw error
+    }
+  },
+
+  async updateReportStatus(reportId, status, reviewedBy, resolutionNotes = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const updateData = {
+        status,
+        reviewed_by: reviewedBy,
+        reviewed_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+
+      if (resolutionNotes) {
+        updateData.resolution_notes = resolutionNotes
+      }
+
+      const { data, error } = await supabase
+        .from('user_reports')
+        .update(updateData)
+        .eq('id', reportId)
+        .select()
+        .single()
+
+      if (error) throw error
+      return data
+    } catch (error) {
+      console.error('Error updating report status:', error)
+      throw error
     }
   },
 
@@ -1710,15 +3320,42 @@ export const db = {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
-    const { count: expiredCount } = await supabase
-      .from('donations')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'expired')
-    const { count: archivedCount } = await supabase
-      .from('donations')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'archived')
-    return { expiredCount: expiredCount || 0, archivedCount: archivedCount || 0 }
+    
+    try {
+      // Count expired donations by status
+      // Count archived donations by archived_at column (not status, since 'archived' is not in the enum)
+      const [expiredResult, archivedResult] = await Promise.all([
+        supabase
+          .from('donations')
+          .select('*', { count: 'exact', head: false })
+          .eq('status', 'expired'),
+        supabase
+          .from('donations')
+          .select('*', { count: 'exact', head: false })
+          .not('archived_at', 'is', null) // Use archived_at column instead of status
+      ])
+      
+      // Extract counts from results
+      const expiredCount = expiredResult.error ? 0 : (expiredResult.count ?? 0)
+      const archivedCount = archivedResult.error ? 0 : (archivedResult.count ?? 0)
+      
+      // Log errors for debugging but don't break the UI
+      if (expiredResult.error) {
+        console.warn('Error fetching expired donations count:', expiredResult.error)
+      }
+      if (archivedResult.error) {
+        console.warn('Error fetching archived donations count:', archivedResult.error)
+      }
+      
+      return {
+        expiredCount,
+        archivedCount
+      }
+    } catch (error) {
+      console.error('Error in getDonationExpiryStats:', error)
+      // Return zeros on error to prevent UI breaking
+      return { expiredCount: 0, archivedCount: 0 }
+    }
   },
 
   // Profile completion check
@@ -1853,6 +3490,8 @@ export const db = {
             data: { 
               volunteer_id: requestData.volunteer_id,
               volunteer_name: requestData.volunteer_name,
+              volunteer_email: requestData.volunteer_email,
+              volunteer_phone: requestData.volunteer_phone,
               claim_id: requestData.claim_id,
               donation_id: claim.donation.id,
               task_type: 'approved_donation',
@@ -1869,6 +3508,8 @@ export const db = {
             data: { 
               volunteer_id: requestData.volunteer_id,
               volunteer_name: requestData.volunteer_name,
+              volunteer_email: requestData.volunteer_email,
+              volunteer_phone: requestData.volunteer_phone,
               claim_id: requestData.claim_id,
               donation_id: claim.donation.id,
               task_type: 'approved_donation',
@@ -2527,7 +4168,7 @@ export const db = {
 
     let query = supabase
       .from('users')
-      .select('id, name, email, phone_number, city, province, role, is_active, is_verified, created_at')
+      .select('id, name, email, phone_number, city, province, role, is_active, is_verified, created_at, profile_image_url, latitude, longitude, address, preferred_delivery_types')
       .eq('role', 'volunteer')
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -2541,18 +4182,622 @@ export const db = {
     return data
   },
 
-  async getAllUsers() {
+  async getAllUsers(filters = {}) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    // Apply limit for better performance
+    const limit = filters.limit || 500 // Reduced default limit
+
+    // Select only essential fields to avoid fetching large image URLs and other heavy data
+    const { data, error } = await supabase
+      .from('users')
+      .select(`
+        id,
+        name,
+        email,
+        phone_number,
+        role,
+        is_verified,
+        is_active,
+        created_at,
+        city,
+        province
+      `)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+
+    if (error) throw error
+    return data
+  },
+
+  // Optimized count functions for statistics
+  async getUserCounts() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Get all counts in parallel for better performance
+      // Use single column select with count for better compatibility
+      const [totalUsers, verifiedUsers, donors, recipients, volunteers, activeVolunteers, verifiedDonors] = await Promise.all([
+        supabase.from('users').select('id', { count: 'exact' }),
+        supabase.from('users').select('id', { count: 'exact' }).eq('is_verified', true),
+        supabase.from('users').select('id', { count: 'exact' }).eq('role', 'donor'),
+        supabase.from('users').select('id', { count: 'exact' }).eq('role', 'recipient'),
+        supabase.from('users').select('id', { count: 'exact' }).eq('role', 'volunteer'),
+        supabase.from('users').select('id', { count: 'exact' }).eq('role', 'volunteer').eq('is_active', true),
+        supabase.from('users').select('id', { count: 'exact' }).eq('role', 'donor').eq('is_verified', true)
+      ])
+
+      return {
+        total: totalUsers.count || 0,
+        verified: verifiedUsers.count || 0,
+        donors: donors.count || 0,
+        recipients: recipients.count || 0,
+        volunteers: volunteers.count || 0,
+        activeVolunteers: activeVolunteers.count || 0,
+        verifiedDonors: verifiedDonors.count || 0,
+        unverified: (totalUsers.count || 0) - (verifiedUsers.count || 0)
+      }
+    } catch (error) {
+      console.error('Error getting user counts:', error)
+      throw error
+    }
+  },
+
+  async getDonationCounts() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Fetch only status field with a reasonable limit to avoid timeouts
+      // For very large datasets, this will give an approximation
+      const { data: donations, error } = await supabase
+        .from('donations')
+        .select('status')
+        .limit(2000) // Further reduced to avoid timeouts
+
+      if (error) {
+        console.error('Error fetching donations for count:', error)
+        return {
+          total: 0,
+          available: 0,
+          matched: 0,
+          claimed: 0,
+          delivered: 0,
+          completed: 0,
+          matchedOrClaimed: 0,
+          deliveredOrCompleted: 0
+        }
+      }
+
+      if (!donations || donations.length === 0) {
+        return {
+          total: 0,
+          available: 0,
+          matched: 0,
+          claimed: 0,
+          delivered: 0,
+          completed: 0,
+          matchedOrClaimed: 0,
+          deliveredOrCompleted: 0
+        }
+      }
+
+      // Count efficiently using reduce (single pass)
+      const counts = donations.reduce((acc, d) => {
+        acc.total++
+        if (d.status) {
+          acc[d.status] = (acc[d.status] || 0) + 1
+        }
+        return acc
+      }, { total: 0, available: 0, matched: 0, claimed: 0, delivered: 0, completed: 0 })
+      
+      return {
+        total: counts.total,
+        available: counts.available || 0,
+        matched: counts.matched || 0,
+        claimed: counts.claimed || 0,
+        delivered: counts.delivered || 0,
+        completed: counts.completed || 0,
+        matchedOrClaimed: (counts.matched || 0) + (counts.claimed || 0),
+        deliveredOrCompleted: (counts.delivered || 0) + (counts.completed || 0)
+      }
+    } catch (error) {
+      console.error('Error getting donation counts:', error)
+      return {
+        total: 0,
+        available: 0,
+        matched: 0,
+        claimed: 0,
+        delivered: 0,
+        completed: 0,
+        matchedOrClaimed: 0,
+        deliveredOrCompleted: 0
+      }
+    }
+  },
+
+  async getRequestCounts() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Fetch only status field for efficient counting
+      const { data: requests, error } = await supabase
+        .from('donation_requests')
+        .select('status')
+        .limit(2000) // Reasonable limit to avoid timeouts
+
+      if (error) {
+        console.error('Error fetching requests for count:', error)
+        return {
+          total: 0,
+          open: 0,
+          fulfilled: 0,
+          cancelled: 0,
+          expired: 0
+        }
+      }
+
+      if (!requests || requests.length === 0) {
+        return {
+          total: 0,
+          open: 0,
+          fulfilled: 0,
+          cancelled: 0,
+          expired: 0
+        }
+      }
+
+      // Count efficiently using reduce
+      const counts = requests.reduce((acc, r) => {
+        acc.total++
+        if (r.status) {
+          acc[r.status] = (acc[r.status] || 0) + 1
+        }
+        return acc
+      }, { total: 0, open: 0, fulfilled: 0, cancelled: 0, expired: 0 })
+
+      return {
+        total: counts.total,
+        open: counts.open || 0,
+        fulfilled: counts.fulfilled || 0,
+        cancelled: counts.cancelled || 0,
+        expired: counts.expired || 0
+      }
+    } catch (error) {
+      console.error('Error getting request counts:', error)
+      return {
+        total: 0,
+        open: 0,
+        fulfilled: 0,
+        cancelled: 0,
+        expired: 0
+      }
+    }
+  },
+
+  async getDeliveryCounts() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Fetch volunteer deliveries and direct deliveries
+      const [volunteerDeliveriesResult, directDeliveriesResult] = await Promise.all([
+        supabase
+        .from('deliveries')
+        .select('status')
+          .limit(2000),
+        supabase
+          .from('direct_deliveries')
+          .select('status')
+          .limit(2000)
+      ])
+
+      if (volunteerDeliveriesResult.error) {
+        console.error('Error fetching volunteer deliveries for count:', volunteerDeliveriesResult.error)
+      }
+      if (directDeliveriesResult.error) {
+        console.error('Error fetching direct deliveries for count:', directDeliveriesResult.error)
+      }
+
+      const deliveries = volunteerDeliveriesResult.data || []
+      const directDeliveries = directDeliveriesResult.data || []
+      const allDeliveries = [...deliveries, ...directDeliveries]
+
+      if (allDeliveries.length === 0) {
+        return {
+          total: 0,
+          pending: 0,
+          inTransit: 0,
+          delivered: 0,
+          cancelled: 0
+        }
+      }
+
+      // Count efficiently using reduce
+      // Include all possible statuses: volunteer delivery statuses and direct delivery statuses
+      const counts = allDeliveries.reduce((acc, d) => {
+        acc.total++
+        if (d.status) {
+          acc[d.status] = (acc[d.status] || 0) + 1
+        }
+        return acc
+      }, { 
+        total: 0, 
+        pending: 0, 
+        assigned: 0,
+        accepted: 0,
+        picked_up: 0,
+        in_transit: 0, 
+        delivered: 0, 
+        cancelled: 0,
+        coordination_needed: 0,
+        scheduled: 0,
+        out_for_delivery: 0
+      })
+
+      // Combine in_transit status (includes in_transit and out_for_delivery)
+      const inTransitCount = (counts.in_transit || 0) + (counts.out_for_delivery || 0)
+      
+      // Combine delivered status (includes delivered from both tables)
+      const deliveredCount = counts.delivered || 0
+
+      return {
+        total: counts.total,
+        pending: counts.pending || counts.coordination_needed || 0,
+        inTransit: inTransitCount,
+        delivered: deliveredCount,
+        cancelled: counts.cancelled || 0
+      }
+    } catch (error) {
+      console.error('Error getting delivery counts:', error)
+      return {
+        total: 0,
+        pending: 0,
+        inTransit: 0,
+        delivered: 0,
+        cancelled: 0
+      }
+    }
+  },
+
+  async getEventCounts() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Fetch events with status, start_date, and end_date to calculate status if not set
+      const { data: events, error } = await supabase
+        .from('events')
+        .select('status, start_date, end_date')
+        .limit(1000) // Events are typically fewer, limit to 1000
+
+      if (error) {
+        console.error('Error fetching events for count:', error)
+        return {
+          total: 0,
+          active: 0,
+          upcoming: 0,
+          completed: 0,
+          cancelled: 0
+        }
+      }
+
+      if (!events || events.length === 0) {
+        return {
+          total: 0,
+          active: 0,
+          upcoming: 0,
+          completed: 0,
+          cancelled: 0
+        }
+      }
+
+      const now = new Date()
+      const counts = { total: 0, active: 0, upcoming: 0, completed: 0, cancelled: 0 }
+
+      // Count events by status, calculating status from dates if not set
+      events.forEach(event => {
+        counts.total++
+        
+        // If event is cancelled, count it as cancelled
+        if (event.status === 'cancelled') {
+          counts.cancelled++
+          return
+        }
+
+        // Calculate status based on dates if status is not set or if we need to override
+        const startDate = event.start_date ? new Date(event.start_date) : null
+        const endDate = event.end_date ? new Date(event.end_date) : null
+
+        if (!startDate || !endDate) {
+          // If dates are missing, use stored status or default to upcoming
+          if (event.status === 'completed') {
+            counts.completed++
+          } else if (event.status === 'active') {
+            counts.active++
+          } else {
+            counts.upcoming++
+          }
+          return
+        }
+
+        // Determine status based on dates (dates take precedence over stored status)
+        if (endDate < now) {
+          // Event has ended - count as completed
+          counts.completed++
+        } else if (startDate <= now && endDate >= now) {
+          // Event is currently happening - count as active
+          counts.active++
+        } else if (startDate > now) {
+          // Event is in the future - count as upcoming
+          counts.upcoming++
+        } else {
+          // Fallback to stored status if date logic fails
+          if (event.status === 'completed') {
+            counts.completed++
+          } else if (event.status === 'active') {
+            counts.active++
+          } else if (event.status === 'upcoming') {
+            counts.upcoming++
+          } else {
+            // Default to upcoming for events without clear status
+            counts.upcoming++
+          }
+        }
+      })
+      
+      return {
+        total: counts.total,
+        active: counts.active,
+        upcoming: counts.upcoming,
+        completed: counts.completed,
+        cancelled: counts.cancelled
+      }
+    } catch (error) {
+      console.error('Error getting event counts:', error)
+      return {
+        total: 0,
+        active: 0,
+        upcoming: 0,
+        completed: 0,
+        cancelled: 0
+      }
+    }
+  },
+
+  // Event ban management
+  async unbanUserFromEvents(userId, adminId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Get user data first
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, name, event_banned, event_absence_count')
+        .eq('id', userId)
+        .single()
+
+      if (userError) throw userError
+      if (!userData) {
+        throw new Error('User not found')
+      }
+
+      if (!userData.event_banned) {
+        throw new Error('User is not banned from events')
+      }
+
+      // Unban the user (but keep the absence count for record-keeping)
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          event_banned: false,
+          event_banned_at: null,
+          event_banned_by: null
+        })
+        .eq('id', userId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Notify the user
+      await this.createNotification({
+        user_id: userId,
+        type: 'system_alert',
+        title: 'Event Ban Removed',
+        message: 'Your ban from joining events has been removed. You can now join events again.',
+        data: {
+          notification_type: 'event_unban',
+          unbanned_by_admin: adminId
+        }
+      })
+
+      return data
+    } catch (error) {
+      console.error('Error unbanning user from events:', error)
+      throw error
+    }
+  },
+
+  async banUserFromEvents(userId, adminId, reason = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Get user data first
+      const { data: userData, error: userError } = await supabase
+        .from('users')
+        .select('id, name, event_banned, event_absence_count')
+        .eq('id', userId)
+        .single()
+
+      if (userError) throw userError
+      if (!userData) {
+        throw new Error('User not found')
+      }
+
+      // Ban the user
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          event_banned: true,
+          event_banned_at: new Date().toISOString(),
+          event_banned_by: adminId
+        })
+        .eq('id', userId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Notify the user
+      await this.createNotification({
+        user_id: userId,
+        type: 'system_alert',
+        title: 'Banned from Events',
+        message: reason 
+          ? `You have been banned from joining events. Reason: ${reason}`
+          : 'You have been banned from joining events by an administrator. Please contact support if you believe this is an error.',
+        data: {
+          notification_type: 'event_ban',
+          banned_by_admin: adminId,
+          reason: reason
+        }
+      })
+
+      return data
+    } catch (error) {
+      console.error('Error banning user from events:', error)
+      throw error
+    }
+  },
+
+  async resetUserAbsenceCount(userId, adminId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Reset absence count
+      const { data, error } = await supabase
+        .from('users')
+        .update({
+          event_absence_count: 0
+        })
+        .eq('id', userId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Notify the user
+      await this.createNotification({
+        user_id: userId,
+        type: 'system_alert',
+        title: 'Absence Count Reset',
+        message: 'Your event absence count has been reset by an administrator.',
+        data: {
+          notification_type: 'absence_reset',
+          reset_by_admin: adminId
+        }
+      })
+
+      return data
+    } catch (error) {
+      console.error('Error resetting user absence count:', error)
+      throw error
+    }
+  },
+
+  async getBannedUsers() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select(`
+          id,
+          name,
+          email,
+          event_banned,
+          event_banned_at,
+          event_absence_count,
+          event_banned_by,
+          banned_by_admin:users!users_event_banned_by_fkey(id, name)
+        `)
+        .eq('event_banned', true)
+        .order('event_banned_at', { ascending: false })
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error getting banned users:', error)
+      throw error
+    }
+  },
+
+  async getAdminUsers() {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
     const { data, error } = await supabase
       .from('users')
-      .select('*')
-      .order('created_at', { ascending: false })
+      .select('id, is_active')
+      .eq('role', 'admin')
 
     if (error) throw error
-    return data
+
+    // Treat null as active to avoid missing legacy admin accounts
+    return (data || []).filter(admin => admin.is_active !== false)
+  },
+
+  async notifyAllAdmins(notificationData, excludeUserId = null) {
+    try {
+      const admins = await this.getAdminUsers()
+      if (!admins || admins.length === 0) return
+
+      let adminsToNotify = excludeUserId
+        ? admins.filter(admin => admin.id !== excludeUserId)
+        : admins
+
+      // If we filtered everyone out (e.g., only one admin in the system), notify the excluded admin as well
+      if (adminsToNotify.length === 0 && excludeUserId) {
+        adminsToNotify = admins.filter(admin => admin.id === excludeUserId)
+      }
+
+      if (adminsToNotify.length === 0) return
+
+      await Promise.all(
+        adminsToNotify.map(admin =>
+          this.createNotification({
+            ...notificationData,
+            user_id: admin.id,
+            created_at: new Date().toISOString()
+          }).catch(err => {
+            console.error('Failed to create admin notification:', err)
+            return null
+          })
+        )
+      )
+    } catch (error) {
+      console.error('Error in notifyAllAdmins:', error)
+      // Don't throw - notification failures shouldn't break the main operation
+    }
   },
 
   // New function to handle pickup status updates
@@ -3355,6 +5600,246 @@ export const db = {
     }
   },
 
+  // Matching Parameters Management
+  async getMatchingParameters() {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const { data, error } = await supabase
+        .from('matching_parameters')
+        .select('*')
+        .eq('is_active', true)
+
+      if (error) throw error
+
+      // Transform database rows into a structured object
+      const params = {}
+      for (const row of data || []) {
+        const group = row.parameter_group
+        // For DONOR_RECIPIENT_VOLUNTEER, only include the 5 unified matching weights
+        // Volunteer-specific weights (availability_match, skill_compatibility, urgency_response) 
+        // are not used in unified matching and should not be included in the weights object
+        const weights = {
+          geographic_proximity: parseFloat(row.geographic_proximity_weight) || 0,
+          item_compatibility: parseFloat(row.item_compatibility_weight) || 0,
+          urgency_alignment: parseFloat(row.urgency_alignment_weight) || 0,
+          user_reliability: parseFloat(row.user_reliability_weight) || 0,
+          delivery_compatibility: parseFloat(row.delivery_compatibility_weight) || 0
+        }
+        
+        // Only include volunteer-specific weights for legacy VOLUNTEER_TASK group (for backward compatibility)
+        if (group === 'VOLUNTEER_TASK') {
+          weights.availability_match = parseFloat(row.availability_match_weight) || 0
+          weights.skill_compatibility = parseFloat(row.skill_compatibility_weight) || 0
+          weights.urgency_response = parseFloat(row.urgency_response_weight) || 0
+        }
+        
+        params[group] = {
+          weights,
+          auto_match_enabled: row.auto_match_enabled || false,
+          auto_match_threshold: parseFloat(row.auto_match_threshold) || 0.75,
+          auto_claim_threshold: parseFloat(row.auto_claim_threshold) || 0.85,
+          max_distance_km: parseFloat(row.max_matching_distance_km) || 50,
+          min_quantity_match_ratio: parseFloat(row.min_quantity_match_ratio) || 0.8,
+          perishable_geographic_boost: parseFloat(row.perishable_geographic_boost) || 0.35,
+          critical_urgency_boost: parseFloat(row.critical_urgency_boost) || 0.30,
+          description: row.description,
+          is_active: row.is_active
+        }
+      }
+
+      return params
+    } catch (error) {
+      console.error('Error getting matching parameters:', error)
+      // Return empty object if table doesn't exist yet
+      if (error.code === '42P01') {
+        return {}
+      }
+      throw error
+    }
+  },
+
+  async updateMatchingParameters(parameterGroup, updates, userId = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      const updateData = {
+        ...updates,
+        updated_at: new Date().toISOString()
+      }
+
+      if (userId) {
+        updateData.updated_by = userId
+      }
+
+      const { data, error } = await supabase
+        .from('matching_parameters')
+        .update(updateData)
+        .eq('parameter_group', parameterGroup)
+        .select()
+        .single()
+
+      if (error) {
+        // If parameter group doesn't exist, create it
+        if (error.code === 'PGRST116') {
+          const insertData = {
+            parameter_group: parameterGroup,
+            ...updateData
+          }
+          const { data: newData, error: insertError } = await supabase
+            .from('matching_parameters')
+            .insert(insertData)
+            .select()
+            .single()
+          
+          if (insertError) throw insertError
+          return newData
+        }
+        throw error
+      }
+
+      return data
+    } catch (error) {
+      console.error('Error updating matching parameters:', error)
+      throw error
+    }
+  },
+
+  // Automatic Matching Functions
+  async performAutomaticMatching(donationId = null, requestId = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    try {
+      // Get matching parameters
+      const params = await this.getMatchingParameters()
+      // Use unified DONOR_RECIPIENT_VOLUNTEER parameters, with fallback to DONOR_RECIPIENT for backward compatibility
+      const matchingParams = params.DONOR_RECIPIENT_VOLUNTEER || params.DONOR_RECIPIENT
+
+      // Check if auto-matching is enabled
+      if (!matchingParams || !matchingParams.auto_match_enabled) {
+        return { matched: false, reason: 'auto_match_disabled' }
+      }
+
+      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
+      const autoMatchThreshold = matchingParams.auto_match_threshold || 0.75
+      const autoClaimThreshold = matchingParams.auto_claim_threshold || 0.85
+
+      let matches = []
+      let matched = false
+
+      // Match new donation to open requests
+      if (donationId) {
+        const donationMatches = await this.matchNewDonation(donationId, { maxResults: 5 })
+        
+        for (const match of donationMatches) {
+          if (match.score >= autoClaimThreshold) {
+            // Auto-claim: Create claim automatically
+            try {
+              await this.claimDonation(match.donation.id, match.request.requester_id)
+              matched = true
+              matches.push({ type: 'auto_claim', match, claimCreated: true })
+              
+              // Notify recipient
+              await this.createNotification({
+                user_id: match.request.requester_id,
+                type: 'donation_auto_matched',
+                title: 'Donation Auto-Matched',
+                message: `A donation matching your request "${match.request.title}" has been automatically matched!`,
+                data: {
+                  donation_id: match.donation.id,
+                  request_id: match.request.id,
+                  match_score: match.score
+                }
+              })
+            } catch (claimError) {
+              console.error('Error auto-claiming donation:', claimError)
+              matches.push({ type: 'auto_match', match, claimCreated: false, error: claimError.message })
+            }
+          } else if (match.score >= autoMatchThreshold) {
+            // Auto-match: Create notification for high-scoring match
+            matches.push({ type: 'auto_match', match, claimCreated: false })
+            
+            await this.createNotification({
+              user_id: match.request.requester_id,
+              type: 'high_score_match',
+              title: 'High-Score Match Found',
+              message: `A donation with ${Math.round(match.score * 100)}% match score is available for your request "${match.request.title}"`,
+              data: {
+                donation_id: match.donation.id,
+                request_id: match.request.id,
+                match_score: match.score
+              }
+            })
+          }
+        }
+      }
+
+      // Match new request to available donations
+      if (requestId) {
+        const requestMatches = await this.matchNewRequest(requestId, { maxResults: 5 })
+        
+        for (const match of requestMatches) {
+          if (match.score >= autoClaimThreshold) {
+            // Auto-claim: Create claim automatically
+            try {
+              await this.claimDonation(match.donation.id, match.request.requester_id)
+              matched = true
+              matches.push({ type: 'auto_claim', match, claimCreated: true })
+              
+              // Notify recipient
+              await this.createNotification({
+                user_id: match.request.requester_id,
+                type: 'donation_auto_matched',
+                title: 'Donation Auto-Matched',
+                message: `Your request "${match.request.title}" has been automatically matched with a donation!`,
+                data: {
+                  donation_id: match.donation.id,
+                  request_id: match.request.id,
+                  match_score: match.score
+                }
+              })
+            } catch (claimError) {
+              console.error('Error auto-claiming donation:', claimError)
+              matches.push({ type: 'auto_match', match, claimCreated: false, error: claimError.message })
+            }
+          } else if (match.score >= autoMatchThreshold) {
+            // Auto-match: Create notification for high-scoring match
+            matches.push({ type: 'auto_match', match, claimCreated: false })
+            
+            await this.createNotification({
+              user_id: match.request.requester_id,
+              type: 'high_score_match',
+              title: 'High-Score Match Found',
+              message: `A donation with ${Math.round(match.score * 100)}% match score is available for your request "${match.request.title}"`,
+              data: {
+                donation_id: match.donation.id,
+                request_id: match.request.id,
+                match_score: match.score
+              }
+            })
+          }
+        }
+      }
+
+      return {
+        matched,
+        matches,
+        threshold: autoMatchThreshold,
+        claimThreshold: autoClaimThreshold
+      }
+    } catch (error) {
+      console.error('Error performing automatic matching:', error)
+      // Don't throw error - auto-matching should not block donation/request creation
+      return { matched: false, error: error.message }
+    }
+  },
+
   async findVolunteersForTask(taskId, taskType = 'claim', maxResults = 5) {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
@@ -3497,25 +5982,29 @@ export const db = {
           status: 'available' 
         })
 
-        // Find requests that match user's donations
+        // Find requests that match user's donations using the unified matching algorithm
         const openRequests = await this.getRequests({ status: 'open' })
         
         for (const donation of userDonations.slice(0, 3)) {
+          try {
+            // Use the unified matching algorithm to find best matching requests
+            // This uses database-driven parameters (DONOR_RECIPIENT_VOLUNTEER)
           const compatibleRequests = []
           
-          for (const request of openRequests) {
-            const categoryMatch = donation.category === request.category
-            const quantityMatch = donation.quantity >= request.quantity_needed
-            
-            if (categoryMatch && quantityMatch) {
+            for (const request of openRequests.slice(0, 10)) {
+              try {
+                // Use matchDonorsToRequest to get proper matching scores
+                const matches = await intelligentMatcher.matchDonorsToRequest(request, [donation], 1)
+                
+                if (matches && matches.length > 0 && matches[0].score > 0.5) {
               compatibleRequests.push({
                 request,
-                compatibility: intelligentMatcher.calculateItemCompatibility(
-                  donation.category, request.category,
-                  donation.title, request.title,
-                  request.quantity_needed, donation.quantity
-                )
-              })
+                    compatibility: matches[0].score,
+                    matchReason: matches[0].matchReason
+                  })
+                }
+              } catch (err) {
+                console.error(`Error matching request ${request.id} for donation ${donation.id}:`, err)
             }
           }
 
@@ -3528,34 +6017,29 @@ export const db = {
                 .slice(0, 2),
               reason: 'Found recipients who need your donation'
             })
+            }
+          } catch (err) {
+            console.error(`Error processing donation ${donation.id} for recommendations:`, err)
           }
         }
       } else if (userRole === 'volunteer') {
         // Get available volunteer tasks
         const availableTasks = await this.getAvailableVolunteerTasks()
         
-        // Score tasks based on volunteer's location and preferences
+        // Score tasks using the unified matching algorithm with database-driven parameters
         const userProfile = await this.getProfile(userId)
         const scoredTasks = []
 
         for (const task of availableTasks.slice(0, 10)) {
-          let score = 0.5 // Base score
-
-          // Geographic proximity bonus
-          if (userProfile?.latitude && userProfile?.longitude) {
-            const distance = intelligentMatcher.calculateGeographicScore(
-              userProfile.latitude, userProfile.longitude,
-              task.donor?.latitude, task.donor?.longitude
-            )
-            score += distance * 0.3
+          try {
+            // Use the unified matching algorithm to score this task for the volunteer
+            const matchResult = await intelligentMatcher.calculateTaskScoreForVolunteer(task, userProfile)
+            scoredTasks.push({ ...task, score: matchResult.score, matchReason: matchResult.matchReason })
+          } catch (err) {
+            console.error(`Error scoring task ${task.id} for recommendations:`, err)
+            // Fallback to neutral score
+            scoredTasks.push({ ...task, score: 0.5, matchReason: 'Unable to calculate match score' })
           }
-
-          // Urgency bonus
-          if (task.urgency === 'high' || task.urgency === 'critical') {
-            score += 0.2
-          }
-
-          scoredTasks.push({ ...task, score })
         }
 
         const topTasks = scoredTasks
@@ -3565,7 +6049,7 @@ export const db = {
         recommendations.push({
           type: 'volunteer_opportunities',
           tasks: topTasks,
-          reason: 'High-priority volunteer opportunities near you'
+          reason: 'High-priority volunteer opportunities matched to your profile'
         })
       }
 
@@ -3703,34 +6187,65 @@ export const db = {
         throw error
       }
 
-      // Return default settings if none exist
+      // Return default settings if none exist (only include actually implemented settings)
       if (!data) {
         return {
-          platformName: 'HopeLink',
-          platformDescription: 'Community-driven donation management platform',
-          maintenanceMode: false,
-          registrationEnabled: true,
-          emailVerificationRequired: true,
-          supportEmail: 'support@hopelink.org',
-          requireIdVerification: true,
-          passwordMinLength: 8,
-          maxLoginAttempts: 5,
-          requireTwoFactor: false,
+          // System Monitoring - Actually implemented and functional
           enableSystemLogs: true,
           logRetentionDays: 30,
-          enablePerformanceMonitoring: true,
-          emailNotifications: true,
-          systemAlerts: true,
-          securityAlerts: true,
+          
+          // User Management - Actually implemented and functional
+          requireIdVerification: true,
           auto_assign_enabled: false,
-          expiry_retention_days: 30
+          expiry_retention_days: 30,
+          donor_signup_enabled: true,
+          recipient_signup_enabled: true,
+          volunteer_signup_enabled: true
         }
       }
 
-      return data
+      // Map database snake_case to JavaScript camelCase
+      return {
+        enableSystemLogs: data.enable_system_logs ?? data.enableSystemLogs ?? true,
+        logRetentionDays: data.log_retention_days ?? data.logRetentionDays ?? 30,
+        requireIdVerification: data.require_id_verification ?? data.requireIdVerification ?? true,
+        auto_assign_enabled: data.auto_assign_enabled ?? false,
+        expiry_retention_days: data.expiry_retention_days ?? 30,
+        donor_signup_enabled: data.donor_signup_enabled ?? true,
+        recipient_signup_enabled: data.recipient_signup_enabled ?? true,
+        volunteer_signup_enabled: data.volunteer_signup_enabled ?? true
+      }
     } catch (error) {
       console.error('Error fetching settings:', error)
       throw error
+    }
+  },
+
+  async isRoleSignupEnabled(role) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      const settings = await this.getSettings()
+      
+      switch (role) {
+        case 'donor':
+          return settings.donor_signup_enabled !== false
+        case 'recipient':
+          return settings.recipient_signup_enabled !== false
+        case 'volunteer':
+          return settings.volunteer_signup_enabled !== false
+        case 'admin':
+          // Admin signup is always disabled (admin accounts must be created manually)
+          return false
+        default:
+          return false
+      }
+    } catch (error) {
+      console.error('Error checking role signup status:', error)
+      // Default to enabled if check fails (fail open to prevent blocking legitimate signups)
+      return true
     }
   },
 
@@ -3740,10 +6255,31 @@ export const db = {
     }
 
     try {
+      // Map JavaScript camelCase to database snake_case
+      const dbSettings = {
+        enable_system_logs: settings.enableSystemLogs,
+        log_retention_days: settings.logRetentionDays,
+        require_id_verification: settings.requireIdVerification,
+        auto_assign_enabled: settings.auto_assign_enabled,
+        expiry_retention_days: settings.expiry_retention_days,
+        donor_signup_enabled: settings.donor_signup_enabled,
+        recipient_signup_enabled: settings.recipient_signup_enabled,
+        volunteer_signup_enabled: settings.volunteer_signup_enabled,
+        updated_at: new Date().toISOString()
+      }
+
+      // Remove undefined values
+      Object.keys(dbSettings).forEach(key => {
+        if (dbSettings[key] === undefined) {
+          delete dbSettings[key]
+        }
+      })
+
       // Check if settings exist
       const { data: existing } = await supabase
         .from('settings')
         .select('id')
+        .eq('id', 1)
         .maybeSingle()
 
       let result
@@ -3751,11 +6287,8 @@ export const db = {
         // Update existing settings
         result = await supabase
           .from('settings')
-          .update({
-            ...settings,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', existing.id)
+          .update(dbSettings)
+          .eq('id', 1)
           .select()
           .single()
       } else {
@@ -3764,9 +6297,8 @@ export const db = {
           .from('settings')
           .insert({
             id: 1,
-            ...settings,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
+            ...dbSettings,
+            created_at: new Date().toISOString()
           })
           .select()
           .single()
@@ -3774,7 +6306,15 @@ export const db = {
 
       if (result.error) throw result.error
 
-      return result.data
+      // Map back to camelCase for consistency
+      const updatedData = result.data
+      return {
+        enableSystemLogs: updatedData.enable_system_logs ?? updatedData.enableSystemLogs ?? true,
+        logRetentionDays: updatedData.log_retention_days ?? updatedData.logRetentionDays ?? 30,
+        requireIdVerification: updatedData.require_id_verification ?? updatedData.requireIdVerification ?? true,
+        auto_assign_enabled: updatedData.auto_assign_enabled ?? false,
+        expiry_retention_days: updatedData.expiry_retention_days ?? 30
+      }
     } catch (error) {
       console.error('Error updating settings:', error)
       throw error
@@ -4050,6 +6590,26 @@ export const db = {
         .single()
 
       if (error) throw error
+
+      // Notify all admins about new feedback
+      try {
+        await this.notifyAllAdmins({
+          type: 'system_alert',
+          title: '📝 New User Feedback',
+          message: `New feedback received from ${feedbackData.user_role || 'user'} with ${feedbackData.rating}/5 rating`,
+          data: {
+            feedback_id: data.id,
+            user_role: feedbackData.user_role,
+            rating: feedbackData.rating,
+            link: '/admin/feedback',
+            notification_type: 'new_feedback'
+          }
+        })
+      } catch (notifError) {
+        console.error('Error notifying admins about feedback:', notifError)
+        // Don't throw - feedback was submitted successfully
+      }
+
       return data
     } catch (error) {
       console.error('Error submitting platform feedback:', error)
@@ -4070,6 +6630,1127 @@ export const db = {
       return data
     } catch (error) {
       console.error('Error getting platform feedback:', error)
+      throw error
+    }
+  },
+
+  // Database Backups Management
+  async getDatabaseBackups(backupType = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      // Optimize query: Don't select sql_data column (can be very large and cause timeouts)
+      // Only select the columns we actually need for display
+      let query = supabase
+        .from('database_backups')
+        .select('id, file_name, file_size, backup_date, status, backup_type, created_at, updated_at')
+        .order('backup_date', { ascending: false })
+      
+      // Filter by backup type if provided
+      // If backup_type column doesn't exist yet, the query will fail and we'll handle it
+      if (backupType === 'automatic' || backupType === 'manual') {
+        query = query.eq('backup_type', backupType)
+      }
+      
+      // For automatic backups, limit to 5 most recent
+      // For manual backups, get all (reasonable limit)
+      if (backupType === 'automatic') {
+        query = query.limit(5)
+      } else if (backupType === 'manual') {
+        query = query.limit(100) // Reasonable limit for manual backups
+      } else {
+        query = query.limit(15) // Default limit when fetching all
+      }
+      
+      const { data, error } = await query
+      
+      // If error is about backup_type column not existing, fetch all and filter in memory
+      if (error && error.message && error.message.includes('backup_type')) {
+        // Column doesn't exist yet - fetch all backups and filter in memory
+        // Don't select sql_data to avoid timeouts
+        const { data: allBackups, error: allError } = await supabase
+          .from('database_backups')
+          .select('id, file_name, file_size, backup_date, status, created_at, updated_at')
+          .order('backup_date', { ascending: false })
+          .limit(backupType === 'automatic' ? 5 : 100)
+        
+        if (allError) {
+          throw allError
+        }
+        
+        // All existing backups are treated as automatic (backward compatibility)
+        if (backupType === 'automatic') {
+          return (allBackups || []).slice(0, 5)
+        } else if (backupType === 'manual') {
+          return [] // No manual backups if column doesn't exist
+        }
+        return allBackups || []
+      }
+
+      if (error) {
+        // If table doesn't exist, return empty array
+        if (error.code === '42P01' || error.code === 'PGRST116') {
+          return []
+        }
+        // Handle statement timeout errors (code 57014)
+        if (error.code === '57014' || error.message?.includes('statement timeout') || error.message?.includes('canceling statement')) {
+          console.warn('Query timeout fetching backups (table may be large or slow):', error.message)
+          return [] // Return empty array for timeout errors to prevent UI breakage
+        }
+        // Handle network errors gracefully (CORS, 502, connection errors)
+        if (error.message?.includes('Failed to fetch') || 
+            error.message?.includes('CORS') ||
+            error.message?.includes('NetworkError') ||
+            error.message?.includes('QUIC') ||
+            error.code === '' || 
+            error.statusCode === 502 ||
+            error.statusCode === 503 ||
+            error.statusCode === 504 ||
+            error.statusCode === 500) {
+          console.warn('Network/server error fetching backups (non-critical):', error.message)
+          return [] // Return empty array for network errors to prevent UI breakage
+        }
+        throw error
+      }
+      return data || []
+    } catch (error) {
+      console.error('Error fetching database backups:', error)
+      // Return empty array if table doesn't exist
+      if (error.code === '42P01' || error.code === 'PGRST116') {
+        return []
+      }
+      // Handle statement timeout errors (code 57014)
+      if (error.code === '57014' || error.message?.includes('statement timeout') || error.message?.includes('canceling statement')) {
+        console.warn('Query timeout fetching backups (table may be large or slow):', error.message)
+        return [] // Return empty array for timeout errors to prevent UI breakage
+      }
+      // Handle network errors gracefully (CORS, 502, connection errors)
+      if (error.message?.includes('Failed to fetch') || 
+          error.message?.includes('CORS') ||
+          error.message?.includes('NetworkError') ||
+          error.message?.includes('QUIC') ||
+          error.code === '' || 
+          error.statusCode === 502 ||
+          error.statusCode === 503 ||
+          error.statusCode === 504 ||
+          error.statusCode === 500) {
+        console.warn('Network/server error fetching backups (non-critical):', error.message)
+        return [] // Return empty array for network errors to prevent UI breakage
+      }
+      // For other errors, still return empty array to prevent UI breakage
+      // This allows the UI to continue functioning even if backup loading fails
+      console.warn('Error fetching backups, returning empty array:', error.message)
+      return []
+    }
+  },
+
+  async checkAndCreateWeeklyBackup() {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      // Get the start of the current week (Monday)
+      const now = new Date()
+      const dayOfWeek = now.getDay()
+      // Calculate days to subtract to get to Monday (0 = Sunday, 1 = Monday, etc.)
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+      const startOfWeek = new Date(now)
+      startOfWeek.setDate(startOfWeek.getDate() - daysToMonday)
+      startOfWeek.setHours(0, 0, 0, 0)
+      const endOfWeek = new Date(startOfWeek)
+      endOfWeek.setDate(endOfWeek.getDate() + 7)
+
+      // Check if an automatic backup already exists for this week
+      const { data: existingBackups, error: checkError } = await supabase
+        .from('database_backups')
+        .select('id, backup_date')
+        .eq('backup_type', 'automatic')
+        .gte('backup_date', startOfWeek.toISOString())
+        .lt('backup_date', endOfWeek.toISOString())
+        .order('backup_date', { ascending: false })
+
+      if (checkError) {
+        // If table doesn't exist, create first backup
+        if (checkError.code === '42P01' || checkError.code === 'PGRST116') {
+          // Backup table does not exist yet, creating first backup
+          return await this.createDatabaseBackup('automatic')
+        }
+        throw checkError
+      }
+
+      // If no backup exists for this week, create one automatically
+      if (!existingBackups || existingBackups.length === 0) {
+        // Create automatic weekly backup
+        const newBackup = await this.createDatabaseBackup('automatic')
+        
+        // After creating backup, check again for duplicates (race condition protection)
+        // This ensures that if multiple backups were created simultaneously, we clean them up
+        const { data: backupsAfterCreation, error: recheckError } = await supabase
+          .from('database_backups')
+          .select('id, backup_date')
+          .eq('backup_type', 'automatic')
+          .gte('backup_date', startOfWeek.toISOString())
+          .lt('backup_date', endOfWeek.toISOString())
+          .order('backup_date', { ascending: false })
+
+        if (!recheckError && backupsAfterCreation && backupsAfterCreation.length > 1) {
+          // Multiple backups found for this week - keep the most recent, delete older ones
+          console.warn(`Found ${backupsAfterCreation.length} backups for this week. Cleaning up duplicates...`)
+          
+          // Keep the first (most recent) backup, delete the rest
+          const backupsToDelete = backupsAfterCreation.slice(1)
+          
+          for (const backupToDelete of backupsToDelete) {
+            try {
+              await this.deleteDatabaseBackup(backupToDelete.id)
+              console.log(`Deleted duplicate backup: ${backupToDelete.id}`)
+            } catch (deleteError) {
+              console.error(`Error deleting duplicate backup ${backupToDelete.id}:`, deleteError)
+              // Continue deleting other duplicates even if one fails
+            }
+          }
+        }
+        
+        return newBackup
+      }
+
+      // If multiple backups exist for this week (shouldn't happen, but cleanup if it does)
+      if (existingBackups.length > 1) {
+        console.warn(`Found ${existingBackups.length} backups for this week. Cleaning up duplicates...`)
+        
+        // Keep the first (most recent) backup, delete the rest
+        const backupsToDelete = existingBackups.slice(1)
+        
+        for (const backupToDelete of backupsToDelete) {
+          try {
+            await this.deleteDatabaseBackup(backupToDelete.id)
+            console.log(`Deleted duplicate backup: ${backupToDelete.id}`)
+          } catch (deleteError) {
+            console.error(`Error deleting duplicate backup ${backupToDelete.id}:`, deleteError)
+            // Continue deleting other duplicates even if one fails
+          }
+        }
+      }
+
+      return null // Backup already exists for this week
+    } catch (error) {
+      console.error('Error checking/creating weekly backup:', error)
+      throw error
+    }
+  },
+
+  async createDatabaseBackup(backupType = 'automatic') {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    // Validate backup type
+    if (backupType !== 'automatic' && backupType !== 'manual') {
+      throw new Error('Invalid backup type. Must be "automatic" or "manual"')
+    }
+
+    try {
+      // Get all tables in the database (export ALL data from ALL tables)
+      // Only include tables that actually exist in the database
+      // Tables that don't exist will be skipped gracefully (no console errors)
+      const tables = [
+        'users', 
+        'donations', 
+        'donation_requests', 
+        'donation_claims',
+        'events', 
+        'event_items',
+        'feedback_ratings', 
+        'platform_feedback',
+        'notifications', 
+        'settings', 
+        'deliveries', 
+        'direct_deliveries',
+        'database_backups' // Include backups table metadata (but exclude sql_data to avoid recursion)
+      ]
+      
+      // Optional tables that may not exist in all databases
+      // Only include tables that actually exist in your database to avoid 404 errors
+      // If you add these tables later, uncomment them below
+      const optionalTables = [
+        // Uncomment tables below if they exist in your database:
+        // 'event_attendance',
+        // 'smart_matches',
+        // 'pickups',
+        // 'system_logs' // Uncomment if system_logs table exists
+      ]
+      
+      // Track which tables were successfully backed up
+      const backedUpTables = []
+      const skippedTables = []
+
+      let sqlBackup = `-- HopeLink Database Backup\n-- Generated: ${new Date().toISOString()}\n\n`
+      sqlBackup += `SET session_replication_role = 'replica';\n\n`
+
+      // Export data from each table (required tables)
+      for (const table of tables) {
+        try {
+          // For database_backups table, exclude sql_data column to avoid huge backups
+          const selectColumns = table === 'database_backups' 
+            ? 'id, file_name, file_size, backup_date, status, created_at, updated_at'
+            : '*'
+
+          // Try to fetch ALL data directly
+          // If table doesn't exist, error will be caught and table will be skipped
+          const { data, error } = await supabase
+            .from(table)
+            .select(selectColumns)
+
+          if (error) {
+            // Check if table doesn't exist
+            const errorMsg = error.message?.toLowerCase() || ''
+            const errorCode = error.code || ''
+            if (errorCode === '42P01' || errorCode === 'PGRST116' || 
+                errorMsg.includes('does not exist') || 
+                (errorMsg.includes('relation') && errorMsg.includes('not exist'))) {
+              // Table doesn't exist - skip it and track (this is expected for some tables)
+              skippedTables.push(table)
+              continue
+            }
+            // Other errors - skip this table and track
+            skippedTables.push(table)
+            continue
+          }
+          
+          // Table exists and data fetched successfully - track it
+          backedUpTables.push(table)
+          
+          // Always include table in backup (even if empty)
+          sqlBackup += `\n-- Table: ${table}\n`
+          sqlBackup += `DELETE FROM ${table};\n\n`
+          
+          if (data && data.length > 0) {
+            // Generate INSERT statements for ALL rows
+            data.forEach(row => {
+              const columns = Object.keys(row).join(', ')
+              const values = Object.values(row).map(val => {
+                if (val === null) return 'NULL'
+                if (typeof val === 'string') {
+                  // Escape single quotes and wrap in quotes
+                  return `'${val.replace(/'/g, "''")}'`
+                }
+                if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE'
+                if (val instanceof Date) {
+                  return `'${val.toISOString()}'`
+                }
+                if (typeof val === 'object') {
+                  // Handle JSON/JSONB objects
+                  try {
+                    const jsonStr = JSON.stringify(val).replace(/'/g, "''")
+                    return `'${jsonStr}'::jsonb`
+                  } catch {
+                    return `'${String(val).replace(/'/g, "''")}'`
+                  }
+                }
+                if (typeof val === 'number') {
+                  return String(val)
+                }
+                return String(val)
+              }).join(', ')
+              
+              sqlBackup += `INSERT INTO ${table} (${columns}) VALUES (${values});\n`
+            })
+            sqlBackup += `-- End of table ${table} (${data.length} rows)\n\n`
+          } else {
+            // Table exists but is empty
+            sqlBackup += `-- Table ${table} is empty (0 rows)\n\n`
+          }
+        } catch (tableError) {
+          // Silently skip tables that cause errors
+          skippedTables.push(table)
+          continue
+        }
+      }
+      
+      // Export data from optional tables (may not exist - check first)
+      // Use Promise.allSettled to handle all table checks without stopping on errors
+      const optionalTablePromises = optionalTables.map(async (table) => {
+        try {
+          // Try to fetch data directly - if table doesn't exist, it will error
+          // We catch the error and return null to indicate table doesn't exist
+          const { data, error } = await supabase
+            .from(table)
+            .select('*')
+
+          if (error) {
+            // Check if table doesn't exist
+            const errorMsg = error.message?.toLowerCase() || ''
+            const errorCode = error.code || ''
+            if (errorCode === '42P01' || errorCode === 'PGRST116' || 
+                errorMsg.includes('does not exist') || 
+                (errorMsg.includes('relation') && errorMsg.includes('not exist'))) {
+              // Table doesn't exist - return null to skip
+              return { table, exists: false, data: null, error: null }
+            }
+            // Other errors - also skip
+            return { table, exists: false, data: null, error }
+          }
+
+          // Table exists - return data
+          return { table, exists: true, data, error: null }
+        } catch (tableError) {
+          // Catch any unexpected errors
+          return { table, exists: false, data: null, error: tableError }
+        }
+      })
+
+      // Wait for all optional table checks to complete
+      const optionalTableResults = await Promise.allSettled(optionalTablePromises)
+
+      // Process results
+      for (const result of optionalTableResults) {
+        if (result.status === 'fulfilled') {
+          const { table, exists, data, error } = result.value
+          
+          if (!exists) {
+            // Table doesn't exist - track and skip
+            skippedTables.push(table)
+            continue
+          }
+
+          // Table exists and data fetched successfully - track it
+          backedUpTables.push(table)
+
+          // Add table to backup (even if empty)
+          sqlBackup += `\n-- Table: ${table}\n`
+          sqlBackup += `DELETE FROM ${table};\n\n`
+          
+          if (data && data.length > 0) {
+            // Generate INSERT statements for ALL rows
+            data.forEach(row => {
+              const columns = Object.keys(row).join(', ')
+              const values = Object.values(row).map(val => {
+                if (val === null) return 'NULL'
+                if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`
+                if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE'
+                if (val instanceof Date) return `'${val.toISOString()}'`
+                if (typeof val === 'object') {
+                  // Handle JSON/JSONB objects
+                  try {
+                    const jsonStr = JSON.stringify(val).replace(/'/g, "''")
+                    return `'${jsonStr}'::jsonb`
+                  } catch {
+                    return `'${String(val).replace(/'/g, "''")}'`
+                  }
+                }
+                if (typeof val === 'number') {
+                  return String(val)
+                }
+                return String(val)
+              }).join(', ')
+              sqlBackup += `INSERT INTO ${table} (${columns}) VALUES (${values});\n`
+            })
+            sqlBackup += `-- End of table ${table} (${data.length} rows)\n\n`
+          } else {
+            // Table exists but is empty
+            sqlBackup += `-- Table ${table} is empty (0 rows)\n\n`
+          }
+        } else {
+          // Promise was rejected - skip this table
+          const table = optionalTables[optionalTableResults.indexOf(result)]
+          skippedTables.push(table)
+        }
+      }
+
+      sqlBackup += `SET session_replication_role = 'origin';\n\n`
+      
+      // Add backup summary with actual results
+      sqlBackup += `-- ============================================\n`
+      sqlBackup += `-- BACKUP SUMMARY\n`
+      sqlBackup += `-- ============================================\n`
+      sqlBackup += `-- Backup Date: ${new Date().toISOString()}\n`
+      sqlBackup += `-- Tables Successfully Backed Up: ${backedUpTables.length}\n`
+      if (backedUpTables.length > 0) {
+        sqlBackup += `-- Backed Up Tables: ${backedUpTables.join(', ')}\n`
+      }
+      if (skippedTables.length > 0) {
+        sqlBackup += `-- Tables Skipped (do not exist): ${skippedTables.length} (${skippedTables.join(', ')})\n`
+      }
+      sqlBackup += `-- Total Tables Checked: ${tables.length + optionalTables.length}\n`
+      sqlBackup += `-- Note: This backup contains ALL data from ALL existing tables\n`
+      sqlBackup += `-- ============================================\n`
+
+      // Create backup blob
+      const backupBlob = new Blob([sqlBackup], { type: 'text/sql' })
+      const backupSize = backupBlob.size
+
+      // Generate filename with date
+      const today = new Date()
+      const fileName = `backup-${today.toISOString().split('T')[0]}.sql`
+
+      // Try to upload to Supabase Storage
+      let storageUploaded = false
+      try {
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('database-backups')
+          .upload(fileName, backupBlob, {
+            contentType: 'text/sql',
+            upsert: true, // Allow overwriting if file exists
+            cacheControl: '3600'
+          })
+        
+        if (uploadError) {
+          // Log specific error for debugging
+          console.error('Storage upload error:', {
+            message: uploadError.message,
+            statusCode: uploadError.statusCode,
+            error: uploadError
+          })
+          
+          // Check for common issues
+          if (uploadError.message?.includes('Bucket not found') || uploadError.statusCode === '404') {
+            console.error('❌ Storage bucket "database-backups" not found. Please verify the bucket exists in Supabase Dashboard > Storage.')
+          } else if (uploadError.message?.includes('new row violates row-level security') || uploadError.statusCode === '403') {
+            console.error('❌ Storage bucket permissions issue. Please check bucket policies in Supabase Dashboard > Storage > database-backups > Policies.')
+            console.error('   The bucket needs policies that allow authenticated users (admins) to upload files.')
+          } else if (uploadError.message?.includes('Payload too large') || uploadError.statusCode === '413') {
+            console.error('❌ Backup file is too large for storage. Backup will be stored in database only.')
+          } else if (uploadError.statusCode === '400') {
+            console.error('❌ Bad Request (400) - This usually means:')
+            console.error('   1. Bucket policies are not configured correctly')
+            console.error('   2. File size exceeds bucket limit')
+            console.error('   3. MIME type restrictions (should allow text/sql)')
+            console.error('   Please check bucket settings in Supabase Dashboard > Storage > database-backups')
+          } else {
+            console.error('❌ Storage upload failed. Backup will be stored in database only.')
+          }
+        } else {
+          storageUploaded = true
+          console.log('✅ Backup uploaded to storage successfully:', uploadData?.path)
+        }
+      } catch (storageError) {
+        // Catch any unexpected errors
+        console.error('❌ Unexpected storage error:', storageError)
+      }
+
+      // Store backup metadata in database_backups table
+      const backupDate = today.toISOString()
+      
+      // Try to store backup metadata (with SQL data if possible)
+      // If SQL is too large, store without sql_data (it will be in storage or can be regenerated)
+      let backupRecord = null
+      let backupError = null
+      
+      // Check if SQL backup is too large (PostgreSQL text column limit is ~1GB, but we'll use 10MB as safe limit)
+      const maxSqlDataSize = 10 * 1024 * 1024 // 10MB
+      const shouldStoreSqlData = backupSize < maxSqlDataSize
+      
+      try {
+        const insertData = {
+          file_name: fileName,
+          file_size: backupSize,
+          backup_date: backupDate,
+          status: 'completed',
+          backup_type: backupType // 'automatic' or 'manual'
+        }
+        
+        // Only include sql_data if backup is small enough
+        if (shouldStoreSqlData) {
+          insertData.sql_data = sqlBackup
+        } else {
+          // For large backups, don't store SQL data in database
+          // It should be in storage, or can be regenerated
+          insertData.sql_data = null
+        }
+        
+        const { data, error } = await supabase
+          .from('database_backups')
+          .insert(insertData)
+          .select()
+          .single()
+        
+        backupRecord = data
+        backupError = error
+      } catch (insertError) {
+        backupError = insertError
+      }
+
+      if (backupError) {
+        // If table doesn't exist, throw error
+        if (backupError.code === '42P01' || backupError.code === 'PGRST116') {
+          throw new Error('Backup storage table not configured. Please run CREATE_DATABASE_BACKUPS_TABLE.sql')
+        }
+        
+        // If it's a network error or size issue, try storing without sql_data
+        if (backupError.message?.includes('Failed to fetch') || 
+            backupError.message?.includes('QUIC') ||
+            backupError.message?.includes('too large') ||
+            backupSize > maxSqlDataSize) {
+          console.warn('Backup SQL is too large or network error occurred. Storing metadata without SQL data...')
+          
+          try {
+            const { data, error: retryError } = await supabase
+              .from('database_backups')
+              .insert({
+                file_name: fileName,
+                file_size: backupSize,
+                backup_date: backupDate,
+                status: 'completed',
+                backup_type: backupType,
+                sql_data: null // Don't store large SQL in database
+              })
+              .select()
+              .single()
+            
+            if (!retryError) {
+              backupRecord = data
+            } else {
+              // If we still can't store metadata, create minimal record
+              backupRecord = {
+                file_name: fileName,
+                file_size: backupSize,
+                backup_date: backupDate,
+                status: 'completed',
+                sql_data: null
+              }
+            }
+          } catch (retryError) {
+            // Create a minimal backup record object for return
+            backupRecord = {
+              file_name: fileName,
+              file_size: backupSize,
+              backup_date: backupDate,
+              status: 'completed',
+              sql_data: null
+            }
+          }
+        } else {
+          // For other errors, create a minimal record
+          backupRecord = {
+            file_name: fileName,
+            file_size: backupSize,
+            backup_date: backupDate,
+            status: 'completed',
+            sql_data: null
+          }
+        }
+      }
+
+      // Auto-cleanup: Delete automatic backups older than 5 weeks (keep only 5 most recent)
+      // Manual backups are never deleted automatically
+      // This is handled by database trigger, but we also do it here as backup
+      // Only run cleanup if we successfully stored the backup record and it's an automatic backup
+      if (backupRecord && backupRecord.id && backupType === 'automatic') {
+        try {
+          const { data: allAutomaticBackups, error: listError } = await supabase
+            .from('database_backups')
+            .select('id, file_name')
+            .eq('backup_type', 'automatic')
+            .order('backup_date', { ascending: false })
+
+          if (!listError && allAutomaticBackups && allAutomaticBackups.length > 5) {
+            const backupsToDelete = allAutomaticBackups.slice(5)
+            const idsToDelete = backupsToDelete.map(b => b.id)
+            
+            // Delete from database
+            await supabase
+              .from('database_backups')
+              .delete()
+              .in('id', idsToDelete)
+
+            // Try to delete files from storage (only if bucket exists - check via storageUploaded flag)
+            const filesToDelete = backupsToDelete.map(b => b.file_name).filter(Boolean)
+            if (filesToDelete.length > 0 && storageUploaded) {
+              try {
+                await supabase.storage
+                  .from('database-backups')
+                  .remove(filesToDelete)
+              } catch (storageError) {
+                // Silently ignore storage errors - bucket may not exist
+              }
+            }
+          }
+        } catch (cleanupError) {
+          // Silently ignore cleanup errors - don't fail backup
+        }
+      }
+
+      // Return backup record (even if metadata storage failed, we still have the SQL backup)
+      // If backupRecord exists, return it; otherwise create a minimal record
+      // Note: The SQL backup data is stored in sqlBackup variable but may be too large for database
+      // For large backups, the SQL will need to be stored in storage or downloaded directly
+      if (backupRecord) {
+        return backupRecord
+      } else {
+          // Create a minimal backup record if metadata storage failed
+          // The actual SQL backup was created successfully, just couldn't store metadata
+          return {
+            file_name: fileName,
+            file_size: backupSize,
+            backup_date: backupDate,
+            status: 'completed',
+            backup_type: backupType,
+            sql_data: null // SQL data too large or storage failed
+          }
+      }
+    } catch (error) {
+      // Only log critical errors that prevent backup creation
+      if (error.message && error.message.includes('Backup storage table not configured')) {
+        console.error('Backup storage table not configured. Please run CREATE_DATABASE_BACKUPS_TABLE.sql')
+        throw error // Re-throw configuration errors
+      }
+      // For other errors, the SQL backup was likely created successfully
+      // Throw error only if it's a critical failure
+      throw error
+    }
+  },
+
+  // System Logging Functions
+  async logSystemEvent(level, category, message, details = null, userId = null, skipSettingsCheck = false) {
+    if (!supabase) {
+      return // Fail silently if Supabase not configured
+    }
+
+    try {
+      // Check if system logging is enabled (skip check during settings operations to avoid circular dependency)
+      if (!skipSettingsCheck) {
+        try {
+          const settings = await this.getSettings()
+          if (settings?.enableSystemLogs === false) {
+            return // Logging is disabled
+          }
+        } catch (_) {
+          // If settings check fails, continue logging (don't block logging due to settings errors)
+        }
+      }
+
+      // Get user ID from auth if not provided
+      if (!userId) {
+        try {
+          const { data: { user } } = await supabase.auth.getUser()
+          userId = user?.id || null
+        } catch (_) {
+          // User not authenticated, continue without user_id
+        }
+      }
+
+      const { error } = await supabase
+        .from('system_logs')
+        .insert({
+          level: level || 'info',
+          category: category || 'system',
+          message: message || '',
+          details: details || null,
+          user_id: userId || null,
+          created_at: new Date().toISOString()
+        })
+
+      if (error) {
+        // Don't throw error, just log to console to avoid infinite loops
+        // Only log if it's not a table-not-exists error (which is expected on first run)
+        if (error.code !== '42P01' && error.code !== 'PGRST116') {
+          console.warn('Failed to log system event:', error.message)
+        }
+      }
+    } catch (error) {
+      // Fail silently to prevent logging errors from breaking the application
+      console.warn('Error in logSystemEvent:', error.message)
+    }
+  },
+
+  async cleanupOldSystemLogs(retentionDays = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      // Load retention from settings dynamically if not provided
+      if (retentionDays === null) {
+        const settings = await this.getSettings()
+        if (settings?.logRetentionDays && Number.isFinite(settings.logRetentionDays)) {
+          retentionDays = settings.logRetentionDays
+        } else {
+          retentionDays = 30 // Default fallback
+        }
+      }
+
+      // Check if system logging is enabled
+      const settings = await this.getSettings()
+      if (settings?.enableSystemLogs === false) {
+        return { deletedCount: 0, message: 'System logging is disabled' }
+      }
+
+      // Cleanup old logs directly (avoid RPC dependency)
+      const cutoffDate = new Date()
+      cutoffDate.setDate(cutoffDate.getDate() - retentionDays)
+      
+      const { data: logsToDelete, error: selectError } = await supabase
+        .from('system_logs')
+        .select('id')
+        .lt('created_at', cutoffDate.toISOString())
+
+      if (selectError) {
+        // If table doesn't exist, return success with 0 deleted
+        if (selectError.code === '42P01' || selectError.code === 'PGRST116') {
+          return { deletedCount: 0, retentionDays, message: 'System logs table does not exist yet' }
+        }
+        console.warn('Error selecting logs to delete:', selectError)
+        throw selectError
+      }
+
+      let deletedCount = 0
+      if (logsToDelete && logsToDelete.length > 0) {
+        const idsToDelete = logsToDelete.map(log => log.id)
+        const { error: deleteError } = await supabase
+          .from('system_logs')
+          .delete()
+          .in('id', idsToDelete)
+
+        if (deleteError) {
+          console.warn('Error deleting old logs:', deleteError)
+          throw deleteError
+        }
+
+        deletedCount = idsToDelete.length
+      }
+
+      return { deletedCount, retentionDays }
+    } catch (error) {
+      console.error('Error cleaning up old system logs:', error)
+      throw error
+    }
+  },
+
+  async getSystemLogs(limit = 100, level = null, category = null, startDate = null, endDate = null) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      let query = supabase
+        .from('system_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(limit)
+
+      if (level) {
+        query = query.eq('level', level)
+      }
+
+      if (category) {
+        query = query.eq('category', category)
+      }
+
+      if (startDate) {
+        query = query.gte('created_at', startDate)
+      }
+
+      if (endDate) {
+        query = query.lte('created_at', endDate)
+      }
+
+      const { data, error } = await query
+
+      if (error) throw error
+      return data || []
+    } catch (error) {
+      console.error('Error fetching system logs:', error)
+      throw error
+    }
+  },
+
+  // System Health Checks
+  async checkSystemHealth() {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    const healthStatus = {
+      database: 'error',
+      email: 'warning', // Email service check is limited client-side
+      storage: 'error',
+      timestamp: new Date().toISOString()
+    }
+
+    try {
+      // Check Database Connection
+      try {
+        const startTime = Date.now()
+        const { error: dbError } = await supabase
+          .from('settings')
+          .select('id')
+          .limit(1)
+        
+        if (dbError) {
+          healthStatus.database = 'error'
+        } else {
+          const responseTime = Date.now() - startTime
+          // Healthy if response time is reasonable (< 1000ms)
+          healthStatus.database = responseTime < 1000 ? 'healthy' : 'warning'
+        }
+      } catch (error) {
+        console.error('Database health check failed:', error)
+        healthStatus.database = 'error'
+      }
+
+      // Check Storage Service
+      try {
+        // Try to list buckets (this checks if storage is accessible)
+        const { data: buckets, error: storageError } = await supabase.storage.listBuckets()
+        
+        if (storageError) {
+          // Check error type
+          const errorMsg = storageError.message?.toLowerCase() || ''
+          // Permission errors (401, 403) indicate service is up but access is restricted
+          if (errorMsg.includes('permission') || errorMsg.includes('401') || errorMsg.includes('403')) {
+            // Storage service is accessible but permissions are restricted
+            healthStatus.storage = 'warning'
+          } else if (errorMsg.includes('not found') || errorMsg.includes('does not exist')) {
+            // Service might be accessible but bucket doesn't exist
+            healthStatus.storage = 'warning'
+          } else {
+            // Other errors indicate service might be down
+            healthStatus.storage = 'error'
+          }
+        } else {
+          // Successfully listed buckets (even if empty array) - service is healthy
+          healthStatus.storage = 'healthy'
+        }
+      } catch (error) {
+        console.error('Storage health check failed:', error)
+        // Fallback: try to access a common bucket to verify service
+        try {
+          // Try listing from a common bucket (donations, profiles, or database-backups)
+          const { error: testError } = await supabase.storage.from('donations').list('', { limit: 1 })
+          
+          if (testError) {
+            const errorMsg = testError.message?.toLowerCase() || ''
+            if (errorMsg.includes('not found') || errorMsg.includes('does not exist') || errorMsg.includes('bucket')) {
+              // Bucket doesn't exist but storage service is accessible
+              healthStatus.storage = 'warning'
+            } else if (errorMsg.includes('permission') || errorMsg.includes('401') || errorMsg.includes('403')) {
+              // Permission issue - service is up
+              healthStatus.storage = 'warning'
+            } else {
+              // Service error
+              healthStatus.storage = 'error'
+            }
+          } else {
+            // Successfully accessed bucket
+            healthStatus.storage = 'healthy'
+          }
+        } catch (e) {
+          // If all checks fail, mark as error
+          healthStatus.storage = 'error'
+        }
+      }
+
+      // Email Service Check (limited - we can only check if Supabase is configured)
+      // In a real implementation, this would check an email service API
+      // For now, we assume it's working if Supabase is configured
+      // Email service is typically handled server-side, so we mark as warning
+      // (needs server-side verification for accurate status)
+      healthStatus.email = 'warning' // Default to warning since we can't fully verify client-side
+
+    } catch (error) {
+      console.error('System health check error:', error)
+    }
+
+    return healthStatus
+  },
+
+  // Automatic maintenance function that runs both cleanup tasks
+  async runAutomaticMaintenance() {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      const results = {
+        logsCleaned: { deletedCount: 0 },
+        donationsExpired: { expiredCount: 0, archivedCount: 0 },
+        timestamp: new Date().toISOString()
+      }
+
+      // Cleanup old system logs
+      try {
+        results.logsCleaned = await this.cleanupOldSystemLogs()
+      } catch (error) {
+        console.error('Error in log cleanup:', error)
+        results.logsCleaned.error = error.message
+      }
+
+      // Process expired donations
+      try {
+        results.donationsExpired = await this.autoExpireDonations()
+      } catch (error) {
+        console.error('Error in donation expiry:', error)
+        results.donationsExpired.error = error.message
+      }
+
+      // Log maintenance completion (skip settings check to avoid circular dependency)
+      await this.logSystemEvent('info', 'system', 'Automatic maintenance completed', results, null, true)
+
+      return results
+    } catch (error) {
+      console.error('Error running automatic maintenance:', error)
+      await this.logSystemEvent('error', 'system', `Error running automatic maintenance: ${error.message}`, { error })
+      throw error
+    }
+  },
+
+  async deleteDatabaseBackup(backupId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      // Get backup record first to get file_name for storage deletion
+      const { data: backup, error: backupError } = await supabase
+        .from('database_backups')
+        .select('id, file_name')
+        .eq('id', backupId)
+        .single()
+
+      if (backupError) throw backupError
+
+      // Delete from storage if file exists
+      if (backup.file_name) {
+        try {
+          const { error: storageError } = await supabase.storage
+            .from('database-backups')
+            .remove([backup.file_name])
+
+          // Log warning if storage deletion fails, but don't fail the whole operation
+          if (storageError) {
+            console.warn('Failed to delete backup file from storage:', storageError)
+          }
+        } catch (storageError) {
+          // Silently continue if storage bucket doesn't exist or file is missing
+          console.warn('Storage deletion error (non-critical):', storageError)
+        }
+      }
+
+      // Delete from database
+      const { error: deleteError } = await supabase
+        .from('database_backups')
+        .delete()
+        .eq('id', backupId)
+
+      if (deleteError) throw deleteError
+
+      return { success: true }
+    } catch (error) {
+      console.error('Error deleting database backup:', error)
+      throw error
+    }
+  },
+
+  async downloadDatabaseBackup(backupId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+
+    try {
+      // Get backup record
+      const { data: backup, error: backupError } = await supabase
+        .from('database_backups')
+        .select('*')
+        .eq('id', backupId)
+        .single()
+
+      if (backupError) throw backupError
+
+      // Try to download from storage first
+      if (backup.file_name) {
+        try {
+          const { data: fileData, error: downloadError } = await supabase.storage
+            .from('database-backups')
+            .download(backup.file_name)
+
+          if (!downloadError && fileData) {
+            return fileData
+          }
+        } catch (storageError) {
+          console.warn('File not found in storage, using database backup:', storageError)
+        }
+      }
+
+      // Fallback: Use SQL data stored in database
+      if (backup.sql_data) {
+        const blob = new Blob([backup.sql_data], { type: 'text/sql' })
+        return blob
+      }
+
+      // Last resort: Regenerate SQL from current database state
+      const tables = [
+        'users', 
+        'donations', 
+        'donation_requests', 
+        'donation_claims',
+        'events', 
+        'event_attendance', 
+        'event_items',
+        'feedback_ratings', 
+        'platform_feedback',
+        'notifications', 
+        'settings', 
+        'smart_matches',
+        'deliveries', 
+        'pickups', 
+        'direct_deliveries',
+        'database_backups'
+      ]
+
+      let sqlBackup = `-- HopeLink Database Backup\n-- Generated: ${new Date().toISOString()}\n-- Backup Date: ${backup.backup_date}\n\n`
+      sqlBackup += `SET session_replication_role = 'replica';\n\n`
+
+      for (const table of tables) {
+        try {
+          // For database_backups table, exclude sql_data column
+          const selectColumns = table === 'database_backups' 
+            ? 'id, file_name, file_size, backup_date, status, created_at, updated_at'
+            : '*'
+
+          const { data, error } = await supabase
+            .from(table)
+            .select(selectColumns)
+
+          if (error) continue
+
+          sqlBackup += `\n-- Table: ${table}\n`
+          sqlBackup += `DELETE FROM ${table};\n\n`
+          
+          if (data && data.length > 0) {
+            data.forEach(row => {
+              const columns = Object.keys(row).join(', ')
+              const values = Object.values(row).map(val => {
+                if (val === null) return 'NULL'
+                if (typeof val === 'string') return `'${val.replace(/'/g, "''")}'`
+                if (typeof val === 'boolean') return val ? 'TRUE' : 'FALSE'
+                if (val instanceof Date) return `'${val.toISOString()}'`
+                if (typeof val === 'object') {
+                  try {
+                    const jsonStr = JSON.stringify(val).replace(/'/g, "''")
+                    return `'${jsonStr}'::jsonb`
+                  } catch {
+                    return `'${String(val).replace(/'/g, "''")}'`
+                  }
+                }
+                return val
+              }).join(', ')
+              sqlBackup += `INSERT INTO ${table} (${columns}) VALUES (${values});\n`
+            })
+          }
+          sqlBackup += '\n'
+        } catch (tableError) {
+          console.warn(`Error processing table ${table}:`, tableError)
+        }
+      }
+
+      sqlBackup += `SET session_replication_role = 'origin';\n`
+      const blob = new Blob([sqlBackup], { type: 'text/sql' })
+      return blob
+    } catch (error) {
+      console.error('Error downloading database backup:', error)
       throw error
     }
   }

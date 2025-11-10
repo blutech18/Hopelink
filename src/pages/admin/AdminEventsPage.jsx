@@ -20,7 +20,9 @@ import {
   Utensils,
   GraduationCap,
   Heart,
-  FileText
+  FileText,
+  Download,
+  Printer
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -28,6 +30,9 @@ import { db } from '../../lib/supabase'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import CreateEventModal from '../../components/ui/CreateEventModal'
+import AttendanceModal from '../../components/ui/AttendanceModal'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 const AdminEventsPage = () => {
   const { user } = useAuth()
@@ -45,6 +50,8 @@ const AdminEventsPage = () => {
   const [eventToCancel, setEventToCancel] = useState(null)
   const [showViewModal, setShowViewModal] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState(null)
+  const [showAttendanceModal, setShowAttendanceModal] = useState(false)
+  const [attendanceEvent, setAttendanceEvent] = useState(null)
 
   useEffect(() => {
     loadEvents()
@@ -106,6 +113,72 @@ const AdminEventsPage = () => {
     }
   }
 
+  // Extract location display (barangay first, then city, then fallback)
+  const getLocationDisplay = (location) => {
+    if (!location) return 'Not specified'
+    
+    // Try to extract barangay first (patterns: "Barangay X", "Brgy. X", "Barrio X")
+    const barangayPatterns = [
+      /\b(?:Barangay|Brgy\.?|Barrio)[\s-]+([^,]+)/i,  // "Barangay Lapasan" or "Brgy. Lapasan"
+      /\b([^,]+?)\s+(?:Barangay|Brgy\.?|Barrio)\b/i,  // "Lapasan Barangay"
+    ]
+    
+    for (const pattern of barangayPatterns) {
+      const match = location.match(pattern)
+      if (match && match[1]) {
+        const barangay = match[1].trim()
+        // Clean up common prefixes/suffixes
+        const cleaned = barangay
+          .replace(/^barangay\s*/i, '')
+          .replace(/^brgy\.?\s*/i, '')
+          .replace(/\s+barangay$/i, '')
+          .trim()
+        if (cleaned.length > 0) {
+          return cleaned
+        }
+      }
+    }
+    
+    // Try to extract city (usually has "City" suffix or appears before province)
+    const cityPatterns = [
+      /([^,]+?)\s+City/i,  // "Cagayan de Oro City"
+      /,\s*([^,]+?),\s*(?:Misamis|Bukidnon|Lanao|Zamboanga|Davao|Cotabato|Sultan|Agusan|Surigao|Compostela|Dinagat|Maguindanao|Sulu|Tawi|Basilan|Palawan|Romblon|Marinduque|Quezon|Camarines|Albay|Sorsogon|Masbate|Catanduanes|Aklan|Antique|Capiz|Guimaras|Iloilo|Negros|Bohol|Cebu|Siquijor|Leyte|Samar|Biliran|Eastern|Northern|Western|Southern|Philippines)/i,  // City before province
+    ]
+    
+    for (const pattern of cityPatterns) {
+      const match = location.match(pattern)
+      if (match && match[1]) {
+        const city = match[1].trim()
+        // Skip if it's too short or looks like a street name
+        if (city.length > 3 && !/^(Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Highway|Hwy|Hall|Center|Evacuation)/i.test(city)) {
+          return city
+        }
+      }
+    }
+    
+    // Fallback: try to get meaningful parts from comma-separated address
+    const parts = location.split(',').map(p => p.trim()).filter(p => p.length > 0)
+    
+    // Skip common parts like "Philippines", province names, etc.
+    const skipPatterns = [
+      /^Philippines$/i,
+      /^(Misamis|Bukidnon|Lanao|Zamboanga|Davao|Cotabato|Sultan|Agusan|Surigao|Compostela|Dinagat|Maguindanao|Sulu|Tawi|Basilan|Palawan|Romblon|Marinduque|Quezon|Camarines|Albay|Sorsogon|Masbate|Catanduanes|Aklan|Antique|Capiz|Guimaras|Iloilo|Negros|Bohol|Cebu|Siquijor|Leyte|Samar|Biliran|Eastern|Northern|Western|Southern)/i,
+    ]
+    
+    for (const part of parts) {
+      const shouldSkip = skipPatterns.some(pattern => pattern.test(part))
+      if (!shouldSkip && part.length > 3 && part.length < 50) {
+        // Skip if it looks like a street name
+        if (!/^(Street|St|Avenue|Ave|Road|Rd|Boulevard|Blvd|Drive|Dr|Lane|Ln|Way|Highway|Hwy)/i.test(part)) {
+          return part
+        }
+      }
+    }
+    
+    // Final fallback: return location as is (truncated if too long)
+    return location.length > 50 ? location.substring(0, 47) + '...' : location
+  }
+
   const handleCreateEvent = () => {
     setEditingEvent(null)
     setShowCreateModal(true)
@@ -119,6 +192,11 @@ const AdminEventsPage = () => {
   const handleViewEvent = (event) => {
     setSelectedEvent(event)
     setShowViewModal(true)
+  }
+
+  const handleManageAttendance = (event) => {
+    setAttendanceEvent(event)
+    setShowAttendanceModal(true)
   }
 
   const handleCancelEvent = async (eventId) => {
@@ -179,6 +257,235 @@ const AdminEventsPage = () => {
     }
   }
 
+  // PDF and Print functions
+  const generatePDF = async () => {
+    if (!filteredEvents || filteredEvents.length === 0) {
+      alert('No events available to export')
+      return
+    }
+
+    try {
+      const doc = new jsPDF('landscape', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
+      
+      const primaryColor = [0, 26, 92]
+      const secondaryColor = [0, 35, 125]
+      
+      const addHeader = (pageNum, totalPages) => {
+        doc.setFillColor(...primaryColor)
+        doc.rect(0, 0, pageWidth, 40, 'F')
+        
+        doc.setFillColor(...secondaryColor)
+        doc.rect(0, 38, pageWidth, 2, 'F')
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(18)
+        doc.setFont('helvetica', 'bold')
+        doc.text('HopeLink', margin + 5, 20)
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(205, 215, 74)
+        doc.text('CFC-GK Community Platform', margin + 5, 28)
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(14)
+        doc.setFont('helvetica', 'bold')
+        const title = 'Events Management Report'
+        doc.text(title, pageWidth - margin - doc.getTextWidth(title), 20)
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'italic')
+        doc.setTextColor(200, 200, 200)
+        doc.text('Community Events List', pageWidth - margin - doc.getTextWidth('Community Events List'), 28)
+        
+        doc.setTextColor(0, 0, 0)
+      }
+      
+      const addFooter = (pageNum, totalPages) => {
+        const footerY = pageHeight - 15
+        
+        doc.setFillColor(245, 245, 245)
+        doc.rect(0, footerY - 8, pageWidth, 15, 'F')
+        
+        doc.setDrawColor(200, 200, 200)
+        doc.setLineWidth(0.5)
+        doc.line(margin, footerY - 8, pageWidth - margin, footerY - 8)
+        
+        doc.setFontSize(8)
+        doc.setTextColor(100, 100, 100)
+        doc.setFont('helvetica', 'normal')
+        const genDate = new Date().toLocaleDateString('en-US', { 
+          year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        })
+        doc.text(`Generated: ${genDate}`, margin, footerY)
+        
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(0, 26, 92)
+        const pageText = `Page ${pageNum} of ${totalPages}`
+        doc.text(pageText, pageWidth - margin - doc.getTextWidth(pageText), footerY)
+        
+        doc.setFontSize(7)
+        doc.setTextColor(120, 120, 120)
+        doc.setFont('helvetica', 'italic')
+        const confidentialText = 'HopeLink - Confidential Report'
+        doc.text(confidentialText, pageWidth / 2 - doc.getTextWidth(confidentialText) / 2, footerY + 5)
+      }
+      
+      const tableData = filteredEvents.map(event => [
+        event.name || '',
+        event.target_goal || 'General',
+        new Date(event.start_date).toLocaleDateString(),
+        event.status || 'N/A',
+        getLocationDisplay(event.location),
+        `${event.participants?.[0]?.count || 0}${event.max_participants ? ` / ${event.max_participants}` : ''}`
+      ])
+      
+      const columns = ['Event Name', 'Category', 'Start Date', 'Status', 'Location', 'Participants']
+      
+      let currentY = 50
+      doc.setFontSize(10)
+      doc.setTextColor(60, 60, 60)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Total Events: ${filteredEvents.length}`, margin, currentY)
+      doc.text(`Active: ${filteredEvents.filter(e => e.status === 'active').length} | Upcoming: ${filteredEvents.filter(e => e.status === 'upcoming').length} | Completed: ${filteredEvents.filter(e => e.status === 'completed').length}`, margin + 60, currentY)
+      
+      currentY += 8
+      
+      autoTable(doc, {
+        startY: currentY,
+        head: [columns],
+        body: tableData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: primaryColor,
+          textColor: 255,
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [40, 40, 40]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 249, 250]
+        },
+        styles: {
+          cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
+          lineWidth: 0.1,
+          lineColor: [220, 220, 220],
+          overflow: 'linebreak',
+          cellWidth: 'wrap'
+        },
+        margin: { top: currentY, left: margin, right: margin, bottom: 20 },
+        didDrawPage: (data) => {
+          const pageNumber = data.pageNumber
+          addHeader(pageNumber, pageNumber)
+        }
+      })
+      
+      const totalPages = doc.internal.pages.length - 1
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i)
+        addHeader(i, totalPages)
+        addFooter(i, totalPages)
+      }
+      
+      doc.save(`events_report_${new Date().toISOString().split('T')[0]}.pdf`)
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      alert('Error generating PDF. Please try again.')
+    }
+  }
+
+  const handlePrint = () => {
+    if (!filteredEvents || filteredEvents.length === 0) {
+      alert('No events available to print')
+      return
+    }
+
+    const printWindow = window.open('', '_blank')
+    
+    const tableRows = filteredEvents.map(event => {
+      return `
+        <tr>
+          <td>${event.name || ''}</td>
+          <td>${event.target_goal || 'General'}</td>
+          <td>${new Date(event.start_date).toLocaleDateString()}</td>
+          <td>${event.status || 'N/A'}</td>
+          <td>${getLocationDisplay(event.location)}</td>
+          <td>${event.participants?.[0]?.count || 0}${event.max_participants ? ` / ${event.max_participants}` : ''}</td>
+        </tr>
+      `
+    }).join('')
+    
+    const genDate = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Events Management Report - HopeLink</title>
+          <meta charset="UTF-8">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Arial', 'Helvetica', sans-serif; padding: 0; color: #333; background: white; }
+            .header { background: linear-gradient(135deg, #001a5c 0%, #00237d 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #cdd74a; }
+            .header-left { display: flex; align-items: center; gap: 15px; }
+            .logo-container { width: 50px; height: 50px; background: white; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+            .logo-container img { max-width: 45px; max-height: 45px; }
+            .brand-info h1 { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+            .brand-info p { font-size: 12px; color: #cdd74a; }
+            .header-right { text-align: right; }
+            .header-right h2 { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+            .header-right p { font-size: 11px; color: #e0e0e0; font-style: italic; }
+            .content { padding: 30px; }
+            .summary { background: #f8f9fa; padding: 15px 20px; border-left: 4px solid #001a5c; margin-bottom: 25px; border-radius: 4px; }
+            .summary p { font-size: 14px; color: #555; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+            thead { background: #001a5c; color: white; }
+            th { padding: 10px 8px; text-align: left; font-weight: bold; font-size: 11px; }
+            td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 10px; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            .footer { background: #f5f5f5; padding: 15px 30px; border-top: 2px solid #ddd; margin-top: 30px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #666; }
+            .footer-center { text-align: center; font-style: italic; color: #888; }
+            .footer-right { font-weight: bold; color: #001a5c; }
+            @media print { body { padding: 0; } .header { page-break-after: avoid; } .footer { page-break-before: avoid; } table { page-break-inside: auto; } tr { page-break-inside: avoid; page-break-after: auto; } thead { display: table-header-group; } @page { margin: 1.5cm; size: A4 landscape; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-left">
+              <div class="logo-container"><img src="/hopelinklogo.png" alt="HopeLink Logo" onerror="this.style.display='none'"></div>
+              <div class="brand-info"><h1>HopeLink</h1><p>CFC-GK Community Platform</p></div>
+            </div>
+            <div class="header-right"><h2>Events Management Report</h2><p>Community Events List</p></div>
+          </div>
+          <div class="content">
+            <div class="summary">
+              <p><strong>Total Events:</strong> ${filteredEvents.length} | <strong>Active:</strong> ${filteredEvents.filter(e => e.status === 'active').length} | <strong>Upcoming:</strong> ${filteredEvents.filter(e => e.status === 'upcoming').length} | <strong>Completed:</strong> ${filteredEvents.filter(e => e.status === 'completed').length} | <strong>Generated:</strong> ${genDate}</p>
+            </div>
+            <table>
+              <thead><tr><th>Event Name</th><th>Category</th><th>Start Date</th><th>Status</th><th>Location</th><th>Participants</th></tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
+          <div class="footer">
+            <div>© ${new Date().getFullYear()} HopeLink CFC-GK. All rights reserved.</div>
+            <div class="footer-center">HopeLink - Confidential Report</div>
+            <div class="footer-right">Generated: ${genDate}</div>
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    setTimeout(() => { printWindow.print() }, 500)
+  }
+
   if (loading) {
     return <ListPageSkeleton />
   }
@@ -194,15 +501,52 @@ const AdminEventsPage = () => {
         >
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
             <div className="flex items-center gap-3 sm:gap-4">
-              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-yellow-500 to-yellow-600 flex items-center justify-center shadow-lg flex-shrink-0">
-                <Calendar className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
-              </div>
               <div className="min-w-0">
                 <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Events Management</h1>
                 <p className="text-yellow-300 text-xs sm:text-sm">Manage community events and activities</p>
               </div>
             </div>
-            <div className="w-full sm:w-auto">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {filteredEvents.length > 0 && (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      try {
+                        generatePDF().catch(err => {
+                          console.error('PDF generation error:', err)
+                          alert('Failed to generate PDF. Please try again.')
+                        })
+                      } catch (error) {
+                        console.error('PDF generation error:', error)
+                        alert('Failed to generate PDF. Please try again.')
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-yellow-400 hover:text-yellow-300 transition-colors active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    title="Download PDF"
+                    type="button"
+                    aria-label="Download PDF"
+                  >
+                    <Download className="h-4 w-4" />
+                    <span className="hidden sm:inline">Download PDF</span>
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.preventDefault()
+                      e.stopPropagation()
+                      handlePrint()
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-yellow-400 hover:text-yellow-300 transition-colors active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                    title="Print"
+                    type="button"
+                    aria-label="Print"
+                  >
+                    <Printer className="h-4 w-4" />
+                    <span className="hidden sm:inline">Print</span>
+                  </button>
+                </>
+              )}
               <button
                 onClick={handleCreateEvent}
                 className="btn btn-primary flex items-center justify-center gap-2 w-full sm:w-auto py-3 sm:py-2 active:scale-95"
@@ -329,7 +673,7 @@ const AdminEventsPage = () => {
           </div>
           
           <div className="overflow-x-auto">
-            <div className="min-w-[800px]">
+            <div className="min-w-[1000px]">
             <table className="w-full">
               <thead className="bg-navy-800">
                 <tr>
@@ -347,6 +691,9 @@ const AdminEventsPage = () => {
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Location
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                    Participants
                   </th>
                   <th className="px-6 py-3 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
@@ -390,7 +737,16 @@ const AdminEventsPage = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-400">
-                        {event.location || 'Not specified'}
+                        {getLocationDisplay(event.location)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <Users className="h-4 w-4 text-yellow-400 flex-shrink-0" />
+                          <span className="text-sm text-white font-medium">
+                            {event.participants?.[0]?.count || 0}
+                            {event.max_participants && ` / ${event.max_participants}`}
+                          </span>
+                        </div>
                       </td>
                        <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                          <div className="flex items-center justify-end space-x-2">
@@ -400,6 +756,13 @@ const AdminEventsPage = () => {
                              title="View Details"
                            >
                              <Eye className="h-4 w-4" />
+                           </button>
+                           <button
+                             onClick={() => handleManageAttendance(event)}
+                             className="text-green-400 hover:text-green-300 transition-all active:scale-95 p-1"
+                             title="Manage Attendance"
+                           >
+                             <Users className="h-4 w-4" />
                            </button>
                            <button
                              onClick={() => handleEditEvent(event)}
@@ -685,6 +1048,16 @@ const AdminEventsPage = () => {
             </motion.div>
           </div>
         )}
+
+        {/* Attendance Modal */}
+        <AttendanceModal
+          isOpen={showAttendanceModal}
+          onClose={() => {
+            setShowAttendanceModal(false)
+            setAttendanceEvent(null)
+          }}
+          event={attendanceEvent}
+        />
       </div>
     </div>
   )

@@ -28,6 +28,7 @@ const PostDonationPage = React.lazy(() => import('./pages/donor/PostDonationPage
 const FulfillRequestPage = React.lazy(() => import('./pages/donor/FulfillRequestPage'))
 const MyDonationsPage = React.lazy(() => import('./pages/donor/MyDonationsPage'))
 const BrowseRequestsPage = React.lazy(() => import('./pages/donor/BrowseRequestsPage'))
+const PendingRequestsPage = React.lazy(() => import('./pages/donor/PendingRequestsPage'))
 
 // Recipient pages
 const BrowseDonationsPage = React.lazy(() => import('./pages/recipient/BrowseDonationsPage'))
@@ -48,12 +49,15 @@ const EventDetailsPage = React.lazy(() => import('./pages/events/EventDetailsPag
 // Admin pages
 const AdminDashboard = React.lazy(() => import('./pages/admin/AdminDashboard'))
 const UserManagementPage = React.lazy(() => import('./pages/admin/UserManagementPage'))
+const IDVerificationPage = React.lazy(() => import('./pages/admin/IDVerificationPage'))
 const AdminSettingsPage = React.lazy(() => import('./pages/admin/AdminSettingsPage'))
+const MatchingParametersPage = React.lazy(() => import('./pages/admin/MatchingParametersPage'))
 const AdminDonationsPage = React.lazy(() => import('./pages/admin/AdminDonationsPage'))
 const AdminCFCDonationsPage = React.lazy(() => import('./pages/admin/AdminCFCDonationsPage'))
 const AdminVolunteersPage = React.lazy(() => import('./pages/admin/AdminVolunteersPage'))
 const AdminRequestsPage = React.lazy(() => import('./pages/admin/AdminRequestsPage'))
 const AdminEventsPage = React.lazy(() => import('./pages/admin/AdminEventsPage'))
+const AdminFeedbackPage = React.lazy(() => import('./pages/admin/AdminFeedbackPage'))
 
 // Legal pages
 const TermsOfServicePage = React.lazy(() => import('./pages/legal/TermsOfServicePage'))
@@ -241,6 +245,11 @@ function AppContent() {
                   <BrowseRequestsPage />
                 </ProtectedRoute>
               } />
+              <Route path="/pending-requests" element={
+                <ProtectedRoute allowedRoles={['donor']}>
+                  <PendingRequestsPage />
+                </ProtectedRoute>
+              } />
               
               {/* Recipient routes */}
               <Route path="/browse-donations" element={
@@ -297,9 +306,19 @@ function AppContent() {
                   <UserManagementPage />
                 </ProtectedRoute>
               } />
+              <Route path="/admin/id-verification" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <IDVerificationPage />
+                </ProtectedRoute>
+              } />
               <Route path="/admin/settings" element={
                 <ProtectedRoute allowedRoles={['admin']}>
-                  <AdminSettingsPage />
+                  <Navigate to="/profile#admin-settings" replace />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/matching-parameters" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <MatchingParametersPage />
                 </ProtectedRoute>
               } />
               <Route path="/admin/donations" element={
@@ -325,6 +344,11 @@ function AppContent() {
               <Route path="/admin/events" element={
                 <ProtectedRoute allowedRoles={['admin']}>
                   <AdminEventsPage />
+                </ProtectedRoute>
+              } />
+              <Route path="/admin/feedback" element={
+                <ProtectedRoute allowedRoles={['admin']}>
+                  <AdminFeedbackPage />
                 </ProtectedRoute>
               } />
               

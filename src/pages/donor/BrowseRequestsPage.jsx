@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react'
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { GoogleMap, Marker, Autocomplete } from '@react-google-maps/api'
@@ -22,12 +22,20 @@ import {
   Upload,
   Image as ImageIcon,
   Truck,
-  Gift
+  Gift,
+  Flag,
+  Camera,
+  Building2,
+  Globe,
+  Users,
+  Shield,
+  Mail
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
+import ReportUserModal from '../../components/ui/ReportUserModal'
 import { db } from '../../lib/supabase'
 import { intelligentMatcher } from '../../lib/matchingAlgorithm'
 
@@ -44,10 +52,48 @@ const BrowseRequestsPage = () => {
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [showDetailsModal, setShowDetailsModal] = useState(false)
   const [showProfileModal, setShowProfileModal] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [showProfileImageModal, setShowProfileImageModal] = useState(false)
   const [requestsWithScores, setRequestsWithScores] = useState([])
   const [userDonations, setUserDonations] = useState([])
-  const [smartRecommendations, setSmartRecommendations] = useState([])
-  const [showRecommendations, setShowRecommendations] = useState(true)
+
+  // Helper function to calculate age from birthdate
+  const calculateAge = (birthDate) => {
+    if (!birthDate) return null
+    const today = new Date()
+    const birth = new Date(birthDate)
+    let age = today.getFullYear() - birth.getFullYear()
+    const monthDiff = today.getMonth() - birth.getMonth()
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birth.getDate())) {
+      age--
+    }
+    return age
+  }
+
+  // Helper function to convert ID type value to readable label
+  const getIDTypeLabel = (idType) => {
+    if (!idType) return 'No ID'
+    
+    const idTypeMap = {
+      'fourps_id': '4Ps Beneficiary ID (DSWD)',
+      'philsys_id': 'Philippine National ID (PhilSys)',
+      'voters_id': 'Voter\'s ID or Certificate',
+      'drivers_license': 'Driver\'s License',
+      'passport': 'Passport',
+      'postal_id': 'Postal ID',
+      'barangay_certificate': 'Barangay Certificate with photo',
+      'senior_citizen_id': 'Senior Citizen ID',
+      'school_id': 'School ID',
+      'sss_umid': 'SSS or UMID Card',
+      'prc_id': 'PRC ID',
+      'sec_registration': 'SEC Registration Certificate',
+      'dti_registration': 'DTI Business Registration',
+      'barangay_clearance': 'Barangay Clearance or Mayor\'s Permit',
+      'dswd_accreditation': 'DSWD Accreditation'
+    }
+    
+    return idTypeMap[idType] || idType
+  }
 
   const categories = [
     'Food & Beverages',
@@ -69,14 +115,111 @@ const BrowseRequestsPage = () => {
     { value: 'critical', label: 'Critical', color: 'text-red-400 bg-red-900/20' }
   ]
 
+  // Helper function to check if a value is a placeholder or invalid
+  const isValidLocationValue = (value) => {
+    if (!value || typeof value !== 'string') return false
+    const trimmed = value.trim().toLowerCase()
+    // Filter out placeholder values and invalid entries
+    const invalidValues = [
+      'to be completed',
+      'not provided',
+      'n/a',
+      'na',
+      'null',
+      'undefined',
+      '',
+      'tbd',
+      'to be determined'
+    ]
+    return trimmed !== '' && !invalidValues.includes(trimmed)
+  }
+
+  // Helper function to format location with priority: specific details first
+  const formatLocation = (request) => {
+    const requester = request?.requester
+    const locationParts = []
+    
+    // Priority 1: Most specific - House/Unit + Street
+    if (isValidLocationValue(requester?.address_house) || isValidLocationValue(requester?.address_street)) {
+      const houseStreet = [requester.address_house, requester.address_street]
+        .filter(isValidLocationValue)
+        .join(' ')
+        .trim()
+      if (houseStreet) {
+        locationParts.push(houseStreet)
+      }
+    }
+    
+    // Priority 2: Barangay (very important for Philippines)
+    if (isValidLocationValue(requester?.address_barangay)) {
+      locationParts.push(requester.address_barangay.trim())
+    }
+    
+    // Priority 3: Subdivision/Building
+    if (isValidLocationValue(requester?.address_subdivision)) {
+      locationParts.push(requester.address_subdivision.trim())
+    }
+    
+    // Priority 4: Landmark (if no street address)
+    if (isValidLocationValue(requester?.address_landmark) && !isValidLocationValue(requester?.address_street)) {
+      locationParts.push(`Near ${requester.address_landmark.trim()}`)
+    }
+    
+    // Priority 5: Full address (if it's more specific than just city/province)
+    if (isValidLocationValue(requester?.address) && !locationParts.length) {
+      const addressStr = requester.address.trim()
+      // Check if address is generic (like just "Cagayan de Oro City" or "Philippines, Cagayan de Oro City")
+      const isGenericAddress = /^(Philippines|Philippines,?\s*[A-Za-z\s]+(?: City)?|[A-Za-z\s]+ City)$/i.test(addressStr)
+      // Also check if it contains "To be completed"
+      if (!isGenericAddress && !addressStr.toLowerCase().includes('to be completed')) {
+        locationParts.push(addressStr)
+      }
+    }
+    
+    // Priority 6: City
+    if (isValidLocationValue(requester?.city)) {
+      locationParts.push(requester.city.trim())
+    }
+    
+    // Priority 7: Province
+    if (isValidLocationValue(requester?.province)) {
+      locationParts.push(requester.province.trim())
+    }
+    
+    // If we have specific details, return them (don't include generic location)
+    if (locationParts.length > 0) {
+      return locationParts.join(', ')
+    }
+    
+    // Fallback: Use request.location only if no specific details available
+    if (request?.location) {
+      const locationStr = request.location.trim()
+      // Filter out placeholder values from request.location too
+      if (isValidLocationValue(locationStr)) {
+        // Check if location is just generic (like "Philippines, Cagayan de Oro City" or similar patterns)
+        const hasGenericPattern = /^(Philippines|Philippines,?\s*[A-Za-z\s]+(?: City)?)$/i.test(locationStr)
+        
+        if (!hasGenericPattern) {
+          // Location has specific details, use it
+          return locationStr
+        }
+        // If it's generic, still show it but it will be the same for all
+        return locationStr
+      }
+    }
+    
+    // Last resort: Return a message
+    return 'Location details not specified'
+  }
+
   const loadRequests = useCallback(async () => {
     try {
       setLoading(true)
       
-      // Load ranked open requests for better prioritization
-      const ranked = await db.rankOpenRequests({ limit: 100 })
+      // Load ranked open requests with reduced limit for faster initial load
+      const ranked = await db.rankOpenRequests({ limit: 30 })
       const rankedRequests = (ranked || []).map(r => ({ ...r.request, _rankScore: r.score }))
-      const fallbackRequests = rankedRequests.length > 0 ? rankedRequests : (await db.getRequests({ status: 'open' }))
+      const fallbackRequests = rankedRequests.length > 0 ? rankedRequests : (await db.getRequests({ status: 'open', limit: 30 }))
       setRequests(fallbackRequests || [])
       
       // Load user's donations for matching
@@ -84,83 +227,85 @@ const BrowseRequestsPage = () => {
         const donations = await db.getDonations({ donor_id: user.id, status: 'available' })
         setUserDonations(donations || [])
         
-        // Calculate matching scores for each request
-        const requestsWithMatchingScores = await Promise.all(
-          ((rankedRequests.length > 0 ? rankedRequests : (fallbackRequests || [])) || []).map(async (request) => {
-            let bestScore = 0
-            let bestDonation = null
-            let matchReason = 'No compatible donations'
-            
-            // Find best matching donation from user's donations
-            for (const donation of donations || []) {
-              const itemCompatibility = intelligentMatcher.calculateItemCompatibility(
-                request.category, donation.category,
-                request.title, donation.title,
-                request.quantity_needed, donation.quantity
-              )
-              
-              const urgencyAlignment = intelligentMatcher.normalize.normalizeUrgencyAlignment(
-                request.urgency, donation.is_urgent ? 'high' : 'medium'
-              )
-              
-              const deliveryCompatibility = intelligentMatcher.calculateDeliveryCompatibility(
-                request.delivery_mode, donation.delivery_mode
-              )
-              
-              // Calculate geographic score if locations available
-              let geographicScore = 0.5 // Default neutral score
-              if (request.requester?.latitude && donation.donor?.latitude) {
-                geographicScore = intelligentMatcher.calculateGeographicScore(
-                  request.requester.latitude, request.requester.longitude,
-                  donation.donor.latitude, donation.donor.longitude
-                )
+        // If user has no donations, skip matching entirely for faster load
+        if (!donations || donations.length === 0) {
+          setRequestsWithScores(fallbackRequests.map(req => ({
+            ...req,
+            matchingScore: 0,
+            bestMatchingDonation: null,
+            matchReason: 'No available donations to match'
+          })))
+          return
+        }
+        
+        // Progressive loading: Show requests immediately, then calculate matching scores in batches
+        // Set initial requests without blocking
+        setRequestsWithScores(fallbackRequests.map(req => ({
+          ...req,
+          matchingScore: 0,
+          bestMatchingDonation: null,
+          matchReason: 'Calculating match...'
+        })))
+        
+        // Calculate matching scores in smaller batches for better performance
+        const batchSize = 5
+        const requestsToProcess = fallbackRequests || []
+        
+        // Process requests in batches to avoid blocking
+        for (let i = 0; i < requestsToProcess.length; i += batchSize) {
+          const batch = requestsToProcess.slice(i, i + batchSize)
+          
+          // Process batch in parallel
+          const batchResults = await Promise.all(
+            batch.map(async (request) => {
+              try {
+                // Use the unified matching algorithm to find best matches
+                const matches = await intelligentMatcher.matchDonorsToRequest(request, donations, 1)
+                
+                if (matches && matches.length > 0 && matches[0].score > 0) {
+                  const bestMatch = matches[0]
+                  return {
+                    ...request,
+                    matchingScore: bestMatch.score,
+                    bestMatchingDonation: bestMatch.donation,
+                    matchReason: bestMatch.matchReason || 'Good match based on multiple criteria'
+                  }
+                } else {
+                  return {
+                    ...request,
+                    matchingScore: 0,
+                    bestMatchingDonation: null,
+                    matchReason: 'No compatible donations found'
+                  }
+                }
+              } catch (err) {
+                console.error(`Error matching request ${request.id}:`, err)
+                return {
+                  ...request,
+                  matchingScore: 0,
+                  bestMatchingDonation: null,
+                  matchReason: 'Unable to calculate match score'
+                }
               }
-              
-              // Calculate weighted score
-              const totalScore = (
-                itemCompatibility * 0.35 +
-                urgencyAlignment * 0.25 +
-                deliveryCompatibility * 0.20 +
-                geographicScore * 0.20
-              )
-              
-              if (totalScore > bestScore) {
-                bestScore = totalScore
-                bestDonation = donation
-                matchReason = intelligentMatcher.generateMatchReason({
-                  item_compatibility: itemCompatibility,
-                  urgency_alignment: urgencyAlignment,
-                  delivery_compatibility: deliveryCompatibility,
-                  geographic_proximity: geographicScore
-                }, {
-                  item_compatibility: 0.35,
-                  urgency_alignment: 0.25,
-                  delivery_compatibility: 0.20,
-                  geographic_proximity: 0.20
-                })
+            })
+          )
+          
+          // Update state progressively with batch results
+          // React will batch these updates efficiently
+          setRequestsWithScores(prev => {
+            // Create a new array with updated batch results
+            const updated = [...prev]
+            batchResults.forEach((result, batchIdx) => {
+              const targetIndex = i + batchIdx
+              if (targetIndex < updated.length) {
+                updated[targetIndex] = result
               }
-            }
-            
-            return {
-              ...request,
-              matchingScore: bestScore,
-              bestMatchingDonation: bestDonation,
-              matchReason: matchReason
-            }
+            })
+            return updated
           })
-        )
-        
-        setRequestsWithScores(requestsWithMatchingScores)
-        
-        // Generate smart recommendations (high-scoring matches)
-        const highScoreMatches = requestsWithMatchingScores
-          .filter(request => request.matchingScore > 0.7)
-          .sort((a, b) => b.matchingScore - a.matchingScore)
-          .slice(0, 3)
-        
-        setSmartRecommendations(highScoreMatches)
+        }
       } else {
-        setRequestsWithScores(requests || [])
+        setRequestsWithScores(fallbackRequests || [])
       }
     } catch (err) {
       console.error('Error loading requests:', err)
@@ -174,16 +319,40 @@ const BrowseRequestsPage = () => {
     loadRequests()
   }, [loadRequests])
 
-  const filteredRequests = (requestsWithScores.length > 0 ? requestsWithScores : requests).filter(request => {
-    const matchesSearch = request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         request.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         request.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+  // Memoize filtered and sorted requests to avoid recalculating on every render
+  const filteredRequests = useMemo(() => {
+    const requestsToFilter = requestsWithScores.length > 0 ? requestsWithScores : requests
     
-    const matchesCategory = !selectedCategory || request.category === selectedCategory
-    const matchesUrgency = !selectedUrgency || request.urgency === selectedUrgency
+    return requestsToFilter
+      .filter(request => {
+        const matchesSearch = !searchTerm || 
+          request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          request.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          request.tags?.some(tag => tag.toLowerCase().includes(searchTerm.toLowerCase()))
+        
+        const matchesCategory = !selectedCategory || request.category === selectedCategory
+        const matchesUrgency = !selectedUrgency || request.urgency === selectedUrgency
 
-    return matchesSearch && matchesCategory && matchesUrgency
-  })
+        return matchesSearch && matchesCategory && matchesUrgency
+      })
+      .sort((a, b) => {
+        // Primary sort: by matching score (highest first) - as per manuscript
+        if (a.matchingScore !== undefined && b.matchingScore !== undefined) {
+          if (Math.abs(a.matchingScore - b.matchingScore) > 0.01) {
+            return b.matchingScore - a.matchingScore
+          }
+        }
+        // Secondary sort: by urgency level (critical > high > medium > low)
+        const urgencyOrder = { critical: 4, high: 3, medium: 2, low: 1 }
+        const urgencyA = urgencyOrder[a.urgency] || 0
+        const urgencyB = urgencyOrder[b.urgency] || 0
+        if (urgencyA !== urgencyB) {
+          return urgencyB - urgencyA
+        }
+        // Tertiary sort: by creation date (newest first)
+        return new Date(b.created_at || b.createdAt || 0) - new Date(a.created_at || a.createdAt || 0)
+      })
+  }, [requestsWithScores, requests, searchTerm, selectedCategory, selectedUrgency])
 
   const getUrgencyInfo = (urgency) => {
     return urgencyLevels.find(level => level.value === urgency) || urgencyLevels[0]
@@ -218,6 +387,7 @@ const BrowseRequestsPage = () => {
       // If requester info exists, fetch detailed profile
       if (request.requester?.id) {
         setLoadingProfile(true)
+        try {
         const detailedProfile = await db.getProfile(request.requester.id)
         
         // Update the selected request with detailed profile info
@@ -228,16 +398,36 @@ const BrowseRequestsPage = () => {
             ...detailedProfile
           }
         }))
+        } catch (profileErr) {
+          console.error('Error fetching detailed profile:', profileErr)
+          // Continue with the existing requester info if detailed fetch fails
+        }
+      } else {
+        // If no requester ID, try to fetch requester from request if we have request ID
+        if (request.id) {
+          setLoadingProfile(true)
+          try {
+            const requests = await db.getRequests({ requester_id: request.requester_id || request.requester?.id })
+            if (requests && requests.length > 0 && requests[0].requester) {
+              setSelectedRequest(prev => ({
+                ...prev,
+                requester: requests[0].requester
+              }))
+            }
+          } catch (fetchErr) {
+            console.error('Error fetching requester data:', fetchErr)
+          }
+        }
       }
     } catch (err) {
-      console.error('Error fetching requester profile:', err)
+      console.error('Error opening profile:', err)
       error('Failed to load profile information')
     } finally {
       setLoadingProfile(false)
     }
   }
 
-  const handleCreateSmartMatch = async (request) => {
+  const handleCreateMatch = async (request) => {
     if (!request.bestMatchingDonation) {
       error('No matching donation found for this request.')
       return
@@ -246,10 +436,10 @@ const BrowseRequestsPage = () => {
     try {
       setLoading(true)
       await db.createSmartMatch(request.id, request.bestMatchingDonation.id)
-      success(`Smart match created! Your donation "${request.bestMatchingDonation.title}" has been matched with "${request.title}"`)
+      success(`Match created! Your donation "${request.bestMatchingDonation.title}" has been matched with "${request.title}"`)
       await loadRequests() // Refresh the list
     } catch (err) {
-      console.error('Error creating smart match:', err)
+      console.error('Error creating match:', err)
       
       // Provide more specific error messages
       if (err.message?.includes('not sufficiently compatible')) {
@@ -401,7 +591,7 @@ const BrowseRequestsPage = () => {
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between mb-4 gap-3">
             <div className="flex-1">
               <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white mb-2">Browse Requests</h1>
-              <p className="text-xs sm:text-sm text-yellow-300">Find recipients who need your help with smart matching</p>
+              <p className="text-xs sm:text-sm text-yellow-300">Find recipients who need your help</p>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
               {/* Request Count Badge */}
@@ -413,16 +603,6 @@ const BrowseRequestsPage = () => {
                 </div>
               </div>
               
-              {/* Smart Matches Badge */}
-              {smartRecommendations.length > 0 && (
-                <div className="flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500/20 to-emerald-600/20 border-2 border-green-500/40 rounded-full shadow-lg">
-                  <span className="h-2 w-2 bg-green-400 rounded-full animate-pulse shadow-lg shadow-green-400/50"></span>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-base sm:text-lg font-bold text-white">{smartRecommendations.length}</span>
-                    <span className="text-xs sm:text-sm font-medium text-green-300">smart match{smartRecommendations.length !== 1 ? 'es' : ''}</span>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </motion.div>
@@ -727,61 +907,6 @@ const BrowseRequestsPage = () => {
           />
         )}
 
-        {/* Smart Recommendations */}
-        {smartRecommendations.length > 0 && showRecommendations && (
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="bg-yellow-900/10 border-2 border-yellow-500/30 rounded-lg p-4 sm:p-6 mb-6 sm:mb-8"
-          >
-            <div className="flex items-start sm:items-center justify-between mb-4 gap-2">
-              <div className="flex items-start sm:items-center space-x-2 sm:space-x-3 flex-1">
-                <div className="h-6 w-6 sm:h-8 sm:w-8 bg-yellow-500/20 rounded-full flex items-center justify-center flex-shrink-0">
-                  <span className="text-yellow-400 text-xs sm:text-sm font-bold">🤖</span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <h3 className="text-sm sm:text-base lg:text-lg font-semibold text-white">Smart Match Recommendations</h3>
-                  <p className="text-xs sm:text-sm text-yellow-300">High-compatibility matches</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setShowRecommendations(false)}
-                className="text-gray-400 hover:text-white transition-colors flex-shrink-0"
-              >
-                <X className="h-4 w-4 sm:h-5 sm:w-5" />
-              </button>
-            </div>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-              {smartRecommendations.map((request) => (
-                <div key={request.id} className="bg-navy-800 border border-yellow-500/20 rounded-lg p-4">
-                  <div className="flex items-start justify-between mb-3">
-                    <h4 className="font-medium text-white text-sm">{request.title}</h4>
-                    <div className={`badge text-xs ${getScoreColor(request.matchingScore)}`}>
-                      {Math.round(request.matchingScore * 100)}%
-                    </div>
-                  </div>
-                  
-                  <p className="text-xs text-yellow-300 mb-3 line-clamp-2">
-                    Matches your: {request.bestMatchingDonation?.title}
-                  </p>
-                  
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-yellow-300">{request.matchReason}</span>
-                    <button
-                      onClick={() => handleCreateSmartMatch(request)}
-                      disabled={loading}
-                      className="px-3 py-1 bg-yellow-600 hover:bg-yellow-700 text-white text-xs rounded-md transition-colors disabled:opacity-50"
-                    >
-                      Auto Match
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </motion.div>
-        )}
 
         {/* Filters */}
         <motion.div
@@ -880,11 +1005,46 @@ const BrowseRequestsPage = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ delay: index * 0.05 }}
-                    className="card hover:shadow-xl hover:border-yellow-500/20 transition-all duration-300 overflow-hidden border-l-4 border-2 border-navy-700 cursor-pointer group active:scale-[0.99]"
+                    className="relative"
+                  >
+                    {/* Compatibility Score Extension - Connected to Card */}
+                    {request.matchingScore !== undefined && request.matchingScore > 0 && (
+                      <div
+                        className="px-4 py-3 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-yellow-500 rounded-t-lg mb-0 relative z-10"
                     style={{
-                      borderLeftColor: request.urgency === 'critical' ? '#ef4444' : 
-                                      request.urgency === 'high' ? '#f59e0b' : 
-                                      request.urgency === 'medium' ? '#fbbf24' : '#60a5fa'
+                          borderTopLeftRadius: '0.5rem',
+                          borderTopRightRadius: '0.5rem',
+                          borderBottomLeftRadius: '0',
+                          borderBottomRightRadius: '0',
+                          marginBottom: '0',
+                          borderLeftColor: '#cdd74a'
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-between gap-4">
+                          {request.bestMatchingDonation && (
+                            <div className="flex items-center gap-2 flex-1 min-w-0">
+                              <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide whitespace-nowrap">Matches:</span>
+                              <span className="text-xs text-white font-medium truncate">{request.bestMatchingDonation.title}</span>
+                            </div>
+                          )}
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide">Match Score:</span>
+                            <div className={`px-2.5 py-0.5 rounded text-xs font-bold ${getScoreColor(request.matchingScore)}`}>
+                              {Math.round(request.matchingScore * 100)}%
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Card */}
+                    <div
+                      className={`card hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 overflow-hidden border-2 border-navy-700 cursor-pointer group active:scale-[0.99] ${request.matchingScore !== undefined && request.matchingScore > 0 ? 'rounded-t-none -mt-[1px]' : ''}`}
+                      style={{
+                        borderTopLeftRadius: request.matchingScore !== undefined && request.matchingScore > 0 ? '0' : undefined,
+                        borderTopRightRadius: request.matchingScore !== undefined && request.matchingScore > 0 ? '0' : undefined,
+                        marginTop: request.matchingScore !== undefined && request.matchingScore > 0 ? '-1px' : undefined
                     }}
                     onClick={() => handleViewDetails(request)}
                   >
@@ -892,7 +1052,7 @@ const BrowseRequestsPage = () => {
                       {/* Sample Image or Placeholder */}
                       <div className="flex-shrink-0">
                         {request.sample_image ? (
-                          <div className="relative w-full sm:w-56 lg:w-64 h-36 sm:h-full rounded-lg overflow-hidden border-2 border-yellow-500/30">
+                            <div className="relative w-full sm:w-56 lg:w-64 h-48 sm:h-56 lg:h-64 rounded-lg overflow-hidden border-2 border-yellow-500/30">
                             <img 
                               src={request.sample_image} 
                               alt={request.title}
@@ -900,7 +1060,7 @@ const BrowseRequestsPage = () => {
                             />
                           </div>
                         ) : (
-                          <div className="w-full sm:w-56 lg:w-64 h-36 sm:h-full rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600">
+                            <div className="w-full sm:w-56 lg:w-64 h-48 sm:h-56 lg:h-64 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600">
                             <Gift className="h-12 w-12 text-yellow-400 mb-2" />
                             <span className="text-xs text-gray-400 font-medium uppercase tracking-wide">No Image</span>
                           </div>
@@ -909,58 +1069,82 @@ const BrowseRequestsPage = () => {
                       
                       <div className="flex-1 min-w-0">
                         {/* Header with Title and Badges */}
-                        <div className="flex items-start justify-between mb-2">
+                          <div className="flex items-start justify-between mb-3">
                           <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Heart className="h-5 w-5 flex-shrink-0 text-yellow-400" />
-                              <h3 className="text-base sm:text-lg font-bold text-white truncate">
+                              <h3 className="text-base sm:text-lg font-bold text-white mb-2 truncate">
                                 {request.title}
                               </h3>
-                            </div>
                             
                             {/* Badges Row */}
-                            <div className="flex flex-wrap gap-1.5 mb-3">
-                              <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <span className="inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/40">
                                 {request.category}
                               </span>
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${urgencyInfo.color}`}>
+                                <span className={`inline-flex items-center px-2.5 py-1 rounded text-xs font-semibold border ${urgencyInfo.color}`}>
                                 {urgencyInfo.label}
                               </span>
                             </div>
                           </div>
                           
                           {/* Action Buttons */}
-                          <div className="flex items-center gap-2 flex-shrink-0">
+                          <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+                            {/* Matched Request Buttons: View Profile, View Details, Match */}
                             {request.matchingScore > 0.6 && request.bestMatchingDonation ? (
+                              <>
+                                {request.requester && (
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation()
-                                  handleCreateSmartMatch(request)
+                                      handleViewProfile(request)
+                                    }}
+                                    className="px-3 py-2 bg-navy-700 hover:bg-navy-600 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
+                                    title="View recipient profile"
+                                  >
+                                    <User className="h-3.5 w-3.5" />
+                                    <span>View Profile</span>
+                                  </button>
+                                )}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleViewDetails(request)
+                                  }}
+                                  className="px-3 py-2 bg-navy-700 hover:bg-navy-600 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
+                                >
+                                  <Eye className="h-3.5 w-3.5" />
+                                  <span>View Details</span>
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation()
+                                    handleCreateMatch(request)
                                 }}
                                 disabled={loading}
                                 className="px-3 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs font-semibold rounded-lg transition-all disabled:opacity-50 flex items-center gap-1.5 shadow-lg hover:shadow-xl whitespace-nowrap active:scale-95"
                               >
                                 <Heart className="h-3.5 w-3.5" />
-                                <span>Smart Match</span>
+                                  <span>Match</span>
                               </button>
+                              </>
                             ) : (
+                              /* Unmatched Request Buttons: View Details, Donate */
                               <>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     handleViewDetails(request)
                                   }}
-                                  className="px-3 py-2 bg-navy-700 hover:bg-navy-600 text-yellow-300 hover:text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 border border-navy-600 hover:border-yellow-500/50 shadow-md hover:shadow-lg active:scale-95"
+                                  className="px-3 py-2 bg-navy-700 hover:bg-navy-600 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
                                 >
                                   <Eye className="h-3.5 w-3.5" />
-                                  <span>View</span>
+                                  <span>View Details</span>
                                 </button>
                                 <button
                                   onClick={(e) => {
                                     e.stopPropagation()
                                     handleDonateToRequest(request)
                                   }}
-                                  className="px-3 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95"
+                                  className="px-3 py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white text-xs font-semibold rounded-lg transition-all flex items-center gap-1.5 shadow-md hover:shadow-lg active:scale-95 whitespace-nowrap"
                                 >
                                   <Heart className="h-3.5 w-3.5" />
                                   <span>Donate</span>
@@ -978,38 +1162,40 @@ const BrowseRequestsPage = () => {
                         )}
 
                         {/* Compact Info Grid */}
-                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 mb-3 text-xs">
-                          <div className="flex items-center gap-1.5">
+                          <div className="grid grid-cols-2 gap-x-4 gap-y-2 mb-3 text-xs">
+                            <div className="flex items-center gap-2">
                             <Package className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
-                            <span className="text-yellow-400 font-medium">Quantity:</span>
+                              <span className="text-yellow-400 font-semibold uppercase tracking-wide text-[10px]">Quantity:</span>
                             <span className="text-white font-semibold">{request.quantity_needed}</span>
                           </div>
                           
-                          <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
                             <User className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
-                            <span className="text-yellow-400 font-medium">By:</span>
-                            <span className="text-white">{request.requester?.name || 'Anonymous'}</span>
+                              <span className="text-yellow-400 font-semibold uppercase tracking-wide text-[10px]">By:</span>
+                              <span className="text-white font-medium truncate">{request.requester?.name || 'Anonymous'}</span>
                           </div>
                           
-                          <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-2">
                             <Calendar className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
-                            <span className="text-yellow-400 font-medium">Posted:</span>
+                              <span className="text-yellow-400 font-semibold uppercase tracking-wide text-[10px]">Posted:</span>
                             <span className="text-gray-300">{formatDate(request.created_at)}</span>
                           </div>
 
                           {request.needed_by && (
-                            <div className="flex items-center gap-1.5">
+                              <div className="flex items-center gap-2">
                               <Clock className="h-3.5 w-3.5 text-amber-400 flex-shrink-0" />
-                              <span className="text-amber-400 font-medium">Deadline:</span>
+                                <span className="text-amber-400 font-semibold uppercase tracking-wide text-[10px]">Deadline:</span>
                               <span className="text-amber-300 font-semibold">{formatDate(request.needed_by)}</span>
                             </div>
                           )}
                           
-                          {request.location && (
-                            <div className="flex items-center gap-1.5 col-span-2">
+                          {(request.location || request.requester) && (
+                              <div className="flex items-center gap-2 col-span-2">
                               <MapPin className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
-                              <span className="text-yellow-400 font-medium">Location:</span>
-                              <span className="text-gray-300 truncate">{request.location}</span>
+                                <span className="text-yellow-400 font-semibold uppercase tracking-wide text-[10px]">Location:</span>
+                                <span className="text-gray-300 truncate">
+                                  {formatLocation(request)}
+                                </span>
                             </div>
                           )}
                         </div>
@@ -1028,29 +1214,18 @@ const BrowseRequestsPage = () => {
                           )}
                         </div>
                       )}
-
-                      {/* Matching Score */}
-                      {request.matchingScore !== undefined && request.matchingScore > 0 && (
-                        <div className="p-3 sm:p-4 bg-gradient-to-r from-yellow-900/10 to-yellow-800/10 border-2 border-yellow-500/30 rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="text-xs sm:text-sm font-semibold text-yellow-300">🎯 Compatibility Score</span>
-                            <div className={`badge text-xs sm:text-sm font-bold border-2 ${getScoreColor(request.matchingScore)}`}>
-                              {Math.round(request.matchingScore * 100)}%
                             </div>
                           </div>
                           
-                          <div className="text-xs sm:text-sm text-yellow-200 mb-2">
-                            💡 {request.matchReason}
-                          </div>
-                          
-                          {request.bestMatchingDonation && (
-                            <div className="p-2 sm:p-3 bg-navy-800/50 border border-yellow-500/30 rounded-lg">
-                              <div className="text-xs sm:text-sm text-yellow-300">Your matching donation: <span className="text-white font-bold">{request.bestMatchingDonation.title}</span></div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                      </div>
+                      {/* Urgency Indicator - Bottom Line */}
+                      <div 
+                        className="h-1 w-full"
+                        style={{
+                          backgroundColor: request.urgency === 'critical' ? '#ef4444' : 
+                                          request.urgency === 'high' ? '#a8b03c' : 
+                                          request.urgency === 'medium' ? '#cdd74a' : '#60a5fa'
+                        }}
+                      ></div>
                     </div>
                   </motion.div>
                 )
@@ -1071,7 +1246,7 @@ const BrowseRequestsPage = () => {
                 className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
               >
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+                <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0 gap-3">
                   <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
                     <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
                       <Heart className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
@@ -1081,17 +1256,20 @@ const BrowseRequestsPage = () => {
                       <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="flex items-center gap-2">
+                    {selectedRequest.requester && (
                     <button
                       onClick={() => handleViewProfile(selectedRequest)}
-                      className="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-700 text-white text-xs font-semibold rounded-lg transition-colors flex items-center gap-1.5 active:scale-95"
+                        className="text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 rounded-lg transition-colors flex items-center gap-1.5 sm:gap-2 border border-yellow-500/30 hover:border-yellow-500/50 active:scale-95"
                     >
-                      <Eye className="h-3.5 w-3.5" />
-                      <span>View Profile</span>
+                        <Eye className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                        <span className="hidden sm:inline">View Profile</span>
+                        <span className="sm:hidden">View</span>
                     </button>
+                    )}
                     <button
                       onClick={() => setShowDetailsModal(false)}
-                      className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg active:scale-95"
+                      className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg active:scale-95 flex-shrink-0"
                       aria-label="Close modal"
                     >
                       <X className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -1102,6 +1280,23 @@ const BrowseRequestsPage = () => {
                 {/* Content with Custom Scrollbar */}
                 <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 custom-scrollbar">
                   <div className="space-y-4 sm:space-y-6">
+                    {/* Request Image */}
+                    {selectedRequest.sample_image && (
+                      <div className="relative rounded-lg overflow-hidden bg-navy-800">
+                        <img
+                          src={selectedRequest.sample_image}
+                          alt={selectedRequest.title}
+                          className="w-full h-48 sm:h-64 object-cover"
+                        />
+                        {selectedRequest.urgency === 'critical' && (
+                          <div className="absolute top-2 right-2 bg-red-600 text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center">
+                            <AlertCircle className="h-3 w-3 mr-1" />
+                            Urgent
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     {/* Title and Status */}
                     <div className="bg-navy-800/50 rounded-lg p-3 sm:p-4 border border-navy-700">
                       <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-4 mb-2 sm:mb-3">
@@ -1113,54 +1308,82 @@ const BrowseRequestsPage = () => {
                       <p className="text-sm sm:text-base text-gray-300 leading-relaxed">{selectedRequest.description || 'No description provided'}</p>
                     </div>
 
-                    {/* Compact Details Grid */}
-                    <div className="bg-navy-800/30 rounded-lg p-3 border border-navy-700">
-                      <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                        <div className="flex items-center gap-1.5">
-                          <Package className="h-3.5 w-3.5 text-blue-400 flex-shrink-0" />
-                          <span className="text-yellow-300 font-medium">Quantity:</span>
-                          <span className="text-white font-semibold">{selectedRequest.quantity_needed}</span>
+                    {/* Details Grid */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Package className="h-4 w-4 text-blue-400 flex-shrink-0" />
+                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Quantity Needed</label>
+                        </div>
+                        <p className="text-white text-base sm:text-lg font-medium">{selectedRequest.quantity_needed}</p>
                         </div>
                         
-                        <div className="flex items-center gap-1.5">
-                          <User className="h-3.5 w-3.5 text-green-400 flex-shrink-0" />
-                          <span className="text-yellow-300 font-medium">By:</span>
-                          <span className="text-white font-semibold">{selectedRequest.requester?.name || 'Anonymous'}</span>
+                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-green-400 flex-shrink-0" />
+                            <label className="text-xs sm:text-sm font-semibold text-yellow-300">Requested By</label>
+                          </div>
+                          {selectedRequest.requester && (
+                            <button
+                              onClick={() => handleViewProfile(selectedRequest)}
+                              className="text-xs px-2 py-1 bg-yellow-600/20 hover:bg-yellow-600/30 text-yellow-300 rounded-md transition-colors flex items-center gap-1"
+                            >
+                              <Eye className="h-3 w-3" />
+                              View Profile
+                            </button>
+                          )}
                         </div>
-                        
-                        <div className="flex items-center gap-1.5">
-                          <Calendar className="h-3.5 w-3.5 text-orange-400 flex-shrink-0" />
-                          <span className="text-yellow-300 font-medium">Posted:</span>
-                          <span className="text-white">{formatDate(selectedRequest.created_at)}</span>
+                        <p className="text-white text-base sm:text-lg font-medium">{selectedRequest.requester?.name || 'Anonymous'}</p>
+                      </div>
                         </div>
 
-                        {selectedRequest.needed_by && (
-                          <div className="flex items-center gap-1.5">
-                            <Clock className="h-3.5 w-3.5 text-red-400 flex-shrink-0" />
-                            <span className="text-yellow-300 font-medium">Deadline:</span>
-                            <span className="text-white">{formatDate(selectedRequest.needed_by)}</span>
+                    {/* Location */}
+                    {(selectedRequest.location || selectedRequest.requester) && (
+                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <MapPin className="h-4 w-4 text-purple-400 flex-shrink-0" />
+                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Location</label>
+                        </div>
+                        <p className="text-sm sm:text-base text-white">{formatLocation(selectedRequest)}</p>
                           </div>
                         )}
                         
+                    {/* Contact */}
                         {selectedRequest.requester?.phone_number && (
-                          <div className="flex items-center gap-1.5 col-span-2">
-                            <Phone className="h-3.5 w-3.5 text-green-400 flex-shrink-0" />
-                            <span className="text-yellow-300 font-medium">Contact:</span>
+                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Phone className="h-4 w-4 text-green-400 flex-shrink-0" />
+                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Contact</label>
+                        </div>
                             <a
                               href={`tel:${selectedRequest.requester.phone_number}`}
-                              className="text-yellow-400 hover:text-yellow-300 font-medium"
+                          className="text-yellow-400 hover:text-yellow-300 font-medium text-sm sm:text-base"
                             >
                               {selectedRequest.requester.phone_number}
                             </a>
                           </div>
                         )}
                         
-                        <div className="flex items-center gap-1.5 col-span-2">
-                          <MapPin className="h-3.5 w-3.5 text-purple-400 flex-shrink-0" />
-                          <span className="text-yellow-300 font-medium">Location:</span>
-                          <span className="text-white truncate">{selectedRequest.location || 'Not specified'}</span>
+                    {/* Dates */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Calendar className="h-4 w-4 text-orange-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
                         </div>
+                        <p className="text-white">{formatDate(selectedRequest.created_at)}</p>
                       </div>
+
+                      {selectedRequest.needed_by && (
+                        <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Clock className="h-4 w-4 text-red-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Needed By</label>
+                          </div>
+                          <p className="text-white">{formatDate(selectedRequest.needed_by)}</p>
+                        </div>
+                      )}
                     </div>
 
                     {/* Tags */}
@@ -1188,10 +1411,10 @@ const BrowseRequestsPage = () => {
                 </div>
 
                 {/* Footer */}
-                <div className="p-6 pt-4 border-t-2 border-yellow-500/20 flex justify-end flex-shrink-0">
+                <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t-2 border-yellow-500/20 flex flex-col sm:flex-row justify-between gap-3 flex-shrink-0">
                   <button
                     onClick={() => setShowDetailsModal(false)}
-                    className="px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
+                    className="px-4 sm:px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
                   >
                     Close
                   </button>
@@ -1204,74 +1427,75 @@ const BrowseRequestsPage = () => {
         {/* Profile Modal */}
         <AnimatePresence>
           {showProfileModal && selectedRequest && (
-            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4">
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.2 }}
-                className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl p-4 sm:p-6 max-w-4xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto custom-scrollbar"
+                className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl p-3 sm:p-5 max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-y-auto overflow-x-hidden custom-scrollbar"
               >
                 {/* Header */}
-                <div className="flex justify-between items-center mb-4 sm:mb-6 pb-3 sm:pb-4 border-b-2 border-yellow-500/20">
-                  <div className="flex items-center gap-2 sm:gap-3">
-                    <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg">
-                      <User className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400" />
+                <div className="flex justify-between items-center mb-3 sm:mb-4 pb-2 sm:pb-3 border-b-2 border-yellow-500/20">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="p-1.5 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                      <User className="h-4 w-4 text-yellow-400" />
                     </div>
-                    <h3 className="text-lg sm:text-xl font-bold text-white">Requester Profile</h3>
+                    <h3 className="text-base sm:text-lg font-bold text-white truncate">Requester Profile</h3>
                   </div>
                   <button
                     onClick={() => setShowProfileModal(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg"
+                    className="text-gray-400 hover:text-white transition-colors p-1.5 hover:bg-navy-800 rounded-lg flex-shrink-0 ml-2"
                     aria-label="Close profile modal"
                   >
-                    <X className="h-5 w-5 sm:h-6 sm:w-6" />
+                    <X className="h-5 w-5" />
                   </button>
                 </div>
 
                 {/* Profile Content */}
-                <div className="space-y-4 sm:space-y-6">
+                <div className="space-y-3 sm:space-y-4">
                   {loadingProfile ? (
-                    <div className="flex flex-col items-center justify-center py-8 sm:py-12">
-                      <div className="animate-spin rounded-full h-10 w-10 sm:h-12 sm:w-12 border-b-2 border-yellow-400 mb-3"></div>
+                    <div className="flex flex-col items-center justify-center py-6 sm:py-8">
+                      <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-yellow-400 mb-3"></div>
                       <p className="text-yellow-300 text-sm">Loading profile...</p>
                     </div>
                   ) : (
                     <>
                       {/* Profile Header */}
-                      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-3 sm:gap-4">
-                        <div className="flex-shrink-0">
+                      <div className="relative flex items-center gap-4">
+                        <div className="relative flex-shrink-0">
+                          <div 
+                            className="h-28 w-28 sm:h-36 sm:w-36 rounded-full overflow-hidden border-2 border-yellow-500 shadow-lg flex items-center justify-center cursor-pointer hover:border-yellow-400 transition-colors"
+                            onClick={() => setShowProfileImageModal(true)}
+                            title="View profile picture"
+                          >
                           {selectedRequest.requester?.profile_image_url ? (
                             <img 
                               src={selectedRequest.requester.profile_image_url} 
                               alt={selectedRequest.requester?.name || 'User'}
-                              className="h-20 w-20 sm:h-24 sm:w-24 rounded-full object-cover border-2 border-yellow-500 shadow-lg"
+                              className="w-full h-full object-cover"
                             />
                           ) : (
-                            <div className="h-20 w-20 sm:h-24 sm:w-24 rounded-full bg-navy-700 flex items-center justify-center border-2 border-yellow-500/30 shadow-lg">
-                              <User className="h-10 w-10 sm:h-12 sm:w-12 text-yellow-400" />
+                            <div className="h-full w-full bg-navy-700 flex items-center justify-center">
+                              <User className="h-16 w-16 sm:h-20 sm:w-20 text-yellow-400" />
                             </div>
                           )}
+                          </div>
+                          {/* View Overlay - Shows on hover */}
+                          <div
+                            className="absolute inset-0 h-28 w-28 sm:h-36 sm:w-36 rounded-full bg-black bg-opacity-50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity pointer-events-none cursor-pointer"
+                          >
+                            <Camera className="h-6 w-6 text-white" />
+                          </div>
                         </div>
                         
-                        <div className="flex-grow text-center sm:text-left">
-                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                            <h4 className="text-white font-bold text-lg sm:text-xl">
-                              {selectedRequest.requester?.name || selectedRequest.requester?.full_name || 'Anonymous'}
-                            </h4>
-                            <div className="flex justify-center sm:justify-end">
-                              <IDVerificationBadge
-                                idStatus={selectedRequest.requester?.id_verification_status}
-                                hasIdUploaded={selectedRequest.requester?.primary_id_type && selectedRequest.requester?.primary_id_number}
-                                size="sm"
-                                showText={true}
-                                showDescription={false}
-                              />
-                            </div>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 text-xs sm:text-sm">
-                            <span className="text-yellow-400 flex items-center gap-1">
-                              <Calendar className="h-3.5 w-3.5" />
+                        <div className="flex flex-col justify-center min-w-0 flex-1">
+                          <h4 className="text-white font-bold text-base sm:text-lg mb-1">
+                            {selectedRequest.requester?.name || selectedRequest.requester?.full_name || 'Anonymous'}
+                          </h4>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className="text-yellow-400 flex items-center gap-1 whitespace-nowrap">
+                              <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
                               {(() => {
                                 const memberDate = selectedRequest.requester?.created_at || 
                                                    selectedRequest.requester?.user_created_at ||
@@ -1283,7 +1507,7 @@ const BrowseRequestsPage = () => {
                                     if (!isNaN(date.getTime())) {
                                       return `Member since ${date.toLocaleDateString('en-US', { 
                                         year: 'numeric', 
-                                        month: 'long', 
+                                        month: 'short', 
                                         day: 'numeric' 
                                       })}`;
                                     }
@@ -1294,128 +1518,356 @@ const BrowseRequestsPage = () => {
                                 return 'New member';
                               })()}
                             </span>
+                            {selectedRequest.requester?.account_type && selectedRequest.requester.account_type !== 'individual' && (
+                              <span className="text-yellow-400 flex items-center gap-1 whitespace-nowrap">
+                                <Building2 className="h-3.5 w-3.5 flex-shrink-0" />
+                                {selectedRequest.requester.account_type === 'business' ? 'Business' : 'Organization'}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* ID Verification Badge - Top Right Corner */}
+                        <div className="absolute top-0 right-0 flex-shrink-0">
+                          <IDVerificationBadge
+                            idStatus={selectedRequest.requester?.id_verification_status}
+                            hasIdUploaded={selectedRequest.requester?.primary_id_type && selectedRequest.requester?.primary_id_number}
+                            size="sm"
+                            showText={true}
+                            showDescription={false}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Basic Information and Contact Information - 2 Column Layout */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Basic Information */}
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <User className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Basic Information
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            {selectedRequest.requester?.birthdate && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Birthdate:</span>
+                                <span className="text-white break-words flex-1">
+                                  {new Date(selectedRequest.requester.birthdate).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.birthdate && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Age:</span>
+                                <span className="text-white break-words flex-1">
+                                  {calculateAge(selectedRequest.requester.birthdate) || 'Not available'}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.account_type && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Account Type:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.account_type === 'business' ? 'Business/Organization' : 'Individual'}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.organization_name && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Organization:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.organization_name}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.website_link && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Website:</span>
+                                <a
+                                  href={selectedRequest.requester.website_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-yellow-300 hover:text-yellow-200 break-all flex-1 flex items-center gap-1"
+                                >
+                                  <Globe className="h-3 w-3 flex-shrink-0" />
+                                  {selectedRequest.requester.website_link}
+                                </a>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Contact Information */}
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <Phone className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Contact Information
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Phone:</span>
+                              <span className="text-white break-words flex-1">
+                                {selectedRequest.requester?.phone_number || selectedRequest.requester?.phone ? (
+                                  <a
+                                    href={`tel:${selectedRequest.requester.phone_number || selectedRequest.requester.phone}`}
+                                    className="text-white hover:text-yellow-300 transition-colors break-all"
+                                  >
+                                    {selectedRequest.requester.phone_number || selectedRequest.requester.phone}
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400 italic">Not provided</span>
+                                )}
+                              </span>
+                            </div>
+                            <div className="flex items-start gap-2 min-w-0">
+                              <span className="text-yellow-400 font-medium flex-shrink-0">Email:</span>
+                              <span className="text-white break-words flex-1">
+                                {selectedRequest.requester?.email ? (
+                                  <a
+                                    href={`mailto:${selectedRequest.requester.email}`}
+                                    className="text-white hover:text-yellow-300 transition-colors break-all"
+                                  >
+                                    {selectedRequest.requester.email}
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-400 italic">Not provided</span>
+                                )}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
 
-                      {/* Contact & Location Information - 2 Column Layout */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Contact Information */}
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                          <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
-                            <Phone className="h-4 w-4 text-yellow-400" />
-                            Contact Information
+                      {/* Address Details - Combined Location and Address */}
+                      {(selectedRequest.requester?.city || selectedRequest.requester?.province || selectedRequest.requester?.address_barangay || selectedRequest.requester?.address_street || selectedRequest.requester?.address_landmark || selectedRequest.requester?.zip_code) && (
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <MapPin className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Address Details
                           </h5>
-                          <div className="space-y-3 text-sm">
-                            <div className="flex items-start justify-between gap-4">
-                              <span className="text-yellow-400 font-medium">Phone:</span>
-                              {selectedRequest.requester?.phone_number || selectedRequest.requester?.phone ? (
-                                <a
-                                  href={`tel:${selectedRequest.requester.phone_number || selectedRequest.requester.phone}`}
-                                  className="text-white hover:text-yellow-300 transition-colors flex items-center gap-1"
-                                >
-                                  <Phone className="h-3.5 w-3.5" />
-                                  {selectedRequest.requester.phone_number || selectedRequest.requester.phone}
-                                </a>
-                              ) : (
-                                <span className="text-gray-400 italic">Not provided</span>
-                              )}
-                            </div>
-                            <div className="flex items-start justify-between gap-4">
-                              <span className="text-yellow-400 font-medium">Email:</span>
-                              {selectedRequest.requester?.email ? (
-                                <a
-                                  href={`mailto:${selectedRequest.requester.email}`}
-                                  className="text-white hover:text-yellow-300 transition-colors break-all text-right"
-                                >
-                                  {selectedRequest.requester.email}
-                                </a>
-                              ) : (
-                                <span className="text-gray-400 italic">Not provided</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Location Information */}
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                          <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-yellow-400" />
-                            Location Information
-                          </h5>
-                          <div className="space-y-3 text-sm">
-                            <div className="flex items-start justify-between gap-4">
-                              <span className="text-yellow-400 font-medium">City:</span>
-                              <span className="text-white text-right">
-                                {selectedRequest.requester?.city ? (
-                                  selectedRequest.requester.city
-                                ) : (
-                                  <span className="text-gray-400 italic">Not specified</span>
-                                )}
-                              </span>
-                            </div>
-                            <div className="flex items-start justify-between gap-4">
-                              <span className="text-yellow-400 font-medium">Province:</span>
-                              <span className="text-white text-right">
-                                {selectedRequest.requester?.province ? (
-                                  selectedRequest.requester.province
-                                ) : (
-                                  <span className="text-gray-400 italic">Not specified</span>
-                                )}
-                              </span>
-                            </div>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs sm:text-sm">
+                            {selectedRequest.requester?.address_street && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Street:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.address_street}
+                                </span>
+                              </div>
+                            )}
                             {selectedRequest.requester?.address_barangay && (
-                              <div className="flex items-start justify-between gap-4">
-                                <span className="text-yellow-400 font-medium">Barangay:</span>
-                                <span className="text-white text-right">
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Barangay:</span>
+                                <span className="text-white break-words flex-1">
                                   {selectedRequest.requester.address_barangay}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.address_landmark && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Landmark:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.address_landmark}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.city && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">City:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.city}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.province && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Province:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.province}
+                                </span>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.zip_code && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">ZIP Code:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.zip_code}
                                 </span>
                               </div>
                             )}
                           </div>
                         </div>
-                      </div>
+                      )}
 
-                      {/* Full Address - Spans full width if available */}
-                      {selectedRequest.requester?.address && (
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                          <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-yellow-400" />
-                            Full Address
-                          </h5>
-                          <p className="text-sm text-white leading-relaxed">
-                            {selectedRequest.requester.address}
-                          </p>
+                      {/* Emergency Contact and Recipient Details - 2 Column Layout */}
+                      {((selectedRequest.requester?.emergency_contact_name || selectedRequest.requester?.emergency_contact_phone) || (selectedRequest.requester?.role === 'recipient' && (selectedRequest.requester?.household_size || selectedRequest.requester?.assistance_needs?.length > 0))) && (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {/* Emergency Contact */}
+                          {(selectedRequest.requester?.emergency_contact_name || selectedRequest.requester?.emergency_contact_phone) && (
+                            <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                              <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                                <AlertCircle className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                                Emergency Contact
+                              </h5>
+                              <div className="space-y-2 text-xs sm:text-sm">
+                                {selectedRequest.requester?.emergency_contact_name && (
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <span className="text-yellow-400 font-medium flex-shrink-0">Name:</span>
+                                    <span className="text-white break-words flex-1">
+                                      {selectedRequest.requester.emergency_contact_name}
+                                    </span>
+                                  </div>
+                                )}
+                                {selectedRequest.requester?.emergency_contact_phone && (
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <span className="text-yellow-400 font-medium flex-shrink-0">Phone:</span>
+                                    <a
+                                      href={`tel:${selectedRequest.requester.emergency_contact_phone}`}
+                                      className="text-white hover:text-yellow-300 transition-colors break-all flex-1"
+                                    >
+                                      {selectedRequest.requester.emergency_contact_phone}
+                                    </a>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Recipient-specific information */}
+                          {selectedRequest.requester?.role === 'recipient' && (selectedRequest.requester?.household_size || selectedRequest.requester?.primary_id_type) && (
+                            <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                              <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                                <Heart className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                                Recipient Details
+                              </h5>
+                              <div className="space-y-2 text-xs sm:text-sm">
+                                {selectedRequest.requester?.household_size && (
+                                  <div className="flex items-start gap-2 min-w-0">
+                                    <span className="text-yellow-400 font-medium flex-shrink-0">Household Size:</span>
+                                    <span className="text-white break-words flex-1">
+                                      {selectedRequest.requester.household_size} {selectedRequest.requester.household_size === 1 ? 'person' : 'people'}
+                                    </span>
+                                  </div>
+                                )}
+                                <div className="flex items-start gap-2 min-w-0">
+                                  <span className="text-yellow-400 font-medium flex-shrink-0">ID Type:</span>
+                                  <span className="text-white break-words flex-1">
+                                    {getIDTypeLabel(selectedRequest.requester?.primary_id_type)}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
-                      {/* Recipient-specific information */}
-                      {selectedRequest.requester?.role === 'recipient' && (
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                          <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
-                            <Heart className="h-4 w-4 text-yellow-400" />
-                            Recipient Details
+                      {/* Assistance Needs - Separate Container */}
+                      {selectedRequest.requester?.role === 'recipient' && selectedRequest.requester?.assistance_needs?.length > 0 && (
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <Heart className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Assistance Needs
                           </h5>
-                          <div className="space-y-3 text-sm">
-                            <div className="flex items-start justify-between gap-4">
-                              <span className="text-yellow-400 font-medium">Household Size:</span>
-                              <span className="text-white">
-                                {selectedRequest.requester?.household_size ? 
-                                  `${selectedRequest.requester.household_size} ${selectedRequest.requester.household_size === 1 ? 'person' : 'people'}` : 
-                                  <span className="text-gray-400 italic">Not specified</span>
-                                }
+                          <div className="flex gap-1.5 overflow-x-auto custom-scrollbar">
+                            {selectedRequest.requester.assistance_needs.map((need, i) => (
+                              <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded-full text-yellow-300 border border-yellow-500/30 font-medium whitespace-nowrap flex-shrink-0">
+                                {need}
                               </span>
-                            </div>
-                            {selectedRequest.requester?.assistance_needs?.length > 0 && (
-                              <div>
-                                <span className="text-yellow-400 font-medium block mb-2">Assistance Needs:</span>
-                                <div className="flex flex-wrap gap-2">
-                                  {selectedRequest.requester.assistance_needs.map((need, i) => (
-                                    <span key={i} className="bg-navy-700 text-xs px-3 py-1.5 rounded-full text-yellow-300 border border-yellow-500/30 font-medium">
-                                      {need}
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Volunteer-specific information */}
+                      {selectedRequest.requester?.role === 'volunteer' && (
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <Truck className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Volunteer Details
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            {selectedRequest.requester?.preferred_delivery_types?.length > 0 && (
+                              <div className="min-w-0">
+                                <span className="text-yellow-400 font-medium block mb-1.5 text-xs">Preferred Delivery Types:</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {selectedRequest.requester.preferred_delivery_types.map((type, i) => (
+                                    <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded-full text-yellow-300 border border-yellow-500/30 font-medium break-words">
+                                      {type}
                                     </span>
                                   ))}
                                 </div>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.volunteer_experience && (
+                              <div className="min-w-0">
+                                <span className="text-yellow-400 font-medium block mb-1 text-xs">Experience:</span>
+                                <p className="text-white text-xs break-words">{selectedRequest.requester.volunteer_experience}</p>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.special_skills?.length > 0 && (
+                              <div className="min-w-0">
+                                <span className="text-yellow-400 font-medium block mb-1.5 text-xs">Special Skills:</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {selectedRequest.requester.special_skills.map((skill, i) => (
+                                    <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded-full text-yellow-300 border border-yellow-500/30 font-medium break-words">
+                                      {skill}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.languages_spoken?.length > 0 && (
+                              <div className="min-w-0">
+                                <span className="text-yellow-400 font-medium block mb-1.5 text-xs">Languages:</span>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {selectedRequest.requester.languages_spoken.map((lang, i) => (
+                                    <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded-full text-yellow-300 border border-yellow-500/30 font-medium break-words">
+                                      {lang}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {selectedRequest.requester?.has_insurance && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Insurance:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.insurance_provider ? `${selectedRequest.requester.insurance_provider}` : 'Yes'}
+                                  {selectedRequest.requester.insurance_policy_number && ` (${selectedRequest.requester.insurance_policy_number})`}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Donor-specific information */}
+                      {selectedRequest.requester?.role === 'donor' && selectedRequest.requester?.donation_types?.length > 0 && (
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <Gift className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                            Donation Preferences
+                          </h5>
+                          <div className="space-y-2 text-xs sm:text-sm">
+                            <div className="min-w-0">
+                              <span className="text-yellow-400 font-medium block mb-1.5 text-xs">Donation Types:</span>
+                              <div className="flex flex-wrap gap-1.5">
+                                {selectedRequest.requester.donation_types.map((type, i) => (
+                                  <span key={i} className="bg-navy-700 text-xs px-2 py-1 rounded-full text-yellow-300 border border-yellow-500/30 font-medium break-words">
+                                    {type}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                            {selectedRequest.requester?.donation_frequency && (
+                              <div className="flex items-start gap-2 min-w-0">
+                                <span className="text-yellow-400 font-medium flex-shrink-0">Frequency:</span>
+                                <span className="text-white break-words flex-1">
+                                  {selectedRequest.requester.donation_frequency}
+                                </span>
                               </div>
                             )}
                           </div>
@@ -1424,12 +1876,12 @@ const BrowseRequestsPage = () => {
 
                       {/* Bio/About */}
                       {selectedRequest.requester?.bio && (
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-yellow-500/20">
-                          <h5 className="text-white font-semibold mb-3 flex items-center gap-2">
-                            <MessageSquare className="h-4 w-4 text-yellow-400" />
+                        <div className="bg-navy-800/30 rounded-lg p-3 border border-yellow-500/20">
+                          <h5 className="text-white font-semibold mb-2 text-sm flex items-center gap-2">
+                            <MessageSquare className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                             About
                           </h5>
-                          <p className="text-yellow-200 text-sm leading-relaxed">
+                          <p className="text-yellow-200 text-xs sm:text-sm leading-relaxed break-words">
                             {selectedRequest.requester.bio}
                           </p>
                         </div>
@@ -1439,13 +1891,22 @@ const BrowseRequestsPage = () => {
                 </div>
 
                 {/* Footer: Proceed to donation details */}
-                <div className="mt-4 sm:mt-6">
+                <div className="mt-3 sm:mt-4 pt-3 border-t border-yellow-500/20 flex flex-col sm:flex-row gap-2">
+                  {selectedRequest?.requester?.id && user?.id && selectedRequest.requester.id !== user.id && (
+                    <button
+                      onClick={() => setShowReportModal(true)}
+                      className="flex-1 px-3 py-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 rounded-lg text-sm font-semibold transition-all active:scale-95 flex items-center justify-center gap-2"
+                    >
+                      <Flag className="h-3.5 w-3.5" />
+                      Report User
+                    </button>
+                  )}
                   <button
                     onClick={() => {
                       setShowProfileModal(false)
                       setShowDonationDetailsModal(true)
                     }}
-                    className="btn btn-primary w-full"
+                    className={`btn btn-primary text-sm py-2 ${selectedRequest?.requester?.id && user?.id && selectedRequest.requester.id !== user.id ? 'flex-1' : 'w-full'}`}
                   >
                     Donate to this Recipient
                   </button>
@@ -1454,6 +1915,79 @@ const BrowseRequestsPage = () => {
             </div>
           )}
         </AnimatePresence>
+
+        {/* Profile Image Viewer Modal */}
+        <AnimatePresence>
+          {showProfileImageModal && selectedRequest?.requester && (
+            <div className="fixed inset-0 z-[60]">
+              {/* Backdrop */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setShowProfileImageModal(false)}
+                className="absolute inset-0 bg-black/90 backdrop-blur-sm"
+              />
+              
+              {/* Image Container */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="relative w-full h-full flex items-center justify-center p-4 sm:p-6"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {selectedRequest.requester?.profile_image_url ? (
+                  <>
+                    <img
+                      src={selectedRequest.requester.profile_image_url}
+                      alt={selectedRequest.requester?.name || 'Profile'}
+                      className="max-w-full max-h-[85vh] w-auto h-auto object-contain rounded-lg shadow-2xl"
+                    />
+                    {/* Close Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowProfileImageModal(false)}
+                      className="absolute top-4 right-4 p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors backdrop-blur-sm z-10 shadow-lg"
+                      title="Close"
+                      aria-label="Close image viewer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </>
+                ) : (
+                  <div className="relative flex flex-col items-center justify-center text-center">
+                    <div className="w-32 h-32 sm:w-40 sm:h-40 rounded-full bg-navy-800 border-4 border-navy-700 flex items-center justify-center mb-4">
+                      <User className="h-16 w-16 sm:h-20 sm:w-20 text-yellow-400" />
+                    </div>
+                    <p className="text-gray-400 text-sm sm:text-base">No profile picture uploaded</p>
+                    {/* Close Button */}
+                    <button
+                      type="button"
+                      onClick={() => setShowProfileImageModal(false)}
+                      className="absolute top-4 right-4 p-2.5 rounded-full bg-black/70 hover:bg-black/90 text-white transition-colors backdrop-blur-sm z-10 shadow-lg"
+                      title="Close"
+                      aria-label="Close image viewer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Report User Modal */}
+        {selectedRequest?.requester && (
+          <ReportUserModal
+            isOpen={showReportModal}
+            onClose={() => setShowReportModal(false)}
+            reportedUserId={selectedRequest.requester.id}
+            reportedUserName={selectedRequest.requester.name || selectedRequest.requester.full_name}
+            reportedUserRole={selectedRequest.requester.role}
+          />
+        )}
       </div>
     </div>
   )

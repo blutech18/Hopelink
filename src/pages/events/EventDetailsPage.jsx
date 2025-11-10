@@ -21,13 +21,18 @@ import {
   Utensils,
   Gift,
   GraduationCap,
-  PartyPopper
+  PartyPopper,
+  Mail,
+  Phone,
+  User
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db, supabase } from '../../lib/supabase'
 import { FormSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import JoinEventConfirmationModal from '../../components/ui/JoinEventConfirmationModal'
+import CancelEventConfirmationModal from '../../components/ui/CancelEventConfirmationModal'
 
 const EventDetailsPage = () => {
   const { id: eventId } = useParams()
@@ -38,12 +43,23 @@ const EventDetailsPage = () => {
   const [loading, setLoading] = useState(true)
   const [isParticipant, setIsParticipant] = useState(false)
   const [joinLoading, setJoinLoading] = useState(false)
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1024)
+  const [showJoinModal, setShowJoinModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
 
   useEffect(() => {
     if (eventId) {
       fetchEventDetails()
     }
   }, [eventId])
+
+  useEffect(() => {
+    const handleResize = () => {
+      setWindowWidth(window.innerWidth)
+    }
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [])
 
   const fetchEventDetails = async () => {
     try {
@@ -109,34 +125,56 @@ const EventDetailsPage = () => {
       return
     }
 
+    // Show confirmation modal
+    setShowJoinModal(true)
+  }
+
+  const confirmJoinEvent = async () => {
+    if (!user) return
+
     setJoinLoading(true)
     try {
-      // Mock API call to join event
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await db.joinEvent(eventId, user.id)
       
       setIsParticipant(true)
       setEvent(prev => ({ ...prev, current_participants: prev.current_participants + 1 }))
       success('Successfully joined the event!')
+      setShowJoinModal(false)
+      
+      // Refresh event details to get updated participant count
+      await fetchEventDetails()
     } catch (err) {
       console.error('Error joining event:', err)
-      error('Failed to join event. Please try again.')
+      error(err.message || 'Failed to join event. Please try again.')
     } finally {
       setJoinLoading(false)
     }
   }
 
   const handleLeaveEvent = async () => {
+    if (!user) return
+    
+    // Show confirmation modal
+    setShowCancelModal(true)
+  }
+
+  const confirmCancelEvent = async () => {
+    if (!user) return
+    
     setJoinLoading(true)
     try {
-      // Mock API call to leave event
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      await db.leaveEvent(eventId, user.id)
       
       setIsParticipant(false)
-      setEvent(prev => ({ ...prev, current_participants: prev.current_participants - 1 }))
-      success('You have left the event')
+      setEvent(prev => ({ ...prev, current_participants: Math.max(0, prev.current_participants - 1) }))
+      success('You have canceled your registration')
+      setShowCancelModal(false)
+      
+      // Refresh event details to get updated participant count
+      await fetchEventDetails()
     } catch (err) {
       console.error('Error leaving event:', err)
-      error('Failed to leave event. Please try again.')
+      error(err.message || 'Failed to cancel registration. Please try again.')
     } finally {
       setJoinLoading(false)
     }
@@ -173,12 +211,45 @@ const EventDetailsPage = () => {
   }
 
   const formatTime = (dateString) => {
+    if (!dateString) return 'N/A'
     const date = new Date(dateString)
+    if (isNaN(date.getTime())) {
+      console.error('Invalid date string:', dateString)
+      return 'Invalid Date'
+    }
     return date.toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true
     })
+  }
+
+  const formatScheduleTime = (timeString) => {
+    if (!timeString) return timeString
+    
+    // Check if it's already in 12-hour format (contains AM/PM)
+    if (/AM|PM/i.test(timeString)) {
+      return timeString
+    }
+    
+    // Try to parse as 24-hour format (HH:MM or HH:MM:SS)
+    const timeMatch = timeString.match(/(\d{1,2}):(\d{2})(?::(\d{2}))?/)
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10)
+      const minutes = timeMatch[2]
+      const ampm = hours >= 12 ? 'PM' : 'AM'
+      
+      if (hours === 0) {
+        hours = 12
+      } else if (hours > 12) {
+        hours = hours - 12
+      }
+      
+      return `${hours}:${minutes} ${ampm}`
+    }
+    
+    // Return as-is if we can't parse it
+    return timeString
   }
 
   if (loading) {
@@ -187,8 +258,8 @@ const EventDetailsPage = () => {
 
   if (!event) {
     return (
-      <div className="min-h-screen bg-navy-950 py-8">
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen py-8" style={{backgroundColor: '#00237d'}}>
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="card p-12 text-center">
             <AlertCircle className="h-16 w-16 text-danger-500 mx-auto mb-4" />
             <h2 className="text-xl font-semibold text-white mb-2">Event Not Found</h2>
@@ -209,18 +280,29 @@ const EventDetailsPage = () => {
   const isCompleted = new Date(event.end_date) < new Date()
   const participationPercentage = (event.current_participants / event.max_participants) * 100
 
+  // Calculate responsive grid columns for donation items
+  const getDonationGridColumns = (count) => {
+    if (count === 1) return '1fr'
+    if (count === 2) return 'repeat(2, 1fr)'
+    if (count === 3) return 'repeat(3, 1fr)'
+    if (count === 4) return 'repeat(4, 1fr)'
+    if (count === 5) return 'repeat(5, 1fr)'
+    if (count === 6) return 'repeat(3, 1fr)'
+    return 'repeat(4, 1fr)' // 7+ items
+  }
+
   return (
-    <div className="min-h-screen bg-navy-950 py-8">
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen py-6" style={{backgroundColor: '#00237d'}}>
+      <div className="w-full px-4 sm:px-6 lg:px-8">
         {/* Back Button */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
-          className="mb-6"
+          className="mb-4"
         >
           <button
             onClick={() => navigate('/events')}
-            className="flex items-center text-white hover:text-yellow-300 transition-colors bg-navy-800/80 backdrop-blur-sm px-4 py-2 rounded-lg"
+            className="flex items-center text-white hover:text-yellow-300 transition-colors bg-navy-800/60 px-3 py-1.5 rounded-lg text-sm"
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back to Events
@@ -231,9 +313,9 @@ const EventDetailsPage = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-6"
+          className="mb-4"
         >
-          <div className="w-full rounded-lg overflow-hidden">
+          <div className="w-full rounded-lg overflow-hidden border-2 border-yellow-500/30">
             {event.image_url ? (
               <>
                 {/* Image - 100% Display */}
@@ -241,45 +323,45 @@ const EventDetailsPage = () => {
                   <img
                     src={event.image_url}
                     alt={event.name}
-                    className="w-full h-96 object-cover"
+                    className="w-full h-80 object-cover"
                   />
                   {/* Gradient Transition Overlay at Bottom of Image */}
-                  <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-b from-transparent to-[#00237d]"></div>
+                  <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-b from-transparent to-[#00237d]"></div>
                   
                   {/* Share and Save Buttons - Top Right */}
-                  <div className="absolute top-4 right-4 flex items-center gap-2">
+                  <div className="absolute top-3 right-3 flex items-center gap-2">
                     <button 
                       className="p-2 bg-yellow-400 hover:bg-yellow-300 text-navy-900 rounded-lg transition-all shadow-lg"
                       title="Share Event"
                     >
-                      <Share2 className="h-5 w-5" />
+                      <Share2 className="h-4 w-4" />
                     </button>
                     <button 
                       className="p-2 bg-yellow-400 hover:bg-yellow-300 text-navy-900 rounded-lg transition-all shadow-lg"
                       title="Save Event"
                     >
-                      <Heart className="h-5 w-5" />
+                      <Heart className="h-4 w-4" />
                     </button>
                   </div>
                 </div>
                 
                 {/* Dark Blue Gradient Section Below Image */}
-                <div className="w-full bg-gradient-to-b from-[#00237d] to-[#001a5c] p-8 pt-4">
-                  <h1 className="text-4xl lg:text-5xl font-bold text-white mb-3">
+                <div className="w-full bg-gradient-to-b from-[#00237d] to-[#001a5c] p-6">
+                  <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2">
                     {event.name}
                   </h1>
-                  <p className="text-lg text-white/90 max-w-4xl">
+                  <p className="text-base text-white/85">
                     {event.description}
                   </p>
                 </div>
               </>
             ) : (
-              <div className="w-full h-96 bg-gradient-to-br from-[#00237d] to-[#001a5c] flex flex-col items-center justify-center p-8">
-                <EventIcon className="h-32 w-32 text-yellow-400 mb-6" />
-                <h1 className="text-4xl lg:text-5xl font-bold text-white mb-3 text-center">
+              <div className="w-full h-80 bg-gradient-to-br from-[#00237d] to-[#001a5c] flex flex-col items-center justify-center p-6 border-2 border-yellow-500/30 rounded-lg">
+                <EventIcon className="h-24 w-24 text-yellow-400 mb-4" />
+                <h1 className="text-3xl lg:text-4xl font-bold text-white mb-2 text-center">
                   {event.name}
                 </h1>
-                <p className="text-lg text-white/90 max-w-4xl text-center">
+                <p className="text-base text-white/85 text-center">
                   {event.description}
                 </p>
               </div>
@@ -292,166 +374,206 @@ const EventDetailsPage = () => {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="card p-6 mb-6 border-2 border-yellow-400/20"
+          className="card p-4 mb-4 border border-yellow-500/20"
         >
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
-            <div className="flex items-start gap-4 bg-navy-700/30 p-4 rounded-lg border border-yellow-400/10">
-              <div className="p-2 bg-yellow-400/20 rounded-lg">
-                <Calendar className="h-6 w-6 text-yellow-400 flex-shrink-0" />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-4">
+            <div className="flex items-center justify-between gap-3 bg-navy-800/40 p-3 rounded-lg border border-yellow-500/10">
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="p-1.5 bg-yellow-400/20 rounded flex-shrink-0">
+                  <Calendar className="h-4 w-4 text-yellow-400" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-xs font-semibold text-yellow-400 uppercase tracking-wide mb-0.5">Date & Time</div>
+                  <div className="text-sm text-white font-medium">{formatDate(event.start_date)}</div>
+                </div>
               </div>
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-white text-sm mb-1">Event Date</div>
-                <div className="text-sm text-yellow-300 font-medium">{formatDate(event.start_date)}</div>
-                <div className="text-xs text-yellow-200 mt-1">
+              <div className="text-right flex-shrink-0">
+                <div className="text-xs text-gray-400">
                   {formatTime(event.start_date)} - {formatTime(event.end_date)}
                 </div>
               </div>
             </div>
             
-            <div className="flex items-start gap-4 bg-navy-700/30 p-4 rounded-lg border border-yellow-400/10">
-              <div className="p-2 bg-yellow-400/20 rounded-lg">
-                <MapPin className="h-6 w-6 text-yellow-400 flex-shrink-0" />
+            <div className="flex items-center gap-3 bg-navy-800/40 p-3 rounded-lg border border-yellow-500/10">
+              <div className="p-1.5 bg-yellow-400/20 rounded">
+                <MapPin className="h-4 w-4 text-yellow-400 flex-shrink-0" />
               </div>
               <div className="min-w-0 flex-1">
-                <div className="font-semibold text-white text-sm mb-1">Location</div>
-                <div className="text-sm text-yellow-300 font-medium break-words">{event.location}</div>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4 bg-navy-700/30 p-4 rounded-lg border border-yellow-400/10">
-              <div className="p-2 bg-yellow-400/20 rounded-lg">
-                <Users className="h-6 w-6 text-yellow-400 flex-shrink-0" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-white text-sm mb-1">Participants</div>
-                <div className="text-sm text-yellow-300 font-medium">
-                  {event.current_participants} / {event.max_participants} joined
-                </div>
+                <div className="text-xs font-semibold text-yellow-400 uppercase tracking-wide mb-0.5">Location</div>
+                <div className="text-sm text-white font-medium break-words">{event.location}</div>
               </div>
             </div>
           </div>
 
-          {/* Enhanced Participation Bar - 3x Height */}
-          <div className="bg-gradient-to-r from-yellow-900/20 to-orange-900/20 p-5 rounded-lg border border-yellow-400/30">
-            <div className="flex items-center justify-between mb-3">
+          {/* Participation Bar */}
+          <div className="bg-navy-800/40 p-4 rounded-lg border border-yellow-500/20">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <Users className="h-4 w-4 text-yellow-400" />
+                <span className="text-sm font-semibold text-white">Participation</span>
+                <span className="text-xs text-gray-400">
+                  ({event.current_participants}/{event.max_participants})
+                </span>
+              </div>
+              
+              {/* Right Side: Button and Percentage */}
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-yellow-400 rounded-lg">
-                  <Users className="h-5 w-5 text-navy-900" />
-                </div>
-                <div>
-                  <div className="font-bold text-white text-base">Event Participation</div>
-                  <div className="text-xs text-yellow-300">
-                    {event.current_participants} out of {event.max_participants} spots filled
+                {/* Action Button */}
+                {!user ? (
+                  <Link to="/login" className="btn btn-primary text-sm px-6 py-2 flex items-center justify-center">
+                    <UserPlus className="h-3.5 w-3.5 mr-2" />
+                    Log In to Join
+                  </Link>
+                ) : isCompleted ? (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-navy-900/50 rounded-lg border border-gray-700">
+                    <CheckCircle className="h-4 w-4 text-gray-400" />
+                    <span className="text-gray-400 text-sm font-medium">Event has ended</span>
                   </div>
+                ) : event.status === 'cancelled' ? (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-navy-900/50 rounded-lg border border-danger-500/30">
+                    <XCircle className="h-4 w-4 text-danger-400" />
+                    <span className="text-danger-400 text-sm font-medium">Event cancelled</span>
+                </div>
+                ) : isParticipant ? (
+                  <button
+                    onClick={handleLeaveEvent}
+                    disabled={joinLoading}
+                    className="btn btn-secondary text-sm px-6 py-2 flex items-center justify-center"
+                  >
+                    {joinLoading ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <>
+                        <XCircle className="h-3.5 w-3.5 mr-2" />
+                        Cancel
+                      </>
+                    )}
+                  </button>
+                ) : event.current_participants >= event.max_participants ? (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-navy-900/50 rounded-lg border border-amber-500/30">
+                    <Users className="h-4 w-4 text-amber-400" />
+                    <span className="text-amber-400 text-sm font-medium">Event is full</span>
+                  </div>
+                ) : (
+                  <button
+                    onClick={handleJoinEvent}
+                    disabled={joinLoading}
+                    className="btn btn-primary text-sm px-6 py-2 flex items-center justify-center"
+                  >
+                    {joinLoading ? (
+                      <LoadingSpinner size="sm" />
+                    ) : (
+                      <>
+                        <UserPlus className="h-3.5 w-3.5 mr-2" />
+                        Join Event
+                      </>
+                    )}
+                  </button>
+                )}
+                
+                {/* Percentage */}
+                <div className="px-3 py-1.5 bg-yellow-400/20 border border-yellow-400/40 rounded-lg">
+                  <span className="text-sm font-bold text-yellow-400">{Math.round(participationPercentage)}%</span>
                 </div>
               </div>
-              <div className="text-right">
-                <div className="text-3xl font-bold text-yellow-300">{Math.round(participationPercentage)}%</div>
-                <div className="text-xs text-yellow-200">Capacity</div>
-              </div>
             </div>
             
-            {/* 3x Height Progress Bar */}
-            <div className="w-full bg-navy-700 rounded-full h-6 overflow-hidden shadow-inner">
+            {/* Progress Bar */}
+            <div className="w-full bg-navy-900 rounded-full h-2.5 overflow-hidden">
               <div 
-                className="bg-gradient-to-r from-yellow-400 to-orange-400 h-6 rounded-full transition-all duration-500 flex items-center justify-end pr-3"
+                className="bg-gradient-to-r from-yellow-400 to-yellow-500 h-2.5 rounded-full transition-all duration-500"
                 style={{ width: `${participationPercentage}%` }}
-              >
-                {participationPercentage > 15 && (
-                  <span className="text-xs font-bold text-navy-900">{Math.round(participationPercentage)}%</span>
-                )}
-              </div>
-            </div>
-            
-            {/* Status Message */}
-            <div className="mt-3 text-center">
-              {participationPercentage >= 100 ? (
-                <span className="text-sm font-semibold text-red-400">⚠️ Event is Full</span>
-              ) : participationPercentage >= 80 ? (
-                <span className="text-sm font-semibold text-orange-400">🔥 Almost Full - Only {event.max_participants - event.current_participants} spots left!</span>
-              ) : participationPercentage >= 50 ? (
-                <span className="text-sm font-semibold text-yellow-300">✨ Filling Up Fast - {event.max_participants - event.current_participants} spots remaining</span>
-              ) : (
-                <span className="text-sm font-semibold text-green-400">✓ Plenty of Spots Available - {event.max_participants - event.current_participants} spots remaining</span>
-              )}
+              />
             </div>
           </div>
         </motion.div>
 
-        {/* Donation Needs - Full Width Row */}
+        {/* Donation Needs */}
         {event.donation_items && event.donation_items.length > 0 && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="card p-6 mb-6 border-2 border-yellow-400/30 bg-gradient-to-br from-yellow-900/10 to-orange-900/10"
+            className="card p-4 mb-4 border border-yellow-500/20"
           >
-            <div className="flex items-center mb-6">
-              <div className="bg-yellow-400 p-2 rounded-lg mr-3">
-                <Gift className="h-6 w-6 text-navy-900" />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-yellow-300">Donation Needs</h2>
-                <p className="text-yellow-200 text-sm">Help make this event successful!</p>
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-yellow-500/10">
+              <div className="flex items-center gap-2">
+                <Gift className="h-4 w-4 text-yellow-400" />
+                <h2 className="text-lg font-bold text-white">Donation Needs</h2>
+                <span className="text-sm text-gray-400">
+                  ({event.donation_items.reduce((total, item) => total + item.collected_quantity, 0)} / {event.donation_items.reduce((total, item) => total + item.quantity, 0)})
+                </span>
               </div>
             </div>
             
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div 
+              className="grid gap-3"
+              style={{
+                gridTemplateColumns: windowWidth >= 1024 
+                  ? getDonationGridColumns(event.donation_items.length)
+                  : windowWidth >= 640 
+                  ? event.donation_items.length <= 2 
+                    ? `repeat(${event.donation_items.length}, 1fr)` 
+                    : 'repeat(2, 1fr)'
+                  : '1fr'
+              }}
+            >
               {event.donation_items.map((item, index) => {
                 const progress = item.quantity > 0 ? (item.collected_quantity / item.quantity) * 100 : 0
                 const isComplete = item.collected_quantity >= item.quantity
                 
                 return (
-                  <div key={index} className="bg-navy-800/80 p-4 rounded-lg border border-yellow-400/20 hover:border-yellow-400/40 transition-all">
-                    <div className="flex items-start justify-between mb-3">
+                  <div key={index} className="bg-navy-800/40 p-3 rounded-lg border border-yellow-500/10 hover:border-yellow-500/30 transition-all">
+                    <div className="flex items-start justify-between mb-2">
                       <div className="min-w-0 flex-1">
-                        <h3 className="text-white font-semibold text-sm truncate">{item.name}</h3>
-                        <p className="text-yellow-300 text-xs font-medium">{item.category}</p>
-                        {item.description && (
-                          <p className="text-yellow-200 text-xs mt-1 line-clamp-2">{item.description}</p>
-                        )}
+                        <h3 className="text-white font-semibold text-sm">
+                          {item.name} <span className="text-gray-400 font-normal">({item.collected_quantity} / {item.quantity})</span>
+                        </h3>
+                        <p className="text-yellow-400 text-xs">{item.category}</p>
                       </div>
-                      <div className="text-right ml-2 flex-shrink-0">
-                        <div className="text-white font-bold text-sm">
-                          {item.collected_quantity}/{item.quantity}
-                        </div>
-                        <div className={`text-xs font-medium ${isComplete ? 'text-green-400' : 'text-yellow-400'}`}>
-                          {isComplete ? '✓ Complete' : `${Math.round(progress)}%`}
+                      
+                      {/* Button and Percentage - Upper Right */}
+                      <div className="flex items-center gap-2 ml-2 flex-shrink-0">
+                        {!isComplete && (
+                          <button className="btn btn-primary text-xs px-4 py-1.5 flex items-center justify-center">
+                            <Gift className="h-3 w-3 mr-1.5" />
+                            Donate
+                          </button>
+                        )}
+                        <div className={`px-2.5 py-1 border rounded-lg ${isComplete ? 'bg-green-400/20 border-green-400/40' : 'bg-yellow-400/20 border-yellow-400/40'}`}>
+                          <span className={`text-xs font-bold ${isComplete ? 'text-green-400' : 'text-yellow-400'}`}>
+                            {isComplete ? '100%' : `${Math.round(progress)}%`}
+                          </span>
                         </div>
                       </div>
                     </div>
                     
-                    <div className="w-full bg-navy-700 rounded-full h-2 mb-3">
+                    <div className="w-full bg-navy-900 rounded-full h-1.5">
                       <div 
-                        className={`h-2 rounded-full transition-all ${
-                          isComplete ? 'bg-green-500' : 'bg-gradient-to-r from-yellow-400 to-orange-400'
+                        className={`h-1.5 rounded-full transition-all ${
+                          isComplete ? 'bg-green-500' : 'bg-yellow-400'
                         }`}
                         style={{ width: `${Math.min(progress, 100)}%` }}
                       />
                     </div>
-                    
-                    {!isComplete && (
-                      <button className="w-full btn btn-primary text-sm py-2 flex items-center justify-center font-semibold">
-                        <Gift className="h-4 w-4 mr-2" />
-                        Donate This Item
-                      </button>
-                    )}
                   </div>
                 )
               })}
             </div>
             
-            <div className="mt-6 p-4 bg-gradient-to-r from-yellow-900/20 to-orange-900/20 rounded-lg border border-yellow-400/30">
+            <div className="mt-4 pt-3 border-t border-yellow-500/10">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-yellow-300 font-bold">Total Progress</h4>
-                  <p className="text-yellow-200 text-sm">
-                    {event.donation_items.reduce((total, item) => total + item.collected_quantity, 0)} / {event.donation_items.reduce((total, item) => total + item.quantity, 0)} items collected
+                  <span className="text-xs font-semibold text-yellow-400 uppercase tracking-wide">Total Progress</span>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {event.donation_items.reduce((total, item) => total + item.collected_quantity, 0)} / {event.donation_items.reduce((total, item) => total + item.quantity, 0)} items
                   </p>
                 </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-yellow-300">
+                <div className="flex items-center gap-3">
+                  <div className="px-3 py-1.5 bg-yellow-400/20 border border-yellow-400/40 rounded-lg">
+                    <span className="text-sm font-bold text-yellow-400">
                     {Math.round(event.donation_items.reduce((total, item) => total + (item.collected_quantity / item.quantity), 0) / event.donation_items.length * 100)}%
+                    </span>
                   </div>
                 </div>
               </div>
@@ -459,29 +581,41 @@ const EventDetailsPage = () => {
           </motion.div>
         )}
 
-        {/* Two Column Layout for Remaining Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Left Column */}
-          <div className="space-y-6">
+        {/* Event Schedule and Contact Information - Side by Side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             {/* Event Schedule */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="card p-6"
+            className="card p-4 border border-yellow-500/20"
+            style={{ minHeight: '280px' }}
             >
-              <h2 className="text-lg font-semibold text-white mb-4">Event Schedule</h2>
-              <div className="space-y-3">
+            <h2 className="text-base font-bold text-white mb-3 pb-2 border-b border-yellow-500/10">Event Schedule</h2>
+            {/* Event Time Range */}
+            <div className="mb-4 p-3 bg-yellow-400/10 rounded-lg border border-yellow-400/20">
+              <div className="flex items-center gap-2 mb-1">
+                <Clock className="h-4 w-4 text-yellow-400" />
+                <span className="text-xs font-semibold text-yellow-400 uppercase tracking-wide">Event Time</span>
+              </div>
+              <div className="text-white font-medium text-sm">
+                {formatTime(event.start_date)} - {formatTime(event.end_date)}
+              </div>
+            </div>
+            {/* Schedule Items */}
+            {event.schedule && event.schedule.length > 0 && (
+              <div className="space-y-2">
                 {event.schedule.map((item, index) => (
-                  <div key={index} className="flex items-center gap-3">
-                    <div className="bg-yellow-400 w-2 h-2 rounded-full flex-shrink-0" />
+                  <div key={index} className="flex items-center gap-2">
+                    <div className="bg-yellow-400 w-1.5 h-1.5 rounded-full flex-shrink-0" />
                     <div className="flex-1 flex justify-between items-center min-w-0">
-                      <span className="text-yellow-200 truncate">{item.activity}</span>
-                      <span className="text-yellow-300 text-sm font-medium ml-2 flex-shrink-0">{item.time}</span>
+                      <span className="text-white text-sm truncate">{item.activity}</span>
+                      <span className="text-yellow-400 text-xs font-medium ml-2 flex-shrink-0">{formatScheduleTime(item.time)}</span>
                     </div>
                   </div>
                 ))}
               </div>
+            )}
             </motion.div>
 
             {/* Contact Information */}
@@ -489,44 +623,65 @@ const EventDetailsPage = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="card p-6"
+            className="card p-4 border border-yellow-500/20"
+            style={{ minHeight: '280px' }}
             >
-              <h3 className="text-lg font-semibold text-white mb-4">Contact Information</h3>
-              <div className="space-y-3 text-sm">
-                <div>
-                  <span className="text-yellow-400">Coordinator:</span>
-                  <div className="text-yellow-200">{event.contact_info.coordinator}</div>
+            <h3 className="text-base font-bold text-white mb-4 pb-2 border-b border-yellow-500/10">Contact Information</h3>
+            <div className="space-y-3">
+              <div className="flex items-start justify-between gap-4 p-2.5 bg-navy-800/40 rounded-lg border border-yellow-500/10 hover:border-yellow-500/30 transition-colors">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="p-1.5 bg-yellow-400/20 rounded">
+                    <User className="h-4 w-4 text-yellow-400" />
+                  </div>
+                  <span className="text-yellow-400 text-xs uppercase tracking-wide font-semibold">Coordinator</span>
                 </div>
-                <div>
-                  <span className="text-yellow-400">Phone:</span>
-                  <div className="text-yellow-200">{event.contact_info.phone}</div>
-                </div>
-                <div>
-                  <span className="text-yellow-400">Email:</span>
-                  <div className="text-yellow-200">{event.contact_info.email}</div>
+                <div className="text-right flex-1">
+                  <div className="text-white text-sm font-medium">{event.contact_info.coordinator}</div>
                 </div>
               </div>
-              <button className="btn btn-secondary w-full mt-4 flex items-center justify-center">
-                <MessageCircle className="h-4 w-4 mr-2" />
-                Contact Organizer
-              </button>
+              
+              <div className="flex items-start justify-between gap-4 p-2.5 bg-navy-800/40 rounded-lg border border-yellow-500/10 hover:border-yellow-500/30 transition-colors">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="p-1.5 bg-yellow-400/20 rounded">
+                    <Phone className="h-4 w-4 text-yellow-400" />
+                  </div>
+                  <span className="text-yellow-400 text-xs uppercase tracking-wide font-semibold">Phone</span>
+                </div>
+                <div className="text-right flex-1">
+                  <div className="text-white text-sm font-medium">{event.contact_info.phone}</div>
+                </div>
+              </div>
+              
+              <div className="flex items-start justify-between gap-4 p-2.5 bg-navy-800/40 rounded-lg border border-yellow-500/10 hover:border-yellow-500/30 transition-colors">
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <div className="p-1.5 bg-yellow-400/20 rounded">
+                    <Mail className="h-4 w-4 text-yellow-400" />
+                  </div>
+                  <span className="text-yellow-400 text-xs uppercase tracking-wide font-semibold">Email</span>
+                </div>
+                <div className="text-right flex-1">
+                  <div className="text-white text-sm font-medium break-words">{event.contact_info.email}</div>
+                </div>
+              </div>
+            </div>
             </motion.div>
           </div>
 
-          {/* Right Column */}
-          <div className="space-y-6">
+        {/* Requirements and What to Bring - Side by Side */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
             {/* Requirements */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
-              className="card p-6"
+            className="card p-4 border border-yellow-500/20"
+            style={{ minHeight: '280px' }}
             >
-              <h3 className="text-lg font-semibold text-white mb-4">Requirements</h3>
-              <ul className="space-y-2">
+            <h3 className="text-base font-bold text-white mb-3 pb-2 border-b border-yellow-500/10">Requirements</h3>
+            <ul className="space-y-1.5">
                 {event.requirements.map((req, index) => (
-                  <li key={index} className="flex items-start text-yellow-200 text-sm">
-                    <CheckCircle className="h-4 w-4 mr-2 text-success-400 mt-0.5 flex-shrink-0" />
+                <li key={index} className="flex items-start text-white text-sm">
+                  <CheckCircle className="h-3.5 w-3.5 mr-2 text-success-400 mt-0.5 flex-shrink-0" />
                     {req}
                   </li>
                 ))}
@@ -538,116 +693,86 @@ const EventDetailsPage = () => {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
-              className="card p-6"
+            className="card p-4 border border-yellow-500/20"
+            style={{ minHeight: '280px' }}
             >
-              <h3 className="text-lg font-semibold text-white mb-4">What to Bring</h3>
-              <ul className="space-y-2">
+            <h3 className="text-base font-bold text-white mb-3 pb-2 border-b border-yellow-500/10">What to Bring</h3>
+            <ul className="space-y-1.5">
                 {event.what_to_bring.map((item, index) => (
-                  <li key={index} className="flex items-start text-yellow-200 text-sm">
-                    <Info className="h-4 w-4 mr-2 text-yellow-400 mt-0.5 flex-shrink-0" />
+                <li key={index} className="flex items-start text-white text-sm">
+                  <Info className="h-3.5 w-3.5 mr-2 text-yellow-400 mt-0.5 flex-shrink-0" />
                     {item}
                   </li>
                 ))}
               </ul>
             </motion.div>
+        </div>
 
-            {/* Participation */}
+        {/* Organized by - Full Width */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-              className="card p-6"
+          transition={{ delay: 0.5 }}
+          className="card p-6 border border-yellow-500/20"
             >
-              <h3 className="text-lg font-semibold text-white mb-4">Participation</h3>
+          <h3 className="text-lg font-semibold text-white mb-4 text-center pb-2 border-b border-yellow-500/10">Organized by</h3>
               
-              {!user ? (
-                <div className="text-center">
-                  <p className="text-yellow-300 text-sm mb-4">Please log in to join this event</p>
-                  <Link to="/login" className="btn btn-primary w-full flex items-center justify-center">
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Log In to Join
-                  </Link>
+          <div className="flex items-center justify-center gap-4 flex-wrap">
+            {/* Avatar */}
+            <div className="flex-shrink-0">
+              <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-yellow-500 rounded-full flex items-center justify-center shadow-lg">
+                <span className="text-white font-bold text-lg">
+                  {event.created_by.name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                </span>
                 </div>
-              ) : isCompleted ? (
-                <div className="text-center">
-                  <CheckCircle className="h-8 w-8 text-gray-400 mx-auto mb-2" />
-                  <p className="text-gray-400 text-sm">This event has ended</p>
                 </div>
-              ) : event.status === 'cancelled' ? (
-                <div className="text-center">
-                  <XCircle className="h-8 w-8 text-danger-400 mx-auto mb-2" />
-                  <p className="text-danger-400 text-sm">This event has been cancelled</p>
+
+            {/* Name */}
+            <div className="flex-shrink-0">
+              <h4 className="text-base font-bold text-white">{event.created_by.name}</h4>
                 </div>
-              ) : isParticipant ? (
-                <div className="text-center">
-                  <UserCheck className="h-8 w-8 text-success-400 mx-auto mb-3" />
-                  <p className="text-success-300 font-medium mb-4">You're participating!</p>
-                  <button
-                    onClick={handleLeaveEvent}
-                    disabled={joinLoading}
-                    className="btn btn-secondary w-full flex items-center justify-center"
-                  >
-                    {joinLoading ? (
-                      <LoadingSpinner size="sm" />
-                    ) : (
-                      <>
-                        <XCircle className="h-4 w-4 mr-2" />
-                        Leave Event
-                      </>
-                    )}
-                  </button>
+
+            {/* Contact Details - Plain Text */}
+            {event.created_by.email && (
+              <div className="flex items-center gap-2">
+                <Mail className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-xs text-yellow-400 uppercase tracking-wide mr-2">Email:</span>
+                  <span className="text-sm text-white truncate max-w-[200px]">{event.created_by.email}</span>
                 </div>
-              ) : event.current_participants >= event.max_participants ? (
-                <div className="text-center">
-                  <Users className="h-8 w-8 text-amber-400 mx-auto mb-2" />
-                  <p className="text-amber-400 text-sm">Event is full</p>
-                </div>
-              ) : (
-                <div className="text-center">
-                  <button
-                    onClick={handleJoinEvent}
-                    disabled={joinLoading}
-                    className="btn btn-primary w-full mb-4 flex items-center justify-center"
-                  >
-                    {joinLoading ? (
-                      <LoadingSpinner size="sm" />
-                    ) : (
-                      <>
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        Join Event
-                      </>
-                    )}
-                  </button>
-                  <p className="text-yellow-300 text-xs">
-                    {event.max_participants - event.current_participants} spots remaining
-                  </p>
                 </div>
               )}
-            </motion.div>
-
-            {/* Event Creator */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.5 }}
-              className="card p-6"
-            >
-              <h3 className="text-lg font-semibold text-white mb-4">Organized by</h3>
-              <div className="flex items-center">
-                <div className="w-12 h-12 bg-yellow-400 rounded-full flex items-center justify-center mr-3">
-                  <span className="text-white font-semibold">
-                    {event.created_by.name.split(' ').map(n => n[0]).join('')}
-                  </span>
-                </div>
-                <div>
-                  <div className="text-white font-medium">{event.created_by.name}</div>
-                  <div className="text-sm text-yellow-300">{event.created_by.email}</div>
+            
+            {event.contact_info?.phone && event.contact_info.phone !== 'N/A' && (
+              <div className="flex items-center gap-2">
+                <Phone className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
+                <div className="min-w-0">
+                  <span className="text-xs text-yellow-400 uppercase tracking-wide mr-2">Phone:</span>
+                  <span className="text-sm text-white">{event.contact_info.phone}</span>
                 </div>
               </div>
-            </motion.div>
+            )}
           </div>
-        </div>
+        </motion.div>
       </div>
+
+      {/* Join Event Confirmation Modal */}
+      <JoinEventConfirmationModal
+        isOpen={showJoinModal}
+        onClose={() => setShowJoinModal(false)}
+        onConfirm={confirmJoinEvent}
+        event={event}
+        loading={joinLoading}
+      />
+
+      {/* Cancel Event Confirmation Modal */}
+      <CancelEventConfirmationModal
+        isOpen={showCancelModal}
+        onClose={() => setShowCancelModal(false)}
+        onConfirm={confirmCancelEvent}
+        event={event}
+        loading={joinLoading}
+      />
     </div>
   )
 }

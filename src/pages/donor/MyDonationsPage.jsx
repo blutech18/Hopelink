@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Link, useNavigate } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
@@ -30,7 +30,8 @@ import {
   Heart,
   RefreshCw,
   Upload,
-  Building
+  Building,
+  Flag
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -39,6 +40,7 @@ import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import DonorRecipientTrackingModal from '../../components/ui/DonorRecipientTrackingModal'
+import ReportUserModal from '../../components/ui/ReportUserModal'
 
 const MyDonationsPage = () => {
   const { user } = useAuth()
@@ -56,12 +58,6 @@ const MyDonationsPage = () => {
   const [showViewModal, setShowViewModal] = useState(false)
   const [showEditModal, setShowEditModal] = useState(false)
   const [editingId, setEditingId] = useState(null)
-  const [donationRequests, setDonationRequests] = useState({})
-  const [volunteerRequests, setVolunteerRequests] = useState({})
-  const [showRequestsModal, setShowRequestsModal] = useState(false)
-  const [selectedDonationRequests, setSelectedDonationRequests] = useState([])
-  const [selectedVolunteerRequests, setSelectedVolunteerRequests] = useState([])
-  const [processingRequestId, setProcessingRequestId] = useState(null)
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
   const [donationToDelete, setDonationToDelete] = useState(null)
   
@@ -78,6 +74,12 @@ const MyDonationsPage = () => {
   const [directDeliveryNotifications, setDirectDeliveryNotifications] = useState([])
   const [directDeliveryConfirmationNotifications, setDirectDeliveryConfirmationNotifications] = useState([])
   const [confirmingDirectDeliveryId, setConfirmingDirectDeliveryId] = useState(null)
+  
+  // Report user states
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportUser, setReportUser] = useState(null)
+  const [reportTransactionContext, setReportTransactionContext] = useState(null)
+  const [donationClaims, setDonationClaims] = useState({}) // Store claims for completed donations
 
   // Image upload state
   const [uploadedImage, setUploadedImage] = useState(null)
@@ -86,7 +88,8 @@ const MyDonationsPage = () => {
   const statusOptions = [
     { value: 'all', label: 'All Status' },
     { value: 'available', label: 'Available' },
-    { value: 'matched', label: 'Donated' },
+    { value: 'matched', label: 'Matched' },
+    { value: 'donated', label: 'Donated' },
     { value: 'claimed', label: 'Claimed' },
     { value: 'in_transit', label: 'In Transit' },
     { value: 'delivered', label: 'Delivered' },
@@ -137,47 +140,106 @@ const MyDonationsPage = () => {
     formState: { errors, isDirty }
   } = useForm()
 
-  const fetchDonations = useCallback(async () => {
-    if (!user?.id) {
-      setLoading(false)
-      return
-    }
-
+  const fetchDonationClaims = async (donationsList) => {
     try {
-      setLoading(true)
-      const data = await db.getDonations({ donor_id: user.id })
+      // Get all completed donations
+      const completedDonations = donationsList.filter(d => d.status === 'completed')
       
-      // Log donation statuses for debugging
-      console.log('📊 Fetched donations with statuses:', data?.map(d => ({ 
-        id: d.id, 
-        title: d.title, 
-        status: d.status 
-      })))
+      if (completedDonations.length === 0) {
+        setDonationClaims({})
+        return
+      }
+
+      // Fetch claims for completed donations
+      const donationIds = completedDonations.map(d => d.id)
+      if (donationIds.length === 0) {
+        setDonationClaims({})
+        return
+      }
+
+      // First, get all claims
+      const { data: claims, error: claimsError } = await supabase
+        .from('donation_claims')
+        .select('*')
+        .in('donation_id', donationIds)
+        .eq('status', 'completed')
+
+      if (claimsError) throw claimsError
+      if (!claims || claims.length === 0) {
+        setDonationClaims({})
+        return
+      }
+
+      // Get all user IDs (recipients)
+      const recipientIds = claims.map(c => c.recipient_id).filter(Boolean)
       
-      setDonations(data || [])
+      // Get all delivery IDs
+      const claimIds = claims.map(c => c.id)
       
-      // Fetch donation requests for each donation
-      await fetchDonationRequests()
+      // Fetch recipients
+      const { data: recipients } = await supabase
+        .from('users')
+        .select('id, name, email, role')
+        .in('id', recipientIds)
+
+      // Fetch deliveries
+      const { data: deliveries } = await supabase
+        .from('deliveries')
+        .select('id, claim_id, volunteer_id')
+        .in('claim_id', claimIds)
+
+      // Get volunteer IDs
+      const volunteerIds = deliveries?.map(d => d.volunteer_id).filter(Boolean) || []
+      
+      // Fetch volunteers
+      const { data: volunteers } = volunteerIds.length > 0 ? await supabase
+        .from('users')
+        .select('id, name, email, role')
+        .in('id', volunteerIds) : { data: [] }
+
+      // Create maps for quick lookup
+      const recipientsMap = new Map()
+      recipients?.forEach(r => recipientsMap.set(r.id, r))
+
+      const volunteersMap = new Map()
+      volunteers?.forEach(v => volunteersMap.set(v.id, v))
+
+      const deliveriesMap = new Map()
+      deliveries?.forEach(d => {
+        if (!deliveriesMap.has(d.claim_id)) {
+          deliveriesMap.set(d.claim_id, [])
+        }
+        deliveriesMap.get(d.claim_id).push({
+          ...d,
+          volunteer: volunteersMap.get(d.volunteer_id) || null
+        })
+      })
+
+      // Organize claims by donation_id with enriched data
+      const claimsByDonation = {}
+      claims.forEach(claim => {
+        if (!claimsByDonation[claim.donation_id]) {
+          claimsByDonation[claim.donation_id] = []
+        }
+        claimsByDonation[claim.donation_id].push({
+          ...claim,
+          recipient: recipientsMap.get(claim.recipient_id) || null,
+          delivery: deliveriesMap.get(claim.id) || []
+        })
+      })
+
+      setDonationClaims(claimsByDonation)
     } catch (err) {
-      console.error('Error fetching donations:', err)
-      error('Failed to load donations')
-    } finally {
-      setLoading(false)
+      console.error('Error fetching donation claims:', err)
     }
-  }, [user?.id, error])
+  }
 
   const fetchDonationRequests = useCallback(async () => {
     if (!user?.id) return
 
     try {
-      // Get notifications for donation requests and volunteer requests
+      // Get notifications for confirmation requests only
       const notifications = await db.getUserNotifications(user.id, 100)
-      
-      // Filter donation requests (from recipients)
-      const donationRequestNotifications = notifications.filter(n => n.type === 'donation_request' && !n.read_at)
-      
-      // Filter volunteer requests (from volunteers)
-      const volunteerRequestNotifications = notifications.filter(n => n.type === 'volunteer_request' && !n.read_at)
       
       // Filter final confirmation requests (after recipients have confirmed)
       const deliveryConfirmationNotifications = notifications.filter(n => 
@@ -214,34 +276,6 @@ const MyDonationsPage = () => {
         !n.read_at
       )
       
-      // Group donation requests by donation_id
-      const requestsByDonation = {}
-      donationRequestNotifications.forEach(request => {
-        const donationId = request.data?.donation_id
-        if (donationId) {
-          if (!requestsByDonation[donationId]) {
-            requestsByDonation[donationId] = []
-          }
-          requestsByDonation[donationId].push(request)
-        }
-      })
-      
-      // Group volunteer requests by donation_id
-      const volunteerRequestsByDonation = {}
-      volunteerRequestNotifications.forEach(request => {
-        // For volunteer requests on donations
-        const donationId = request.data?.donation_id
-        
-        if (donationId) {
-          if (!volunteerRequestsByDonation[donationId]) {
-            volunteerRequestsByDonation[donationId] = []
-          }
-          volunteerRequestsByDonation[donationId].push(request)
-        }
-      })
-      
-      setDonationRequests(requestsByDonation)
-      setVolunteerRequests(volunteerRequestsByDonation)
       setDeliveryConfirmationNotifications(deliveryConfirmationNotifications)
       setPickupNotifications(pickupNotifications)
       setPickupConfirmationNotifications(pickupConfirmationNotifications)
@@ -252,9 +286,55 @@ const MyDonationsPage = () => {
     }
   }, [user?.id])
 
-  const handleViewDonation = (donation) => {
+  const fetchDonations = useCallback(async () => {
+    if (!user?.id) {
+      setLoading(false)
+      return
+    }
+
+    try {
+      setLoading(true)
+      // Load donations with reduced limit for faster initial load
+      // Load only 30 donations initially for better performance
+      const data = await db.getDonations({ donor_id: user.id, limit: 30 })
+      
+      // Log donation statuses for debugging
+      console.log('📊 Fetched donations with statuses:', data?.map(d => ({ 
+        id: d.id, 
+        title: d.title, 
+        status: d.status 
+      })))
+      
+      const donationsData = data || []
+      setDonations(donationsData)
+      
+      // Fetch donation requests and claims in background (non-blocking) after donations are loaded
+      // This improves perceived performance by showing donations immediately
+      // Fetch donation requests for each donation (don't await to avoid blocking)
+      fetchDonationRequests().catch(err => {
+        console.error('Error fetching donation requests:', err)
+      })
+      
+      // Fetch claims for completed donations (don't await to avoid blocking)
+      fetchDonationClaims(donationsData).catch(err => {
+        console.error('Error fetching donation claims:', err)
+      })
+    } catch (err) {
+      console.error('Error fetching donations:', err)
+      error('Failed to load donations')
+    } finally {
+      setLoading(false)
+    }
+  }, [user?.id, error, fetchDonationRequests])
+
+  const handleViewDonation = async (donation) => {
     setSelectedDonation(donation)
     setShowViewModal(true)
+    
+    // If it's a completed donation and we don't have claims yet, fetch them
+    if (donation.status === 'completed' && !donationClaims[donation.id]) {
+      await fetchDonationClaims([donation])
+    }
   }
 
   const handleImageUpload = (event) => {
@@ -366,176 +446,6 @@ const MyDonationsPage = () => {
     }
   }
 
-  const handleViewRequests = (donation) => {
-    const donationReqs = donationRequests[donation.id] || []
-    const volunteerReqs = volunteerRequests[donation.id] || []
-    setSelectedDonationRequests(donationReqs)
-    setSelectedVolunteerRequests(volunteerReqs)
-    setSelectedDonation(donation)
-    setShowRequestsModal(true)
-  }
-
-  const handleApproveRequest = async (request) => {
-    try {
-      setProcessingRequestId(request.id)
-      
-      // Create a claim record
-      await db.claimDonation(request.data.donation_id, request.data.requester_id)
-      
-      // Create approval notification for requester
-      await db.createNotification({
-        user_id: request.data.requester_id,
-        type: 'donation_approved',
-        title: 'Donation Request Approved',
-        message: `Your request for "${request.title.split(': ')[1]}" has been approved!`,
-        data: {
-          donation_id: request.data.donation_id,
-          donor_id: user.id
-        }
-      })
-
-      // Mark original request as read
-      await db.markNotificationAsRead(request.id)
-
-      success('Request approved successfully!')
-      await fetchDonationRequests()
-      await fetchDonations()
-      
-      // Close the modal after successful approval
-      setShowRequestsModal(false)
-      setSelectedDonationRequests([])
-      setSelectedVolunteerRequests([])
-      setSelectedDonation(null)
-    } catch (err) {
-      console.error('Error approving request:', err)
-      error(err.message || 'Failed to approve request')
-    } finally {
-      setProcessingRequestId(null)
-    }
-  }
-
-  const handleDeclineRequest = async (request) => {
-    try {
-      setProcessingRequestId(request.id)
-      
-      // Create decline notification for requester
-      await db.createNotification({
-        user_id: request.data.requester_id,
-        type: 'donation_declined',
-        title: 'Donation Request Declined',
-        message: `Your request for "${request.title.split(': ')[1]}" was declined.`,
-        data: {
-          donation_id: request.data.donation_id,
-          donor_id: user.id
-        }
-      })
-
-      // Mark original request as read
-      await db.markNotificationAsRead(request.id)
-
-      success('Request declined')
-      await fetchDonationRequests()
-    } catch (err) {
-      console.error('Error declining request:', err)
-      error(err.message || 'Failed to decline request')
-    } finally {
-      setProcessingRequestId(null)
-    }
-  }
-
-  const handleApproveVolunteerRequest = async (request) => {
-    try {
-      setProcessingRequestId(request.id)
-      
-      // Update volunteer request status to approved
-      if (request.data.volunteer_request_id) {
-        await db.updateVolunteerRequestStatus(
-          request.data.volunteer_request_id, 
-          'approved', 
-          user.id
-        )
-      }
-      
-      // Create a delivery assignment for the volunteer
-      if (request.data.claim_id) {
-        // This is for an approved donation - create delivery record
-        await db.assignVolunteerToDelivery(
-          request.data.claim_id,
-          request.data.volunteer_id
-        )
-      }
-      
-      // Create approval notification for volunteer
-      await db.createNotification({
-        user_id: request.data.volunteer_id,
-        type: 'volunteer_approved',
-        title: 'Volunteer Request Approved',
-        message: `Your volunteer request has been approved! You can now manage the delivery.`,
-        data: {
-          claim_id: request.data.claim_id,
-          donor_id: user.id,
-          volunteer_request_id: request.data.volunteer_request_id
-        }
-      })
-
-      // Mark original request as read
-      await db.markNotificationAsRead(request.id)
-
-      success('Volunteer request approved successfully!')
-      await fetchDonationRequests()
-      await fetchDonations()
-      
-      // Close the modal after successful approval
-      setShowRequestsModal(false)
-      setSelectedDonationRequests([])
-      setSelectedVolunteerRequests([])
-      setSelectedDonation(null)
-    } catch (err) {
-      console.error('Error approving volunteer request:', err)
-      error(err.message || 'Failed to approve volunteer request')
-    } finally {
-      setProcessingRequestId(null)
-    }
-  }
-
-  const handleDeclineVolunteerRequest = async (request) => {
-    try {
-      setProcessingRequestId(request.id)
-      
-      // Update volunteer request status to rejected
-      if (request.data.volunteer_request_id) {
-        await db.updateVolunteerRequestStatus(
-          request.data.volunteer_request_id, 
-          'rejected', 
-          user.id
-        )
-      }
-      
-      // Create decline notification for volunteer
-      await db.createNotification({
-        user_id: request.data.volunteer_id,
-        type: 'volunteer_declined',
-        title: 'Volunteer Request Declined',
-        message: `Your volunteer request was declined.`,
-        data: {
-          claim_id: request.data.claim_id,
-          donor_id: user.id,
-          volunteer_request_id: request.data.volunteer_request_id
-        }
-      })
-
-      // Mark original request as read
-      await db.markNotificationAsRead(request.id)
-
-      success('Volunteer request declined')
-      await fetchDonationRequests()
-    } catch (err) {
-      console.error('Error declining volunteer request:', err)
-      error(err.message || 'Failed to decline volunteer request')
-    } finally {
-      setProcessingRequestId(null)
-    }
-  }
 
   const handleFinalConfirmation = async (notification) => {
     try {
@@ -667,16 +577,20 @@ const MyDonationsPage = () => {
     }
   }, [fetchDonations, fetchDonationRequests, user?.id])
 
-  const filteredDonations = donations.filter(donation => {
-    const matchesSearch = donation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         donation.description?.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === 'all' || donation.status === statusFilter
-    const matchesCategory = categoryFilter === 'All Categories' || 
-                           categoryFilter === 'all' || 
-                           donation.category === categoryFilter
-    
-    return matchesSearch && matchesStatus && matchesCategory
-  })
+  // Memoize filtered donations to avoid recalculating on every render
+  const filteredDonations = useMemo(() => {
+    return donations.filter(donation => {
+      const matchesSearch = !searchTerm || 
+        donation.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        donation.description?.toLowerCase().includes(searchTerm.toLowerCase())
+      const matchesStatus = statusFilter === 'all' || donation.status === statusFilter
+      const matchesCategory = categoryFilter === 'All Categories' || 
+                             categoryFilter === 'all' || 
+                             donation.category === categoryFilter
+      
+      return matchesSearch && matchesStatus && matchesCategory
+    })
+  }, [donations, searchTerm, statusFilter, categoryFilter])
 
   const getStatusColor = (status, donation) => {
     // Special handling for direct donations
@@ -695,6 +609,7 @@ const MyDonationsPage = () => {
     const colors = {
       available: 'bg-success-900/70 text-white',
       matched: 'bg-yellow-900/70 text-white',
+      donated: 'bg-blue-900/70 text-white',
       claimed: 'bg-amber-900/70 text-white',
       in_transit: 'bg-purple-900/70 text-white',
       delivered: 'bg-emerald-900/70 text-white',
@@ -709,6 +624,7 @@ const MyDonationsPage = () => {
     const icons = {
       available: CheckCircle,
       matched: Users,
+      donated: Gift,
       claimed: Package,
       in_transit: Activity,
       delivered: CheckCircle,
@@ -742,7 +658,6 @@ const MyDonationsPage = () => {
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center">
-              <Package className="h-6 w-6 sm:h-7 sm:w-7 lg:h-8 lg:w-8 text-yellow-500 mr-2 sm:mr-3" />
               <div>
                 <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">My Donations</h1>
                 <p className="text-xs sm:text-sm text-yellow-200">Manage and track your donations</p>
@@ -1247,7 +1162,8 @@ const MyDonationsPage = () => {
                                     donation.status === 'delivered' ? '#10b981' : 
                                     donation.status === 'in_transit' ? '#fb923c' : 
                                     donation.status === 'claimed' ? '#a78bfa' : 
-                                    donation.status === 'matched' ? '#fbbf24' : '#60a5fa'
+                                    donation.status === 'matched' ? '#fbbf24' : 
+                                    donation.status === 'donated' ? '#3b82f6' : '#60a5fa'
                   }}
                 >
                   <div className="p-4 sm:p-6">
@@ -1268,33 +1184,6 @@ const MyDonationsPage = () => {
                                   ? 'SENT'
                                   : donation.status.replace('_', ' ').toUpperCase()}
                               </span>
-                            </div>
-                            {/* Notification Badges - Mobile Only */}
-                            <div className="absolute top-2 left-2 flex gap-1.5 sm:hidden">
-                              {donationRequests[donation.id] && donationRequests[donation.id].length > 0 && (
-                                <button
-                                  onClick={() => handleViewRequests(donation)}
-                                  className="relative p-1.5 bg-amber-500/90 backdrop-blur-sm hover:bg-amber-600 rounded-lg transition-all active:scale-95"
-                                  title={`${donationRequests[donation.id].length} pending donation request(s)`}
-                                >
-                                  <Bell className="h-3.5 w-3.5 text-white" />
-                                  <span className="absolute -top-1 -right-1 bg-danger-600 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-semibold">
-                                    {donationRequests[donation.id].length}
-                                  </span>
-                                </button>
-                              )}
-                              {volunteerRequests[donation.id] && volunteerRequests[donation.id].length > 0 && (
-                                <button
-                                  onClick={() => handleViewRequests(donation)}
-                                  className="relative p-1.5 bg-purple-500/90 backdrop-blur-sm hover:bg-purple-600 rounded-lg transition-all active:scale-95"
-                                  title={`${volunteerRequests[donation.id].length} pending volunteer request(s)`}
-                                >
-                                  <Truck className="h-3.5 w-3.5 text-white" />
-                                  <span className="absolute -top-1 -right-1 bg-purple-700 text-white text-[10px] rounded-full h-4 w-4 flex items-center justify-center font-semibold">
-                                    {volunteerRequests[donation.id].length}
-                                  </span>
-                                </button>
-                              )}
                             </div>
                           </div>
                         ) : (
@@ -1346,36 +1235,6 @@ const MyDonationsPage = () => {
                           
                           {/* Action Buttons */}
                           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                            {/* Request Indicators - Desktop Only */}
-                            <div className="hidden sm:flex items-center gap-1.5">
-                              {donationRequests[donation.id] && donationRequests[donation.id].length > 0 && (
-                                <button
-                                  onClick={() => handleViewRequests(donation)}
-                                  className="relative p-1.5 sm:p-2 text-amber-400 hover:text-amber-300 hover:bg-navy-700 rounded-lg transition-all"
-                                  title={`${donationRequests[donation.id].length} pending donation request(s)`}
-                                >
-                                  <Bell className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                                  <span className="absolute -top-1 -right-1 bg-danger-600 text-white text-[10px] sm:text-xs rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center">
-                                    {donationRequests[donation.id].length}
-                                  </span>
-                                </button>
-                              )}
-                              
-                              {/* Volunteer Request Indicator */}
-                              {volunteerRequests[donation.id] && volunteerRequests[donation.id].length > 0 && (
-                                <button
-                                  onClick={() => handleViewRequests(donation)}
-                                  className="relative p-1.5 sm:p-2 text-purple-400 hover:text-purple-300 hover:bg-navy-700 rounded-lg transition-all"
-                                  title={`${volunteerRequests[donation.id].length} pending volunteer request(s)`}
-                                >
-                                  <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-                                  <span className="absolute -top-1 -right-1 bg-purple-600 text-white text-[10px] sm:text-xs rounded-full h-4 w-4 sm:h-5 sm:w-5 flex items-center justify-center">
-                                    {volunteerRequests[donation.id].length}
-                                  </span>
-                                </button>
-                              )}
-                            </div>
-                            
                             <button 
                               onClick={() => handleViewDonation(donation)}
                               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-navy-950 bg-yellow-400 hover:bg-yellow-500 rounded-lg transition-all active:scale-95"
@@ -1624,6 +1483,85 @@ const MyDonationsPage = () => {
                           >
                             #{tag}
                           </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Completed Transaction Info with Report Options */}
+                  {selectedDonation.status === 'completed' && donationClaims[selectedDonation.id] && donationClaims[selectedDonation.id].length > 0 && (
+                    <div className="bg-green-500/10 border border-green-500/30 rounded-lg p-4">
+                      <h4 className="text-sm font-semibold text-green-400 mb-3 flex items-center gap-2">
+                        <Award className="h-4 w-4" />
+                        Completed Transaction
+                      </h4>
+                      <div className="space-y-3">
+                        {donationClaims[selectedDonation.id].map((claim, idx) => (
+                          <div key={claim.id || idx} className="bg-navy-800/50 rounded-lg p-3 space-y-2">
+                            {/* Recipient Info */}
+                            {claim.recipient && claim.recipient.id !== user?.id && (
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <User className="h-4 w-4 text-blue-400" />
+                                  <div>
+                                    <p className="text-white text-sm font-medium">Recipient: {claim.recipient.name}</p>
+                                    <p className="text-gray-400 text-xs">{claim.recipient.email}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setReportUser({
+                                      id: claim.recipient.id,
+                                      name: claim.recipient.name,
+                                      role: claim.recipient.role || 'recipient'
+                                    })
+                                    setReportTransactionContext({
+                                      type: 'donation',
+                                      id: selectedDonation.id,
+                                      title: selectedDonation.title
+                                    })
+                                    setShowReportModal(true)
+                                  }}
+                                  className="px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 rounded-lg transition-all flex items-center gap-1.5"
+                                >
+                                  <Flag className="h-3 w-3" />
+                                  Report
+                                </button>
+                              </div>
+                            )}
+                            
+                            {/* Volunteer Info */}
+                            {claim.delivery?.[0]?.volunteer && claim.delivery[0].volunteer.id !== user?.id && (
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                  <Truck className="h-4 w-4 text-purple-400" />
+                                  <div>
+                                    <p className="text-white text-sm font-medium">Volunteer: {claim.delivery[0].volunteer.name}</p>
+                                    <p className="text-gray-400 text-xs">{claim.delivery[0].volunteer.email}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    setReportUser({
+                                      id: claim.delivery[0].volunteer.id,
+                                      name: claim.delivery[0].volunteer.name,
+                                      role: claim.delivery[0].volunteer.role || 'volunteer'
+                                    })
+                                    setReportTransactionContext({
+                                      type: 'delivery',
+                                      id: claim.delivery[0].id,
+                                      title: selectedDonation.title
+                                    })
+                                    setShowReportModal(true)
+                                  }}
+                                  className="px-3 py-1.5 text-xs bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 rounded-lg transition-all flex items-center gap-1.5"
+                                >
+                                  <Flag className="h-3 w-3" />
+                                  Report
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         ))}
                       </div>
                     </div>
@@ -1949,196 +1887,6 @@ const MyDonationsPage = () => {
           </div>
         )}
 
-        {/* Request Management Modal */}
-        {showRequestsModal && selectedDonation && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ duration: 0.2 }}
-              className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-hidden"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-6 border-b border-navy-700 pb-4">
-                <div className="flex items-center">
-                  <Users className="h-6 w-6 text-yellow-500 mr-3" />
-                  <div>
-                    <h3 className="text-xl font-semibold text-white">Requests Management</h3>
-                    <p className="text-sm text-yellow-300">For: {selectedDonation.title}</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowRequestsModal(false)}
-                  className="text-yellow-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Requests List */}
-              <div className="space-y-6 max-h-96 overflow-y-auto custom-scrollbar">
-                
-                {/* Donation Requests Section */}
-                {selectedDonationRequests.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <Bell className="h-5 w-5 text-amber-400" />
-                      <h4 className="text-lg font-semibold text-white">Donation Requests</h4>
-                      <span className="px-2 py-1 bg-amber-900/20 text-amber-400 text-xs rounded-full">
-                        {selectedDonationRequests.length}
-                      </span>
-                    </div>
-                    <div className="space-y-3">
-                      {selectedDonationRequests.map((request) => (
-                        <div key={request.id} className="bg-amber-900/10 border border-amber-500/20 rounded-lg p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <User className="h-4 w-4 text-amber-400" />
-                                <span className="font-medium text-white">{request.data?.requester_name}</span>
-                              </div>
-                              
-                              <div className="flex items-center gap-2 mb-2">
-                                <Phone className="h-4 w-4 text-amber-400" />
-                                <span className="text-amber-300">{request.data?.requester_phone}</span>
-                              </div>
-
-                              <div className="flex items-center gap-2 mb-3">
-                                <Calendar className="h-4 w-4 text-amber-400" />
-                                <span className="text-amber-300 text-sm">
-                                  Requested on {new Date(request.created_at).toLocaleDateString()}
-                                </span>
-                              </div>
-
-                              {request.data?.delivery_mode === 'volunteer' && (
-                                <div className="inline-flex items-center bg-green-900/20 border border-green-500/20 rounded-lg px-3 py-2 mb-3">
-                                  <AlertCircle className="h-4 w-4 mr-2 text-green-400 flex-shrink-0" />
-                                  <span className="text-green-400 text-sm whitespace-nowrap">Volunteer delivery requested</span>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex flex-col gap-2 ml-4">
-                              <button
-                                onClick={() => handleApproveRequest(request)}
-                                disabled={processingRequestId === request.id}
-                                className="px-3 py-1 bg-amber-600 hover:bg-amber-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
-                              >
-                                {processingRequestId === request.id ? (
-                                  <LoadingSpinner size="sm" />
-                                ) : (
-                                  <>
-                                    <CheckCircle className="h-4 w-4" />
-                                    Approve
-                                  </>
-                                )}
-                              </button>
-                              
-                              <button
-                                onClick={() => handleDeclineRequest(request)}
-                                disabled={processingRequestId === request.id}
-                                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
-                              >
-                                <XCircle className="h-4 w-4" />
-                                Decline
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Volunteer Requests Section */}
-                {selectedVolunteerRequests.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-4">
-                      <Truck className="h-5 w-5 text-purple-400" />
-                      <h4 className="text-lg font-semibold text-white">Volunteer Requests</h4>
-                      <span className="px-2 py-1 bg-purple-900/20 text-purple-400 text-xs rounded-full">
-                        {selectedVolunteerRequests.length}
-                      </span>
-                    </div>
-                    <div className="space-y-3">
-                      {selectedVolunteerRequests.map((request) => (
-                        <div key={request.id} className="bg-purple-900/10 border border-purple-500/20 rounded-lg p-4">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1">
-                              <div className="flex items-center gap-2 mb-2">
-                                <User className="h-4 w-4 text-purple-400" />
-                                <span className="font-medium text-white">{request.data?.volunteer_name}</span>
-                              </div>
-                              
-                              <div className="flex items-center gap-2 mb-3">
-                                <Calendar className="h-4 w-4 text-purple-400" />
-                                <span className="text-purple-300 text-sm">
-                                  Volunteered on {new Date(request.created_at).toLocaleDateString()}
-                                </span>
-                              </div>
-
-                              <div className="bg-purple-900/20 border border-purple-500/20 rounded-lg p-2 mb-3">
-                                <div className="flex items-center text-purple-400 text-sm">
-                                  <Truck className="h-4 w-4 mr-2" />
-                                  <span>Volunteer delivery service</span>
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col gap-2 ml-4">
-                              <button
-                                onClick={() => handleApproveVolunteerRequest(request)}
-                                disabled={processingRequestId === request.id}
-                                className="px-3 py-1 bg-purple-600 hover:bg-purple-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
-                              >
-                                {processingRequestId === request.id ? (
-                                  <LoadingSpinner size="sm" />
-                                ) : (
-                                  <>
-                                    <CheckCircle className="h-4 w-4" />
-                                    Approve
-                                  </>
-                                )}
-                              </button>
-                              
-                              <button
-                                onClick={() => handleDeclineVolunteerRequest(request)}
-                                disabled={processingRequestId === request.id}
-                                className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
-                              >
-                                <XCircle className="h-4 w-4" />
-                                Decline
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* No Requests Message */}
-                {selectedDonationRequests.length === 0 && selectedVolunteerRequests.length === 0 && (
-                  <div className="text-center py-8">
-                    <Users className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
-                    <p className="text-yellow-300">No pending requests for this donation.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="mt-6 pt-4 border-t border-navy-700 flex justify-end">
-                <button
-                  onClick={() => setShowRequestsModal(false)}
-                  className="btn btn-secondary"
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
       </div>
 
       {/* Confirmation Modal */}
@@ -2157,6 +1905,22 @@ const MyDonationsPage = () => {
         confirmButtonVariant="danger"
         loading={deletingId === donationToDelete}
       />
+
+      {/* Report User Modal */}
+      {reportUser && (
+        <ReportUserModal
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false)
+            setReportUser(null)
+            setReportTransactionContext(null)
+          }}
+          reportedUserId={reportUser.id}
+          reportedUserName={reportUser.name}
+          reportedUserRole={reportUser.role}
+          transactionContext={reportTransactionContext}
+        />
+      )}
     </div>
   )
 }

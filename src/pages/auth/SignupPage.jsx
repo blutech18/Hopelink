@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
@@ -34,6 +34,7 @@ const SignupPage = () => {
   const [showRoleModal, setShowRoleModal] = useState(false)
   const [isCheckingEmail, setIsCheckingEmail] = useState(false)
   const [emailTaken, setEmailTaken] = useState(false)
+  const [enabledRoles, setEnabledRoles] = useState(['donor', 'recipient', 'volunteer']) // Default to all enabled
   const { signUp, signUpWithGoogle, isSigningIn } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
@@ -210,7 +211,7 @@ const SignupPage = () => {
     }
   ]
 
-  const roles = [
+  const allRoles = [
     {
       value: 'donor',
       label: 'Donor',
@@ -234,12 +235,38 @@ const SignupPage = () => {
     }
   ]
 
+  // Filter roles based on enabled signup settings
+  const roles = allRoles.filter(role => enabledRoles.includes(role.value))
+  
+  // Load enabled roles on component mount
+  useEffect(() => {
+    const loadRoleSettings = async () => {
+      try {
+        const settings = await db.getSettings()
+        const enabled = []
+        if (settings.donor_signup_enabled !== false) enabled.push('donor')
+        if (settings.recipient_signup_enabled !== false) enabled.push('recipient')
+        if (settings.volunteer_signup_enabled !== false) enabled.push('volunteer')
+        setEnabledRoles(enabled)
+        
+        // If no roles are enabled, show error
+        if (enabled.length === 0) {
+          error('Signup is currently disabled for all roles. Please contact the administrator.')
+        }
+      } catch (err) {
+        console.error('Error loading role settings:', err)
+        // Default to all enabled if check fails
+      }
+    }
+    loadRoleSettings()
+  }, [error])
+
   return (
     <div className="min-h-screen" style={{backgroundColor: '#00237d'}}>
       <div className="max-w-7xl mx-auto px-4 py-4">
         <div className="flex h-[calc(100vh-6rem)] rounded-3xl overflow-hidden shadow-2xl">
         {/* Left Column - Signup Form (yellow background column) */}
-        <div className="w-full lg:w-1/2 flex flex-col justify-center py-2 px-4 sm:px-6" style={{backgroundColor: '#fbbf24'}}>
+        <div className="w-full lg:w-1/2 flex flex-col justify-center py-2 px-4 sm:px-6" style={{backgroundColor: '#cdd74a'}}>
         <motion.div
             initial={{ opacity: 0, x: 50 }}
             animate={{ opacity: 1, x: 0 }}
@@ -483,6 +510,12 @@ const SignupPage = () => {
                         <label className="block text-sm font-medium text-white mb-3">
                           Choose Your Role
                         </label>
+                        {roles.length === 0 ? (
+                          <div className="p-4 rounded-lg bg-red-900/20 border border-red-700/30">
+                            <p className="text-red-300 text-sm font-medium mb-1">Signup Disabled</p>
+                            <p className="text-red-400 text-xs">Signup is currently disabled for all roles. Please contact the administrator for assistance.</p>
+                          </div>
+                        ) : (
                         <div className="space-y-2">
                           {roles.map((role) => {
                             const IconComponent = role.icon
@@ -497,17 +530,22 @@ const SignupPage = () => {
                                 <div className={`
                                   flex items-center p-3 rounded-lg border-2 transition-all
                                   ${selectedRole === role.value 
-                                    ? 'border-yellow-500 bg-yellow-900/20 shadow-lg' 
+                                    ? 'shadow-lg' 
                                     : 'border-gray-600 bg-gray-800 hover:border-gray-500'
                                   }
-                                `}>
-                                  <IconComponent className="h-5 w-5 text-yellow-400 mr-2.5 flex-shrink-0" />
+                                `}
+                                style={selectedRole === role.value ? {
+                                  borderColor: '#cdd74a',
+                                  backgroundColor: 'rgba(205, 215, 74, 0.2)'
+                                } : {}}
+                                >
+                                  <IconComponent className="h-5 w-5 mr-2.5 flex-shrink-0" style={{color: '#cdd74a'}} />
                                   <div className="flex-1 min-w-0">
                                     <h3 className="text-sm font-medium text-white">{role.label}</h3>
                                     <p className="text-xs text-gray-300">{role.description}</p>
                                   </div>
                                   {selectedRole === role.value && (
-                                    <div className="w-4 h-4 bg-yellow-500 rounded-full flex items-center justify-center flex-shrink-0">
+                                    <div className="w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0" style={{backgroundColor: '#cdd74a'}}>
                                       <div className="w-2 h-2 bg-white rounded-full"></div>
                                     </div>
                                   )}
@@ -516,6 +554,7 @@ const SignupPage = () => {
                             )
                           })}
                         </div>
+                        )}
                         {errors.role && (
                           <p className="mt-2 text-sm text-danger-600">{errors.role.message}</p>
                         )}
@@ -528,7 +567,8 @@ const SignupPage = () => {
                             checked={agreeToLegal}
                             onChange={() => {}}
                             onClick={handleCheckboxClick}
-                            className="mt-0.5 h-4 w-4 text-yellow-600 focus:ring-yellow-500 border-gray-300 rounded pointer-events-none flex-shrink-0"
+                            className="mt-0.5 h-4 w-4 border-gray-300 rounded pointer-events-none flex-shrink-0"
+                            style={{accentColor: '#cdd74a'}}
                           />
                           <span className="ml-2.5 text-xs text-gray-300">
                             I agree to the{' '}
@@ -538,7 +578,10 @@ const SignupPage = () => {
                                 e.stopPropagation()
                                 setShowLegalModal(true)
                               }}
-                              className="text-yellow-400 hover:text-yellow-300 underline"
+                              className="underline transition-colors"
+                              style={{color: '#cdd74a'}}
+                              onMouseEnter={(e) => e.currentTarget.style.color = '#b8c242'}
+                              onMouseLeave={(e) => e.currentTarget.style.color = '#cdd74a'}
                             >
                               Terms of Service and Privacy Policy
                             </button>
@@ -567,7 +610,10 @@ const SignupPage = () => {
                       type="button"
                       onClick={nextStep}
                       disabled={currentStep === 1 && (emailTaken || isCheckingEmail)}
-                      className="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-navy-900 bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"
+                      className="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-navy-900 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"
+                      style={{backgroundColor: '#cdd74a'}}
+                      onMouseEnter={(e) => !e.currentTarget.disabled && (e.currentTarget.style.backgroundColor = '#b8c242')}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#cdd74a'}
                     >
                       Next
                       <ArrowRight className="h-4 w-4 ml-1.5" />
@@ -576,7 +622,10 @@ const SignupPage = () => {
                     <button
                       type="submit"
                       disabled={isLoading || isSigningIn || !agreeToLegal}
-                      className="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-navy-900 bg-yellow-500 rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"
+                      className="flex-1 flex items-center justify-center px-4 py-2.5 text-sm font-semibold text-navy-900 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg active:scale-95"
+                      style={{backgroundColor: '#cdd74a'}}
+                      onMouseEnter={(e) => !e.currentTarget.disabled && (e.currentTarget.style.backgroundColor = '#b8c242')}
+                      onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#cdd74a'}
                     >
                       {isLoading || isSigningIn ? (
                         <LoadingSpinner size="sm" />
@@ -599,7 +648,7 @@ const SignupPage = () => {
                       <div className="w-full border-t border-gray-300" />
                     </div>
                     <div className="relative flex justify-center text-sm">
-                      <span className="px-2 text-yellow-200" style={{backgroundColor: '#001a5c'}}>Or sign up with</span>
+                      <span className="px-2" style={{backgroundColor: '#001a5c', color: '#e8ebc4'}}>Or sign up with</span>
                     </div>
                   </div>
 
@@ -631,7 +680,10 @@ const SignupPage = () => {
               <div className="mt-4 text-center">
               <Link
                 to="/login"
-                  className="text-sm text-yellow-400 hover:text-yellow-300"
+                  className="text-sm transition-colors"
+                  style={{color: '#cdd74a'}}
+                  onMouseEnter={(e) => e.currentTarget.style.color = '#b8c242'}
+                  onMouseLeave={(e) => e.currentTarget.style.color = '#cdd74a'}
               >
                 Already have an account? Sign in
               </Link>
@@ -650,7 +702,7 @@ const SignupPage = () => {
           >
             <img src="/hopelinklogo.png" alt="HopeLink" className="h-20 rounded mx-auto mb-8" />
             <h1 className="text-4xl font-bold text-white mb-6">Join HopeLink</h1>
-            <p className="text-xl text-yellow-200 mb-8 max-w-md mx-auto">
+            <p className="text-xl mb-8 max-w-md mx-auto" style={{color: '#e8ebc4'}}>
               Become part of a community that connects hearts and makes a real difference
             </p>
             
@@ -677,6 +729,7 @@ const SignupPage = () => {
           isOpen={showRoleModal}
           onClose={() => setShowRoleModal(false)}
           onSelectRole={handleRoleSelected}
+          enabledRoles={enabledRoles}
         />
     </div>
   )

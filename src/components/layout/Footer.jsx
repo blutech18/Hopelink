@@ -56,7 +56,8 @@ const Footer = ({ userRole = null }) => {
       ],
       secondaryLinks: [
         { name: 'Volunteer Management', href: '/admin/volunteers' },
-        { name: 'Platform Settings', href: '/admin/settings' },
+        { name: 'Matching Parameters', href: '/admin/matching-parameters' },
+        { name: 'Platform Settings', href: '/profile#admin-settings' },
         { name: 'Analytics & Reports', href: '/admin/analytics' },
       ]
     }

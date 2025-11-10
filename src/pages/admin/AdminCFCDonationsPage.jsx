@@ -17,12 +17,19 @@ import {
   Phone,
   Mail,
   RefreshCw,
-  X
+  X,
+  Download,
+  Printer,
+  ChevronDown,
+  Loader2,
+  Users
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/supabase'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 const AdminCFCDonationsPage = () => {
   const { user } = useAuth()
@@ -33,8 +40,10 @@ const AdminCFCDonationsPage = () => {
   const [selectedDonation, setSelectedDonation] = useState(null)
   const [showModal, setShowModal] = useState(false)
   const [updatingStatus, setUpdatingStatus] = useState(false)
+  const [updatingDonationId, setUpdatingDonationId] = useState(null)
   const [selectedImage, setSelectedImage] = useState(null)
   const [showImageModal, setShowImageModal] = useState(false)
+  const [statusDropdownOpen, setStatusDropdownOpen] = useState(null)
 
   useEffect(() => {
     loadCFCDonations()
@@ -102,10 +111,12 @@ const AdminCFCDonationsPage = () => {
   const handleViewDonation = (donation) => {
     setSelectedDonation(donation)
     setShowModal(true)
+    setStatusDropdownOpen(null) // Close any open dropdowns
   }
 
   const handleStatusUpdate = async (donationId, newStatus) => {
     try {
+      setUpdatingDonationId(donationId)
       setUpdatingStatus(true)
       await db.updateDonation(donationId, { status: newStatus })
       await loadCFCDonations()
@@ -114,12 +125,306 @@ const AdminCFCDonationsPage = () => {
       if (selectedDonation && selectedDonation.id === donationId) {
         setSelectedDonation({ ...selectedDonation, status: newStatus })
       }
+      
+      // Close dropdown
+      setStatusDropdownOpen(null)
     } catch (error) {
       console.error('Error updating donation status:', error)
       alert('Failed to update status. Please try again.')
     } finally {
       setUpdatingStatus(false)
+      setUpdatingDonationId(null)
     }
+  }
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (statusDropdownOpen && !event.target.closest('.status-dropdown-container')) {
+        setStatusDropdownOpen(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [statusDropdownOpen])
+
+  const getStatusConfig = (status) => {
+    switch (status) {
+      case 'available':
+        return {
+          icon: CheckCircle,
+          label: 'Available',
+          color: 'text-green-400',
+          bgColor: 'bg-green-500/20',
+          borderColor: 'border-green-500/30',
+          hoverColor: 'hover:bg-green-500/30'
+        }
+      case 'claimed':
+        return {
+          icon: CheckCircle,
+          label: 'Claimed',
+          color: 'text-blue-400',
+          bgColor: 'bg-blue-500/20',
+          borderColor: 'border-blue-500/30',
+          hoverColor: 'hover:bg-blue-500/30'
+        }
+      case 'delivered':
+        return {
+          icon: Truck,
+          label: 'Delivered',
+          color: 'text-blue-400',
+          bgColor: 'bg-blue-500/20',
+          borderColor: 'border-blue-500/30',
+          hoverColor: 'hover:bg-blue-500/30'
+        }
+      case 'expired':
+        return {
+          icon: XCircle,
+          label: 'Expired',
+          color: 'text-red-400',
+          bgColor: 'bg-red-500/20',
+          borderColor: 'border-red-500/30',
+          hoverColor: 'hover:bg-red-500/30'
+        }
+      default:
+        return {
+          icon: Clock,
+          label: status,
+          color: 'text-gray-400',
+          bgColor: 'bg-gray-500/20',
+          borderColor: 'border-gray-500/30',
+          hoverColor: 'hover:bg-gray-500/30'
+        }
+    }
+  }
+
+  // PDF and Print functions
+  const generatePDF = async () => {
+    if (!filteredDonations || filteredDonations.length === 0) {
+      alert('No donations available to export')
+      return
+    }
+
+    try {
+      const doc = new jsPDF('landscape', 'mm', 'a4')
+      const pageWidth = doc.internal.pageSize.getWidth()
+      const pageHeight = doc.internal.pageSize.getHeight()
+      const margin = 15
+      
+      const primaryColor = [0, 26, 92]
+      const secondaryColor = [0, 35, 125]
+      
+      const addHeader = (pageNum, totalPages) => {
+        doc.setFillColor(...primaryColor)
+        doc.rect(0, 0, pageWidth, 40, 'F')
+        
+        doc.setFillColor(...secondaryColor)
+        doc.rect(0, 38, pageWidth, 2, 'F')
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(18)
+        doc.setFont('helvetica', 'bold')
+        doc.text('HopeLink', margin + 5, 20)
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'normal')
+        doc.setTextColor(205, 215, 74)
+        doc.text('CFC-GK Community Platform', margin + 5, 28)
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(14)
+        doc.setFont('helvetica', 'bold')
+        const title = 'Direct Donations Report'
+        doc.text(title, pageWidth - margin - doc.getTextWidth(title), 20)
+        
+        doc.setFontSize(9)
+        doc.setFont('helvetica', 'italic')
+        doc.setTextColor(200, 200, 200)
+        doc.text('CFC-GK Direct Donations', pageWidth - margin - doc.getTextWidth('CFC-GK Direct Donations'), 28)
+        
+        doc.setTextColor(0, 0, 0)
+      }
+      
+      const addFooter = (pageNum, totalPages) => {
+        const footerY = pageHeight - 15
+        
+        doc.setFillColor(245, 245, 245)
+        doc.rect(0, footerY - 8, pageWidth, 15, 'F')
+        
+        doc.setDrawColor(200, 200, 200)
+        doc.setLineWidth(0.5)
+        doc.line(margin, footerY - 8, pageWidth - margin, footerY - 8)
+        
+        doc.setFontSize(8)
+        doc.setTextColor(100, 100, 100)
+        doc.setFont('helvetica', 'normal')
+        const genDate = new Date().toLocaleDateString('en-US', { 
+          year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+        })
+        doc.text(`Generated: ${genDate}`, margin, footerY)
+        
+        doc.setFont('helvetica', 'bold')
+        doc.setTextColor(0, 26, 92)
+        const pageText = `Page ${pageNum} of ${totalPages}`
+        doc.text(pageText, pageWidth - margin - doc.getTextWidth(pageText), footerY)
+        
+        doc.setFontSize(7)
+        doc.setTextColor(120, 120, 120)
+        doc.setFont('helvetica', 'italic')
+        const confidentialText = 'HopeLink - Confidential Report'
+        doc.text(confidentialText, pageWidth / 2 - doc.getTextWidth(confidentialText) / 2, footerY + 5)
+      }
+      
+      const tableData = filteredDonations.map(donation => [
+        donation.title || '',
+        donation.donor?.name || 'Unknown',
+        getDeliveryModeLabel(donation.delivery_mode),
+        donation.status || 'N/A',
+        donation.pickup_location || donation.city || 'N/A',
+        new Date(donation.created_at).toLocaleDateString()
+      ])
+      
+      const columns = ['Title', 'Donor', 'Delivery Mode', 'Status', 'Location', 'Posted Date']
+      
+      let currentY = 50
+      doc.setFontSize(10)
+      doc.setTextColor(60, 60, 60)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Total Direct Donations: ${filteredDonations.length}`, margin, currentY)
+      doc.text(`Available: ${filteredDonations.filter(d => d.status === 'available').length} | Delivered: ${filteredDonations.filter(d => d.status === 'delivered').length} | Claimed: ${filteredDonations.filter(d => d.status === 'claimed').length}`, margin + 70, currentY)
+      
+      currentY += 8
+      
+      autoTable(doc, {
+        startY: currentY,
+        head: [columns],
+        body: tableData,
+        theme: 'striped',
+        headStyles: {
+          fillColor: primaryColor,
+          textColor: 255,
+          fontStyle: 'bold',
+          fontSize: 9
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: [40, 40, 40]
+        },
+        alternateRowStyles: {
+          fillColor: [248, 249, 250]
+        },
+        styles: {
+          cellPadding: { top: 4, right: 3, bottom: 4, left: 3 },
+          lineWidth: 0.1,
+          lineColor: [220, 220, 220],
+          overflow: 'linebreak',
+          cellWidth: 'wrap'
+        },
+        margin: { top: currentY, left: margin, right: margin, bottom: 20 },
+        didDrawPage: (data) => {
+          const pageNumber = data.pageNumber
+          addHeader(pageNumber, pageNumber)
+        }
+      })
+      
+      const totalPages = doc.internal.pages.length - 1
+      for (let i = 1; i <= totalPages; i++) {
+        doc.setPage(i)
+        addHeader(i, totalPages)
+        addFooter(i, totalPages)
+      }
+      
+      doc.save(`cfc_donations_report_${new Date().toISOString().split('T')[0]}.pdf`)
+    } catch (error) {
+      console.error('Error generating PDF:', error)
+      alert('Error generating PDF. Please try again.')
+    }
+  }
+
+  const handlePrint = () => {
+    if (!filteredDonations || filteredDonations.length === 0) {
+      alert('No donations available to print')
+      return
+    }
+
+    const printWindow = window.open('', '_blank')
+    
+    const tableRows = filteredDonations.map(donation => {
+      return `
+        <tr>
+          <td>${donation.title || ''}</td>
+          <td>${donation.donor?.name || 'Unknown'}</td>
+          <td>${getDeliveryModeLabel(donation.delivery_mode)}</td>
+          <td>${donation.status || 'N/A'}</td>
+          <td>${donation.pickup_location || donation.city || 'N/A'}</td>
+          <td>${new Date(donation.created_at).toLocaleDateString()}</td>
+        </tr>
+      `
+    }).join('')
+    
+    const genDate = new Date().toLocaleDateString('en-US', { 
+      year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+    })
+    
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Direct Donations Report - HopeLink</title>
+          <meta charset="UTF-8">
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: 'Arial', 'Helvetica', sans-serif; padding: 0; color: #333; background: white; }
+            .header { background: linear-gradient(135deg, #001a5c 0%, #00237d 100%); color: white; padding: 20px 30px; display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #cdd74a; }
+            .header-left { display: flex; align-items: center; gap: 15px; }
+            .logo-container { width: 50px; height: 50px; background: white; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+            .logo-container img { max-width: 45px; max-height: 45px; }
+            .brand-info h1 { font-size: 24px; font-weight: bold; margin-bottom: 5px; }
+            .brand-info p { font-size: 12px; color: #cdd74a; }
+            .header-right { text-align: right; }
+            .header-right h2 { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+            .header-right p { font-size: 11px; color: #e0e0e0; font-style: italic; }
+            .content { padding: 30px; }
+            .summary { background: #f8f9fa; padding: 15px 20px; border-left: 4px solid #001a5c; margin-bottom: 25px; border-radius: 4px; }
+            .summary p { font-size: 14px; color: #555; }
+            table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 11px; }
+            thead { background: #001a5c; color: white; }
+            th { padding: 10px 8px; text-align: left; font-weight: bold; font-size: 11px; }
+            td { padding: 8px; border-bottom: 1px solid #e0e0e0; font-size: 10px; }
+            tr:nth-child(even) { background-color: #f8f9fa; }
+            .footer { background: #f5f5f5; padding: 15px 30px; border-top: 2px solid #ddd; margin-top: 30px; display: flex; justify-content: space-between; align-items: center; font-size: 11px; color: #666; }
+            .footer-center { text-align: center; font-style: italic; color: #888; }
+            .footer-right { font-weight: bold; color: #001a5c; }
+            @media print { body { padding: 0; } .header { page-break-after: avoid; } .footer { page-break-before: avoid; } table { page-break-inside: auto; } tr { page-break-inside: avoid; page-break-after: auto; } thead { display: table-header-group; } @page { margin: 1.5cm; size: A4 landscape; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <div class="header-left">
+              <div class="logo-container"><img src="/hopelinklogo.png" alt="HopeLink Logo" onerror="this.style.display='none'"></div>
+              <div class="brand-info"><h1>HopeLink</h1><p>CFC-GK Community Platform</p></div>
+            </div>
+            <div class="header-right"><h2>Direct Donations Report</h2><p>CFC-GK Direct Donations</p></div>
+          </div>
+          <div class="content">
+            <div class="summary">
+              <p><strong>Total Direct Donations:</strong> ${filteredDonations.length} | <strong>Available:</strong> ${filteredDonations.filter(d => d.status === 'available').length} | <strong>Delivered:</strong> ${filteredDonations.filter(d => d.status === 'delivered').length} | <strong>Claimed:</strong> ${filteredDonations.filter(d => d.status === 'claimed').length} | <strong>Generated:</strong> ${genDate}</p>
+            </div>
+            <table>
+              <thead><tr><th>Title</th><th>Donor</th><th>Delivery Mode</th><th>Status</th><th>Location</th><th>Posted Date</th></tr></thead>
+              <tbody>${tableRows}</tbody>
+            </table>
+          </div>
+          <div class="footer">
+            <div>© ${new Date().getFullYear()} HopeLink CFC-GK. All rights reserved.</div>
+            <div class="footer-center">HopeLink - Confidential Report</div>
+            <div class="footer-right">Generated: ${genDate}</div>
+          </div>
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    setTimeout(() => { printWindow.print() }, 500)
   }
 
   if (loading) {
@@ -135,14 +440,51 @@ const AdminCFCDonationsPage = () => {
           animate={{ opacity: 1, y: 0 }}
           className="mb-6 sm:mb-8"
         >
-          <div className="flex items-center gap-3 sm:gap-4 mb-6">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg flex-shrink-0">
-              <Building className="w-6 h-6 sm:w-7 sm:h-7 text-white" />
-            </div>
+          <div className="flex items-center justify-between gap-3 sm:gap-4 mb-6">
             <div className="min-w-0">
               <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Direct Donations</h1>
               <p className="text-yellow-300 text-xs sm:text-sm">Manage donations directly to organization</p>
             </div>
+            {filteredDonations.length > 0 && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    try {
+                      generatePDF().catch(err => {
+                        console.error('PDF generation error:', err)
+                        alert('Failed to generate PDF. Please try again.')
+                      })
+                    } catch (error) {
+                      console.error('PDF generation error:', error)
+                      alert('Failed to generate PDF. Please try again.')
+                    }
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-yellow-400 hover:text-yellow-300 transition-colors active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  title="Download PDF"
+                  type="button"
+                  aria-label="Download PDF"
+                >
+                  <Download className="h-4 w-4" />
+                  <span className="hidden sm:inline">Download PDF</span>
+                </button>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault()
+                    e.stopPropagation()
+                    handlePrint()
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-navy-800 hover:bg-navy-700 text-yellow-400 hover:text-yellow-300 transition-colors active:scale-95 cursor-pointer focus:outline-none focus:ring-2 focus:ring-yellow-400"
+                  title="Print"
+                  type="button"
+                  aria-label="Print"
+                >
+                  <Printer className="h-4 w-4" />
+                  <span className="hidden sm:inline">Print</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Filters */}
@@ -305,6 +647,86 @@ const AdminCFCDonationsPage = () => {
                       
                       <td className="px-4 py-2.5 text-right">
                         <div className="flex items-center justify-end gap-1.5">
+                          {/* Enhanced Status Dropdown */}
+                          <div className="relative status-dropdown-container">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                setStatusDropdownOpen(statusDropdownOpen === donation.id ? null : donation.id)
+                              }}
+                              disabled={updatingDonationId === donation.id}
+                              className={`
+                                flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
+                                ${getStatusColor(donation.status)}
+                                ${updatingDonationId === donation.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                                focus:outline-none focus:ring-2 focus:ring-yellow-500/50
+                              `}
+                              title="Change Status"
+                            >
+                              {updatingDonationId === donation.id ? (
+                                <>
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                  <span>Updating...</span>
+                                </>
+                              ) : (
+                                <>
+                                  {(() => {
+                                    const StatusIcon = getStatusConfig(donation.status).icon
+                                    return <StatusIcon className="h-3 w-3" />
+                                  })()}
+                                  <span className="capitalize">{donation.status}</span>
+                                  <ChevronDown className={`h-3 w-3 transition-transform ${statusDropdownOpen === donation.id ? 'rotate-180' : ''}`} />
+                                </>
+                              )}
+                            </button>
+
+                            {/* Dropdown Menu */}
+                            {statusDropdownOpen === donation.id && (
+                              <div className="absolute right-0 mt-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden">
+                                <div className="py-1">
+                                  {['available', 'delivered', 'claimed', 'expired'].map((status) => {
+                                    if (status === donation.status) return null
+                                    
+                                    // Filter available options based on delivery mode and current status
+                                    // For volunteer delivery: can only change from 'delivered' to 'claimed'
+                                    if (donation.delivery_mode === 'volunteer') {
+                                      if (donation.status === 'available' && status !== 'available') return null
+                                      if (donation.status === 'delivered' && status !== 'claimed') return null
+                                      if (donation.status === 'claimed') return null
+                                    }
+                                    
+                                    // For donor delivery or organization pickup: can change from 'available' to 'claimed'
+                                    if (donation.delivery_mode === 'donor_delivery' || donation.delivery_mode === 'organization_pickup') {
+                                      if (donation.status === 'available' && status !== 'claimed') return null
+                                      if (donation.status === 'claimed') return null
+                                    }
+                                    
+                                    const config = getStatusConfig(status)
+                                    const StatusIcon = config.icon
+                                    return (
+                                      <button
+                                        key={status}
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleStatusUpdate(donation.id, status)
+                                        }}
+                                        className={`
+                                          w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
+                                          ${config.color} ${config.hoverColor}
+                                          transition-all hover:bg-navy-700/50
+                                          border-l-2 ${config.borderColor}
+                                        `}
+                                      >
+                                        <StatusIcon className="h-4 w-4" />
+                                        <span>{config.label}</span>
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
                           <button
                             onClick={() => handleViewDonation(donation)}
                             className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded transition-all active:scale-95"
@@ -312,31 +734,6 @@ const AdminCFCDonationsPage = () => {
                           >
                             <Eye className="h-4 w-4" />
                           </button>
-                          
-                          {/* Status Update Button */}
-                          {/* For volunteer delivery: only show after volunteer marks as delivered */}
-                          {donation.status === 'delivered' && donation.delivery_mode === 'volunteer' && (
-                            <button
-                              onClick={() => handleStatusUpdate(donation.id, 'claimed')}
-                              disabled={updatingStatus}
-                              className="px-2 py-1 text-xs font-medium bg-green-600 hover:bg-green-700 text-white rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center"
-                              title="Mark as Claimed"
-                            >
-                              <CheckCircle className="h-3 w-3" />
-                            </button>
-                          )}
-                          
-                          {/* For donor delivery or organization pickup: can mark as claimed directly */}
-                          {donation.status === 'available' && (donation.delivery_mode === 'donor_delivery' || donation.delivery_mode === 'organization_pickup') && (
-                            <button
-                              onClick={() => handleStatusUpdate(donation.id, 'claimed')}
-                              disabled={updatingStatus}
-                              className="px-2 py-1 text-xs font-medium bg-blue-600 hover:bg-blue-700 text-white rounded transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 flex items-center"
-                              title="Mark as Claimed"
-                            >
-                              <CheckCircle className="h-3 w-3" />
-                            </button>
-                          )}
                         </div>
                       </td>
                     </motion.tr>
@@ -363,281 +760,236 @@ const AdminCFCDonationsPage = () => {
 
       {/* Donation Details Modal */}
       {showModal && selectedDonation && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50" onClick={() => setShowModal(false)}>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
           <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-            className="card max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+            transition={{ duration: 0.2 }}
+            className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Modal Header */}
-            <div className="sticky top-0 bg-navy-900 border-b-2 border-blue-500/20 px-4 sm:px-6 py-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 flex-1 min-w-0">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
-                  <Building className="h-5 w-5 text-blue-400" />
+            {/* Header */}
+            <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-yellow-500/10 rounded-lg">
+                  <Building className="h-6 w-6 text-yellow-400" />
                 </div>
-                <div className="min-w-0">
-                  <h3 className="text-lg sm:text-xl font-bold text-white">Direct Donation Details</h3>
-                  <p className="text-xs text-gray-400 hidden sm:block">Complete donation information</p>
+                <div>
+                  <h3 className="text-xl font-bold text-white">Direct Donation Details</h3>
+                  <p className="text-xs text-yellow-300">Complete information</p>
                 </div>
               </div>
               <button
                 onClick={() => setShowModal(false)}
-                className="p-2 rounded-lg hover:bg-navy-800 text-gray-400 hover:text-yellow-400 transition-colors flex-shrink-0"
+                className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Modal Content */}
-            <div className="p-4 sm:p-6 space-y-4 sm:space-y-5 overflow-y-auto">
-              {/* Basic Information */}
-              <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
-                  <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                    <Package className="h-4 w-4 text-blue-400" />
+            {/* Content with Custom Scrollbar */}
+            <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+              <div className="space-y-6">
+                {/* Donation Header */}
+                <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex-1">
+                      <h4 className="text-2xl font-bold text-white mb-2">{selectedDonation.title}</h4>
+                      <p className="text-sm text-gray-400">{selectedDonation.description}</p>
+                    </div>
+                    <div className="flex flex-col gap-2 items-end">
+                      <span className="inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30">
+                        {selectedDonation.category}
+                      </span>
+                      <span className={`inline-flex items-center px-3 py-1.5 rounded-full text-xs font-semibold border ${getStatusColor(selectedDonation.status)}`}>
+                        {selectedDonation.status}
+                      </span>
+                    </div>
                   </div>
-                  <h4 className="text-sm font-semibold text-white">Donation Information</h4>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Title</label>
-                    <p className="text-sm text-white font-medium">{selectedDonation.title}</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Category</label>
-                    <span className="inline-flex px-3 py-1 rounded-full text-xs font-semibold bg-yellow-500/20 text-yellow-400">
-                      {selectedDonation.category}
-                    </span>
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Description</label>
-                    <p className="text-sm text-gray-300 leading-relaxed">{selectedDonation.description}</p>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Delivery Mode</label>
+
+                {/* Details Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Building className="h-4 w-4 text-blue-400" />
+                      <label className="text-sm font-semibold text-yellow-300">Delivery Mode</label>
+                    </div>
                     <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30">
                       <Building className="h-4 w-4" />
                       {getDeliveryModeLabel(selectedDonation.delivery_mode)}
                     </span>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Status</label>
-                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold ${getStatusColor(selectedDonation.status)}`}>
-                      {selectedDonation.status}
-                    </span>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Posted Date</label>
-                    <p className="text-sm text-white">{new Date(selectedDonation.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
-                  </div>
-                </div>
-              </div>
 
-              {/* Donor Information */}
-              <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
-                  <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-green-400" />
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Calendar className="h-4 w-4 text-purple-400" />
+                      <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                    </div>
+                    <p className="text-white text-lg font-medium">{new Date(selectedDonation.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
                   </div>
-                  <h4 className="text-sm font-semibold text-white">Donor Information</h4>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Name</label>
-                    <p className="text-sm text-white font-medium">{selectedDonation.donor?.name || 'Anonymous'}</p>
+
+                {/* Donor Information */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <User className="h-4 w-4 text-green-400" />
+                      <label className="text-sm font-semibold text-yellow-300">Donor Name</label>
+                    </div>
+                    <p className="text-white text-lg font-medium">{selectedDonation.donor?.name || 'Anonymous'}</p>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1">Email</label>
-                    <p className="text-sm text-white">{selectedDonation.donor?.email || 'Not provided'}</p>
+
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Mail className="h-4 w-4 text-green-400" />
+                      <label className="text-sm font-semibold text-yellow-300">Donor Email</label>
+                    </div>
+                    <p className="text-white text-lg font-medium">{selectedDonation.donor?.email || 'Not provided'}</p>
                   </div>
+
                   {selectedDonation.donor?.phone_number && (
-                    <div className="sm:col-span-2">
-                      <label className="block text-xs font-medium text-gray-400 mb-1">Phone</label>
-                      <p className="text-sm text-white">{selectedDonation.donor.phone_number}</p>
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Phone className="h-4 w-4 text-green-400" />
+                        <label className="text-sm font-semibold text-yellow-300">Donor Phone</label>
+                      </div>
+                      <p className="text-white text-lg font-medium">{selectedDonation.donor.phone_number}</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Location Information */}
+                <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                  <div className="flex items-center gap-2 mb-2">
+                    <MapPin className="h-4 w-4 text-green-400" />
+                    <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                  </div>
+                  <p className="text-white text-lg font-medium">{selectedDonation.pickup_location || selectedDonation.city || 'Not specified'}</p>
+                </div>
+
+                {/* Images Section */}
+                {selectedDonation.images && selectedDonation.images.length > 0 && (
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Package className="h-4 w-4 text-pink-400" />
+                      <label className="text-sm font-semibold text-yellow-300">Donation Images</label>
+                    </div>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      {selectedDonation.images.map((image, index) => (
+                        <div 
+                          key={index} 
+                          className="relative group cursor-pointer"
+                          onClick={() => {
+                            setSelectedImage(image)
+                            setShowImageModal(true)
+                          }}
+                        >
+                          <img
+                            src={image}
+                            alt={`Donation ${index + 1}`}
+                            className="w-full h-32 object-cover rounded-lg border border-navy-700 hover:border-yellow-500 transition-all"
+                          />
+                          <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center pointer-events-none">
+                            <Eye className="h-6 w-6 text-white" />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-6 pt-4 border-t-2 border-yellow-500/20 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 flex-shrink-0">
+              <div className="flex items-center gap-3 flex-1">
+                <label className="text-xs font-medium text-gray-400">Update Status:</label>
+                {/* Enhanced Status Dropdown */}
+                <div className="relative status-dropdown-container">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setStatusDropdownOpen(statusDropdownOpen === `modal-${selectedDonation.id}` ? null : `modal-${selectedDonation.id}`)
+                    }}
+                    disabled={updatingDonationId === selectedDonation.id}
+                    className={`
+                      flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-all
+                      ${getStatusColor(selectedDonation.status)}
+                      ${updatingDonationId === selectedDonation.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                      focus:outline-none focus:ring-2 focus:ring-yellow-500/50
+                    `}
+                    title="Change Status"
+                  >
+                    {updatingDonationId === selectedDonation.id ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>Updating...</span>
+                      </>
+                    ) : (
+                      <>
+                        {(() => {
+                          const StatusIcon = getStatusConfig(selectedDonation.status).icon
+                          return <StatusIcon className="h-4 w-4" />
+                        })()}
+                        <span className="capitalize">{selectedDonation.status}</span>
+                        <ChevronDown className={`h-4 w-4 transition-transform ${statusDropdownOpen === `modal-${selectedDonation.id}` ? 'rotate-180' : ''}`} />
+                      </>
+                    )}
+                  </button>
+
+                  {/* Dropdown Menu */}
+                  {statusDropdownOpen === `modal-${selectedDonation.id}` && (
+                    <div className="absolute left-0 bottom-full mb-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden">
+                      <div className="py-1">
+                        {['available', 'delivered', 'claimed', 'expired'].map((status) => {
+                          if (status === selectedDonation.status) return null
+                          
+                          // Filter available options based on delivery mode and current status
+                          // For volunteer delivery: can only change from 'delivered' to 'claimed'
+                          if (selectedDonation.delivery_mode === 'volunteer') {
+                            if (selectedDonation.status === 'available' && status !== 'available') return null
+                            if (selectedDonation.status === 'delivered' && status !== 'claimed') return null
+                            if (selectedDonation.status === 'claimed') return null
+                          }
+                          
+                          // For donor delivery or organization pickup: can change from 'available' to 'claimed'
+                          if (selectedDonation.delivery_mode === 'donor_delivery' || selectedDonation.delivery_mode === 'organization_pickup') {
+                            if (selectedDonation.status === 'available' && status !== 'claimed') return null
+                            if (selectedDonation.status === 'claimed') return null
+                          }
+                          
+                          const config = getStatusConfig(status)
+                          const StatusIcon = config.icon
+                          return (
+                            <button
+                              key={status}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleStatusUpdate(selectedDonation.id, status)
+                              }}
+                              className={`
+                                w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
+                                ${config.color} ${config.hoverColor}
+                                transition-all hover:bg-navy-700/50
+                                border-l-2 ${config.borderColor}
+                              `}
+                            >
+                              <StatusIcon className="h-4 w-4" />
+                              <span>{config.label}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
                     </div>
                   )}
                 </div>
               </div>
-
-              {/* Location Information */}
-              <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
-                  <div className="w-8 h-8 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                    <MapPin className="h-4 w-4 text-purple-400" />
-                  </div>
-                  <h4 className="text-sm font-semibold text-white">Location Information</h4>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1">Pickup Location</label>
-                  <p className="text-sm text-white">{selectedDonation.pickup_location || selectedDonation.city || 'Not specified'}</p>
-                </div>
-              </div>
-
-              {/* Images Section */}
-              {selectedDonation.images && selectedDonation.images.length > 0 && (
-                <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                  <div className="flex items-center gap-2 mb-4 pb-3 border-b border-navy-700">
-                    <div className="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center">
-                      <Package className="h-4 w-4 text-pink-400" />
-                    </div>
-                    <h4 className="text-sm font-semibold text-white">Donation Images</h4>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    {selectedDonation.images.map((image, index) => (
-                      <div 
-                        key={index} 
-                        className="relative group cursor-pointer"
-                        onClick={() => {
-                          setSelectedImage(image)
-                          setShowImageModal(true)
-                        }}
-                      >
-                        <img
-                          src={image}
-                          alt={`Donation ${index + 1}`}
-                          className="w-full h-32 object-cover rounded-lg border border-navy-700 hover:border-yellow-500 transition-all"
-                        />
-                        <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex items-center justify-center pointer-events-none">
-                          <Eye className="h-6 w-6 text-white" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Modal Footer */}
-            <div className="sticky bottom-0 bg-navy-900 border-t border-navy-700 px-4 sm:px-6 py-4 flex flex-col gap-4">
-              {/* Status Update Section */}
-              <div className="flex flex-col gap-3">
-                {/* For volunteer delivery - waiting for volunteer */}
-                {selectedDonation.status === 'available' && selectedDonation.delivery_mode === 'volunteer' && (
-                  <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4">
-                    <div className="flex items-center gap-3">
-                      <Clock className="h-5 w-5 text-yellow-400 flex-shrink-0" />
-                      <div>
-                        <p className="text-sm font-medium text-yellow-300">Waiting for volunteer to deliver</p>
-                        <p className="text-xs text-yellow-400 mt-1">Admin can only mark as 'Claimed' after volunteer marks as 'Delivered'</p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* For volunteer delivery - volunteer has delivered */}
-                {selectedDonation.status === 'delivered' && selectedDonation.delivery_mode === 'volunteer' && (
-                  <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <CheckCircle className="h-5 w-5 text-green-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-green-300 mb-2">Volunteer has marked this as delivered</p>
-                        <button
-                          onClick={() => {
-                            handleStatusUpdate(selectedDonation.id, 'claimed')
-                            setShowModal(false)
-                          }}
-                          disabled={updatingStatus}
-                          className="px-6 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-lg flex items-center gap-2"
-                        >
-                          {updatingStatus ? (
-                            <>
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                              Updating...
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle className="h-4 w-4" />
-                              Mark as Claimed
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* For donor delivery - can mark as claimed */}
-                {selectedDonation.status === 'available' && selectedDonation.delivery_mode === 'donor_delivery' && (
-                  <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <Truck className="h-5 w-5 text-blue-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-blue-300 mb-2">Donor will deliver directly to organization</p>
-                        <button
-                          onClick={() => {
-                            handleStatusUpdate(selectedDonation.id, 'claimed')
-                            setShowModal(false)
-                          }}
-                          disabled={updatingStatus}
-                          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-lg flex items-center gap-2"
-                        >
-                          {updatingStatus ? (
-                            <>
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                              Updating...
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle className="h-4 w-4" />
-                              Mark as Claimed (Donor Delivered)
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* For organization pickup - can mark as claimed */}
-                {selectedDonation.status === 'available' && selectedDonation.delivery_mode === 'organization_pickup' && (
-                  <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4">
-                    <div className="flex items-start gap-3">
-                      <MapPin className="h-5 w-5 text-purple-400 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-purple-300 mb-2">Organization will pick up from donor location</p>
-                        <button
-                          onClick={() => {
-                            handleStatusUpdate(selectedDonation.id, 'claimed')
-                            setShowModal(false)
-                          }}
-                          disabled={updatingStatus}
-                          className="px-6 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg font-semibold transition-all disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 shadow-lg flex items-center gap-2"
-                        >
-                          {updatingStatus ? (
-                            <>
-                              <RefreshCw className="h-4 w-4 animate-spin" />
-                              Updating...
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle className="h-4 w-4" />
-                              Mark as Claimed (Picked Up)
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                
-                {/* Claimed/Completed status */}
-                {selectedDonation.status === 'claimed' && (
-                  <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4">
-                    <div className="flex items-center gap-3">
-                      <CheckCircle className="h-5 w-5 text-blue-400 flex-shrink-0" />
-                      <p className="text-sm font-medium text-blue-300">This donation has been claimed and completed.</p>
-                    </div>
-                  </div>
-                )}
-              </div>
-              
-              {/* Close Button */}
               <button
                 onClick={() => setShowModal(false)}
-                className="w-full px-6 py-3 bg-gradient-to-r from-yellow-600 to-yellow-500 hover:from-yellow-500 hover:to-yellow-400 text-white rounded-lg font-bold transition-all duration-200 transform hover:scale-105 active:scale-95 shadow-lg flex items-center justify-center gap-2"
+                className="px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
               >
-                <X className="h-4 w-4 flex-shrink-0" />
                 Close
               </button>
             </div>

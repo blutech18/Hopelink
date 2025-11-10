@@ -8,12 +8,14 @@ import {
   X, 
   Truck,
   User,
-  Package
+  Package,
+  Flag
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
 import LoadingSpinner from './LoadingSpinner'
+import ReportUserModal from './ReportUserModal'
 
 const DeliveryConfirmationModal = ({ 
   isOpen, 
@@ -27,6 +29,8 @@ const DeliveryConfirmationModal = ({
   const [rating, setRating] = useState(5)
   const [feedback, setFeedback] = useState('')
   const [hoveredStar, setHoveredStar] = useState(0)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [reportedUser, setReportedUser] = useState(null)
 
   if (!isOpen || !notification) return null
 
@@ -140,9 +144,41 @@ const DeliveryConfirmationModal = ({
 
         {/* Delivery Info */}
         <div className="bg-navy-800/50 rounded-lg p-4 mb-6">
-          <div className="flex items-center gap-3 mb-3">
-            <User className="h-5 w-5 text-skyblue-400" />
-            <span className="text-white font-medium">Volunteer: {data.volunteer_name}</span>
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3">
+              <User className="h-5 w-5 text-skyblue-400" />
+              <span className="text-white font-medium">Volunteer: {data.volunteer_name}</span>
+            </div>
+            {data.volunteer_id && data.volunteer_id !== user?.id && (
+              <button
+                onClick={async () => {
+                  try {
+                    // Fetch volunteer profile to get name and role
+                    const volunteerProfile = await db.getProfile(data.volunteer_id)
+                    setReportedUser({
+                      id: data.volunteer_id,
+                      name: volunteerProfile?.name || data.volunteer_name,
+                      role: volunteerProfile?.role || 'volunteer'
+                    })
+                    setShowReportModal(true)
+                  } catch (err) {
+                    console.error('Error fetching volunteer profile:', err)
+                    // Fallback to basic info
+                    setReportedUser({
+                      id: data.volunteer_id,
+                      name: data.volunteer_name,
+                      role: 'volunteer'
+                    })
+                    setShowReportModal(true)
+                  }
+                }}
+                className="text-xs px-2 py-1 text-red-400 hover:text-red-300 hover:bg-red-500/10 rounded transition-colors flex items-center gap-1"
+                title="Report this volunteer"
+              >
+                <Flag className="h-3 w-3" />
+                Report
+              </button>
+            )}
           </div>
           <div className="flex items-center gap-3">
             <Package className="h-5 w-5 text-skyblue-400" />
@@ -221,6 +257,25 @@ const DeliveryConfirmationModal = ({
           </p>
         </div>
       </motion.div>
+
+      {/* Report User Modal */}
+      {reportedUser && (
+        <ReportUserModal
+          isOpen={showReportModal}
+          onClose={() => {
+            setShowReportModal(false)
+            setReportedUser(null)
+          }}
+          reportedUserId={reportedUser.id}
+          reportedUserName={reportedUser.name}
+          reportedUserRole={reportedUser.role}
+          transactionContext={data.delivery_id ? {
+            type: 'delivery',
+            id: data.delivery_id,
+            title: `Delivery #${data.delivery_id}`
+          } : null}
+        />
+      )}
     </div>
   )
 }

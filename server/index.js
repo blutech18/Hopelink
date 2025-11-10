@@ -4,7 +4,6 @@ import helmet from 'helmet'
 import compression from 'compression'
 import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
-import { redisClient, cache, pubSub, channels } from './redisClient.js'
 
 // Load environment variables
 dotenv.config()
@@ -69,16 +68,6 @@ app.use((err, req, res, next) => {
 app.use('/api/*', (req, res) => {
   res.status(404).json({ message: 'API endpoint not found' })
 })
-
-// Test Redis connection on startup (skip in production to reduce cold start time)
-if (process.env.NODE_ENV !== 'production') {
-  redisClient.ping().then(() => {
-    console.log('✅ Redis connection verified')
-  }).catch((err) => {
-    console.warn('⚠️ Redis not available:', err.message)
-    console.warn('   The app will continue to run without Redis caching')
-  })
-}
 
 // Start server
 app.listen(PORT, () => {

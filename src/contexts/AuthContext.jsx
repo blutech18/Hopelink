@@ -161,13 +161,53 @@ export const AuthProvider = ({ children }) => {
       
       if (userProfile) {
         authDebug.logProfileLoading(userId, 'SUCCESS', userProfile)
+        
+        // For volunteers, merge schedule fields from user_metadata (these aren't in the users table)
+        if (userProfile.role === 'volunteer') {
+          try {
+            const { data: { user: currentUser } } = await supabase.auth.getUser()
+            if (currentUser?.user_metadata) {
+              // Merge volunteer schedule fields from user_metadata
+              userProfile.availability_days = currentUser.user_metadata.availabilityDays || userProfile.availability_days || []
+              userProfile.availability_times = currentUser.user_metadata.availabilityTimes || userProfile.availability_times || []
+              userProfile.max_delivery_distance = currentUser.user_metadata.maxDeliveryDistance || userProfile.max_delivery_distance || 20
+              userProfile.delivery_preferences = currentUser.user_metadata.deliveryPreferences || userProfile.delivery_preferences || []
+            }
+          } catch (metadataError) {
+            console.warn('Error loading user_metadata for volunteer schedule:', metadataError)
+            // Continue with profile even if metadata load fails
+          }
+        }
+        
         // Cache the profile for future use
         profileCacheRef.current.set(userId, userProfile)
         setProfile(userProfile)
         setLoading(false)
         return
       } else {
-        // Profile is null - user doesn't exist in database yet
+        // Profile is null - could be network error or user doesn't exist in database yet
+        // Check if this is a network error by trying to get user from auth
+        try {
+          const { data: { user: currentUser } } = await supabase.auth.getUser()
+          if (currentUser) {
+            // User exists in auth but profile is null - likely network error
+            // Set profile to null and continue (don't try to create from metadata)
+            console.warn('Profile is null but user exists in auth - likely network error, setting profile to null')
+            authDebug.logProfileLoading(userId, 'NETWORK_ERROR_NULL_PROFILE')
+            setProfile(null)
+            setLoading(false)
+            return
+          }
+        } catch (authError) {
+          // Auth check also failed - likely network issue
+          console.warn('Both profile and auth check failed - network error, setting profile to null')
+          authDebug.logProfileLoading(userId, 'NETWORK_ERROR')
+          setProfile(null)
+          setLoading(false)
+          return
+        }
+        
+        // If we get here, user doesn't exist in auth either, so profile truly doesn't exist
         console.log('Profile is null, user may need to be created from metadata')
         throw new Error('Profile not found - needs creation from metadata')
       }
@@ -180,6 +220,17 @@ export const AuthProvider = ({ children }) => {
       if (!isExpectedError) {
         authDebug.logProfileLoading(userId, 'ERROR', { error: error.message, code: error.code })
         console.error('Error loading user profile:', error)
+        // For network errors, set profile to null and continue
+        if (error.message?.includes('Failed to fetch') || 
+            error.message?.includes('CORS') || 
+            error.message?.includes('NetworkError') || 
+            error.message?.includes('QUIC') ||
+            error.message?.includes('TypeError: Failed to fetch')) {
+          console.warn('Network error loading profile, setting profile to null')
+          setProfile(null)
+          setLoading(false)
+          return
+        }
       } else {
         authDebug.logProfileLoading(userId, 'NOT_FOUND')
       }
@@ -261,6 +312,7 @@ export const AuthProvider = ({ children }) => {
               profileData.background_check_consent = currentUser.user_metadata.backgroundCheckConsent || false
               profileData.availability_days = currentUser.user_metadata.availabilityDays || []
               profileData.availability_times = currentUser.user_metadata.availabilityTimes || []
+              profileData.delivery_preferences = currentUser.user_metadata.deliveryPreferences || []
               // Initialize ID fields - volunteers need driver's license
               profileData.primary_id_type = null
               profileData.primary_id_number = null
@@ -329,6 +381,13 @@ export const AuthProvider = ({ children }) => {
       // Validate that role is correctly set
       if (!userData.role || !['donor', 'recipient', 'volunteer', 'admin'].includes(userData.role)) {
         throw new Error(`Invalid role provided: ${userData.role}. Must be one of: donor, recipient, volunteer, admin`)
+      }
+      
+      // Check if signup is enabled for this role
+      const isRoleEnabled = await db.isRoleSignupEnabled(userData.role)
+      if (!isRoleEnabled) {
+        const roleName = userData.role.charAt(0).toUpperCase() + userData.role.slice(1)
+        throw new Error(`${roleName} signup is currently disabled. Please contact the administrator for assistance.`)
       }
       
       // Check if email exists in our users table before attempting signup
@@ -577,6 +636,15 @@ export const AuthProvider = ({ children }) => {
               throw new Error('Role selection required. Please complete the signup process.')
             }
             
+            // Check if signup is enabled for this role
+            const isRoleEnabled = await db.isRoleSignupEnabled(roleData.role)
+            if (!isRoleEnabled) {
+              const roleName = roleData.role.charAt(0).toUpperCase() + roleData.role.slice(1)
+              localStorage.removeItem('pendingGoogleSignupRole')
+              await supabase.auth.signOut()
+              throw new Error(`${roleName} signup is currently disabled. Please contact the administrator for assistance.`)
+            }
+            
             // Create profile with Google data and selected role
             const profileData = {
               email: session.user.email,
@@ -744,7 +812,74 @@ export const AuthProvider = ({ children }) => {
     if (!user) throw new Error('No user logged in')
     
     try {
-      const updatedProfile = await db.updateProfile(user.id, updates)
+      // Check if updates contain volunteer schedule fields that should be stored in user_metadata
+      const volunteerScheduleFields = ['availability_days', 'availability_times', 'max_delivery_distance', 'delivery_preferences']
+      const hasVolunteerScheduleFields = volunteerScheduleFields.some(field => updates.hasOwnProperty(field))
+      
+      if (hasVolunteerScheduleFields && !supabase) {
+        throw new Error('Supabase not configured')
+      }
+      
+      // If updating volunteer schedule fields, update user_metadata first
+      if (hasVolunteerScheduleFields) {
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        const currentMetadata = currentUser?.user_metadata || {}
+        
+        // Prepare user_metadata updates with camelCase keys
+        const metadataUpdates = {}
+        if (updates.hasOwnProperty('availability_days')) {
+          metadataUpdates.availabilityDays = updates.availability_days
+        }
+        if (updates.hasOwnProperty('availability_times')) {
+          metadataUpdates.availabilityTimes = updates.availability_times
+        }
+        if (updates.hasOwnProperty('max_delivery_distance')) {
+          metadataUpdates.maxDeliveryDistance = updates.max_delivery_distance
+        }
+        if (updates.hasOwnProperty('delivery_preferences')) {
+          metadataUpdates.deliveryPreferences = updates.delivery_preferences
+        }
+        
+        // Update user_metadata in Supabase Auth
+        const { error: metadataError } = await supabase.auth.updateUser({
+          data: {
+            ...currentMetadata,
+            ...metadataUpdates
+          }
+        })
+        
+        if (metadataError) {
+          console.error('Error updating user_metadata:', metadataError)
+          throw metadataError
+        }
+      }
+      
+      // Filter out volunteer schedule fields from users table update
+      const usersTableUpdates = { ...updates }
+      volunteerScheduleFields.forEach(field => {
+        delete usersTableUpdates[field]
+      })
+      
+      // Update users table with remaining fields (if any)
+      let updatedProfile
+      if (Object.keys(usersTableUpdates).length > 0) {
+        updatedProfile = await db.updateProfile(user.id, usersTableUpdates)
+      } else {
+        // If only volunteer schedule fields were updated, just refresh the profile
+        updatedProfile = await db.getProfile(user.id)
+      }
+      
+      // Sync volunteer schedule fields from user_metadata to profile object
+      if (hasVolunteerScheduleFields) {
+        const { data: { user: updatedUser } } = await supabase.auth.getUser()
+        if (updatedUser?.user_metadata) {
+          updatedProfile.availability_days = updatedUser.user_metadata.availabilityDays || []
+          updatedProfile.availability_times = updatedUser.user_metadata.availabilityTimes || []
+          updatedProfile.max_delivery_distance = updatedUser.user_metadata.maxDeliveryDistance || 20
+          updatedProfile.delivery_preferences = updatedUser.user_metadata.deliveryPreferences || []
+        }
+      }
+      
       // Update cache with new profile data
       profileCacheRef.current.set(user.id, updatedProfile)
       setProfile(updatedProfile)

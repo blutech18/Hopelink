@@ -17,7 +17,12 @@ import {
   Clock,
   ChevronDown,
   MessageSquare,
-  Building
+  Building,
+  ShieldCheck,
+  AlertTriangle,
+  Flag,
+  CheckCircle,
+  Target
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -33,6 +38,7 @@ const Navbar = () => {
   const [showFeedbackFloat, setShowFeedbackFloat] = useState(false)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false)
   const [showNotifications, setShowNotifications] = useState(false)
+  const [showNotificationsModal, setShowNotificationsModal] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
   const { isAuthenticated, profile, signOut } = useAuth()
@@ -83,31 +89,58 @@ const Navbar = () => {
   useEffect(() => {
     let unsubscribe = null
     async function load() {
-      if (!profile?.id) return
+      if (!profile?.id) {
+        console.log('⚠️ No profile ID, skipping notification load')
+        return
+      }
+      console.log(`🔄 Loading notifications for user ${profile.id}...`)
       try {
-        const items = await db.getUserNotifications(profile.id, 20)
+        const items = await db.getUserNotifications(profile.id, 50)
+        console.log(`📬 Received ${items?.length || 0} notifications from database:`, items)
         setNotifications(items || [])
         setUnreadCount((items || []).filter(n => !n.read_at).length)
-      } catch (_) {}
+        console.log(`✅ Notifications state updated: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+      } catch (error) {
+        console.error('❌ Error loading notifications:', error)
+      }
       try {
-        unsubscribe = db.subscribeToUserNotifications(profile.id, async () => {
+        unsubscribe = db.subscribeToUserNotifications(profile.id, async (payload) => {
+          console.log('🔔 Notification change detected in Navbar:', payload)
           try {
-            const items = await db.getUserNotifications(profile.id, 20)
+            // Refresh notifications when any change is detected
+            const items = await db.getUserNotifications(profile.id, 50)
+            console.log(`📬 Polling update - received ${items?.length || 0} notifications`)
             setNotifications(items || [])
             setUnreadCount((items || []).filter(n => !n.read_at).length)
-          } catch (_) {}
+            console.log(`📬 Updated notifications: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+            
+            // If it's a new notification (INSERT), show a visual indicator
+            if (payload.eventType === 'INSERT' && payload.new) {
+              console.log('✨ New notification received:', payload.new)
+              // The notification will appear in the list automatically
+            }
+          } catch (error) {
+            console.error('❌ Error refreshing notifications:', error)
+          }
         })
-      } catch (_) {}
+      } catch (error) {
+        console.error('❌ Error setting up notification subscription:', error)
+      }
     }
     load()
-    return () => { if (unsubscribe) unsubscribe() }
+    return () => { 
+      if (unsubscribe) {
+        console.log('🔔 Cleaning up notification subscription')
+        unsubscribe() 
+      }
+    }
   }, [profile?.id])
 
   const markAllNotificationsAsRead = async () => {
     try {
       const unread = (notifications || []).filter(n => !n.read_at)
       await Promise.all(unread.map(n => db.markNotificationAsRead(n.id)))
-      const items = await db.getUserNotifications(profile.id, 20)
+      const items = await db.getUserNotifications(profile.id, 50)
       setNotifications(items || [])
       setUnreadCount((items || []).filter(n => !n.read_at).length)
       success('All notifications marked as read')
@@ -254,6 +287,7 @@ const Navbar = () => {
       { path: '/dashboard', label: 'Dashboard', icon: User },
       { path: '/post-donation', label: 'Post Donation', icon: Gift },
       { path: '/my-donations', label: 'My Donations', icon: Heart },
+      { path: '/pending-requests', label: 'Pending Requests', icon: Bell },
       { path: '/browse-requests', label: 'Browse Requests', icon: Users },
     ],
     recipient: [
@@ -271,11 +305,14 @@ const Navbar = () => {
     admin: [
       { path: '/admin', label: 'Dashboard', icon: Shield },
       { path: '/admin/users', label: 'Users', icon: Users },
+      { path: '/admin/id-verification', label: 'ID Verification', icon: ShieldCheck },
       { path: '/admin/donations', label: 'Donations', icon: Gift },
       { path: '/admin/cfc-donations', label: 'Direct Donations', icon: Building },
       { path: '/admin/volunteers', label: 'Volunteers', icon: Truck },
       { path: '/admin/requests', label: 'Requests', icon: Heart },
       { path: '/admin/events', label: 'Events', icon: Calendar },
+      { path: '/admin/matching-parameters', label: 'Matching Parameters', icon: Target },
+      { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
     ]
   }
 
@@ -390,7 +427,7 @@ const Navbar = () => {
                 <Bell className={`h-5 w-5 transition-colors ${unreadCount > 0 ? 'text-yellow-400 animate-pulse' : 'text-yellow-400 hover:text-yellow-300'}`} />
                 {unreadCount > 0 && (
                   <span className="absolute -top-0.5 -right-0.5 bg-gradient-to-br from-red-500 to-red-600 text-white text-[11px] font-bold rounded-full h-5 min-w-[20px] px-1.5 flex items-center justify-center border-2 border-navy-900 shadow-lg animate-bounce">
-                    {unreadCount > 99 ? '99+' : unreadCount}
+                    {unreadCount > 9 ? '9+' : unreadCount}
                   </span>
                 )}
               </button>
@@ -400,7 +437,7 @@ const Navbar = () => {
                     initial={{ opacity: 0, y: -8 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
-                    className="absolute right-0 mt-2 w-96 max-h-[32rem] overflow-hidden bg-navy-900 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50"
+                    className="absolute right-0 mt-2 w-96 bg-navy-900 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 flex flex-col"
                   >
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b-2 border-yellow-500/20 bg-navy-800/50">
@@ -424,15 +461,18 @@ const Navbar = () => {
                     </div>
                     
                     {/* Notifications List */}
-                    <div className="overflow-y-auto max-h-[28rem] custom-scrollbar">
-                      {(notifications || []).length === 0 ? (
+                    <div className="overflow-y-auto max-h-[400px] custom-scrollbar">
+                      {!notifications || notifications.length === 0 ? (
                         <div className="p-8 text-center">
                           <Bell className="h-12 w-12 text-gray-600 mx-auto mb-3" />
                           <p className="text-gray-400 text-sm">No notifications yet</p>
+                          <p className="text-gray-500 text-xs mt-2">
+                            {notifications === null ? 'Loading...' : 'You\'re all caught up!'}
+                          </p>
                         </div>
                       ) : (
                         <div className="divide-y divide-navy-800">
-                          {(notifications || []).map(n => (
+                          {notifications.slice(0, 5).map(n => (
                             <div 
                               key={n.id} 
                               className={`p-4 transition-all hover:bg-navy-800/50 cursor-pointer group ${
@@ -442,10 +482,24 @@ const Navbar = () => {
                                 if (!n.read_at) {
                                   try {
                                     await db.markNotificationAsRead(n.id)
-                                    const items = await db.getUserNotifications(profile.id, 20)
+                                    const items = await db.getUserNotifications(profile.id, 50)
                                     setNotifications(items || [])
                                     setUnreadCount((items || []).filter(n => !n.read_at).length)
                                   } catch (_) {}
+                                }
+                                
+                                // Navigate based on notification type for admin users
+                                if (profile?.role === 'admin' && n.data?.link) {
+                                  const notifType = n.data?.notification_type
+                                  let targetPath = n.data.link
+                                  
+                                  // Add query params for specific notification types
+                                  if (notifType === 'user_report') {
+                                    targetPath = '/admin/users?openReports=true'
+                                  }
+                                  
+                                  navigate(targetPath)
+                                  setShowNotifications(false)
                                 }
                               }}
                             >
@@ -456,15 +510,34 @@ const Navbar = () => {
                                     {!n.read_at && (
                                       <span className="h-2 w-2 bg-yellow-400 rounded-full flex-shrink-0 animate-pulse"></span>
                                     )}
-                                    <h4 className="text-white text-sm font-semibold truncate">
+                                    {n.type === 'user_report' && (
+                                      <Flag className="h-4 w-4 text-red-400 flex-shrink-0" />
+                                    )}
+                                    {n.type !== 'user_report' && n.type === 'system_alert' && (
+                                      <AlertTriangle className="h-4 w-4 text-yellow-400 flex-shrink-0" />
+                                    )}
+                                    <h4 className={`text-sm font-semibold truncate ${
+                                      n.type === 'user_report' ? 'text-red-300' : 'text-white'
+                                    }`}>
                                       {n.title || 'Notification'}
                                     </h4>
                                   </div>
                                   
                                   {/* Message */}
-                                  <p className="text-yellow-300 text-xs mb-2 line-clamp-2">
+                                  <p className={`text-xs mb-2 line-clamp-2 ${
+                                    n.type === 'user_report' ? 'text-red-200' : 'text-yellow-300'
+                                  }`}>
                                     {n.message}
                                   </p>
+                                  {/* Show clickable hint for admin notifications with links */}
+                                  {profile?.role === 'admin' && n.data?.link && (
+                                    <p className="text-blue-300 text-[10px] mt-1 italic flex items-center gap-1">
+                                      <svg className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                      </svg>
+                                      Click to view details
+                                    </p>
+                                  )}
                                   
                                   {/* Timestamp and status */}
                                   <div className="flex items-center justify-between">
@@ -490,7 +563,7 @@ const Navbar = () => {
                                       e.stopPropagation()
                                       try {
                                         await db.markNotificationAsRead(n.id)
-                                        const items = await db.getUserNotifications(profile.id, 20)
+                                        const items = await db.getUserNotifications(profile.id, 50)
                                         setNotifications(items || [])
                                         setUnreadCount((items || []).filter(n => !n.read_at).length)
                                       } catch (_) {}
@@ -509,6 +582,22 @@ const Navbar = () => {
                         </div>
                       )}
                     </div>
+                    
+                    {/* View All Button */}
+                    {notifications && notifications.length > 0 && (
+                      <div className="p-2 border-t border-yellow-500/20 bg-navy-800/30">
+                        <button
+                          onClick={() => {
+                            setShowNotificationsModal(true)
+                            setShowNotifications(false)
+                          }}
+                          className="w-full py-1.5 px-3 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 text-xs font-semibold rounded transition-all duration-200 flex items-center justify-center gap-1.5"
+                        >
+                          <Bell className="h-3.5 w-3.5" />
+                          View All
+                        </button>
+                      </div>
+                    )}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -555,16 +644,6 @@ const Navbar = () => {
                         <Settings className="h-4 w-4" />
                         <span>Profile Settings</span>
                       </Link>
-                      {profile?.role === 'admin' && (
-                        <Link
-                          to="/admin/settings"
-                          className="flex items-center space-x-2 px-4 py-2 text-sm text-yellow-300 hover:bg-navy-800"
-                          onClick={() => setIsProfileMenuOpen(false)}
-                        >
-                          <Shield className="h-4 w-4" />
-                          <span>Admin Settings</span>
-                        </Link>
-                      )}
                       <hr className="my-1 border-navy-700" />
                       <button
                         onClick={handleSignOut}
@@ -600,23 +679,28 @@ const Navbar = () => {
                           initial={{ opacity: 0, y: -10, scale: 0.9 }}
                           animate={{ opacity: 1, y: 0, scale: 1 }}
                           exit={{ opacity: 0, y: -10, scale: 0.9 }}
-                          className="absolute top-full right-0 mt-4 w-52 bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-sm font-medium rounded-lg shadow-xl z-50"
+                          className="absolute top-full right-0 mt-4 w-48 bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-xs font-medium rounded-lg shadow-xl z-50"
                         >
                           {/* Arrow pointing up to feedback button */}
                           <div className="absolute bottom-full right-3 w-0 h-0 border-l-8 border-r-8 border-b-8 border-transparent border-b-yellow-600"></div>
                           
-                          <div className="p-3 flex items-center gap-2">
-                            <MessageSquare className="h-4 w-4 flex-shrink-0" />
-                            <span className="flex-1 text-center">Help Us Improve! Share your feedback</span>
+                          <div className="p-2 relative">
                             <button
                               onClick={(e) => {
                                 e.preventDefault()
                                 setShowFeedbackFloat(false)
                               }}
-                              className="flex-shrink-0 hover:bg-white/20 rounded p-0.5 transition-colors"
+                              className="absolute top-1.5 right-1.5 hover:bg-white/20 rounded p-0.5 transition-colors"
                             >
                               <X className="h-3 w-3" />
                             </button>
+                            <div className="flex items-center gap-1.5 pr-5">
+                              <MessageSquare className="h-3.5 w-3.5 flex-shrink-0" />
+                              <div className="flex-1 leading-tight text-center">
+                                <div>Help Us Improve!</div>
+                                <div>Share your feedback</div>
+                              </div>
+                            </div>
                           </div>
                         </motion.div>
                       )}
@@ -704,16 +788,6 @@ const Navbar = () => {
                         <Settings className="h-4 w-4" />
                         <span>Profile Settings</span>
                       </Link>
-                      {profile?.role === 'admin' && (
-                        <Link
-                          to="/admin/settings"
-                          className="flex items-center space-x-2 px-4 py-2 text-sm text-yellow-300 hover:bg-navy-800"
-                          onClick={() => setIsProfileMenuOpen(false)}
-                        >
-                          <Shield className="h-4 w-4" />
-                          <span>Admin Settings</span>
-                        </Link>
-                      )}
                       <hr className="my-1 border-navy-700" />
                       <button
                         onClick={() => {
@@ -942,6 +1016,210 @@ const Navbar = () => {
         isOpen={showFeedbackModal} 
         onClose={() => setShowFeedbackModal(false)} 
       />
+
+      {/* Notifications Modal */}
+      <AnimatePresence>
+        {showNotificationsModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[100] flex items-center justify-center p-4"
+            onClick={() => setShowNotificationsModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-navy-900 rounded-2xl shadow-2xl border-2 border-yellow-500/30 w-full max-w-4xl max-h-[85vh] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 bg-gradient-to-r from-navy-800 to-navy-900">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-yellow-500/20 rounded-xl">
+                    <Bell className="h-6 w-6 text-yellow-400" />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold text-white">All Notifications</h2>
+                    <p className="text-sm text-gray-400 mt-1">
+                      {notifications.length} total • {unreadCount} unread
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {unreadCount > 0 && (
+                    <button
+                      onClick={markAllNotificationsAsRead}
+                      className="px-4 py-2 bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-400 rounded-lg transition-colors text-sm font-semibold"
+                    >
+                      Mark all read
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setShowNotificationsModal(false)}
+                    className="p-2 hover:bg-navy-800 rounded-lg transition-colors"
+                  >
+                    <X className="h-6 w-6 text-gray-400 hover:text-white" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Modal Body */}
+              <div className="overflow-y-auto max-h-[calc(85vh-120px)] custom-scrollbar">
+                {!notifications || notifications.length === 0 ? (
+                  <div className="p-12 text-center">
+                    <div className="inline-flex p-6 bg-navy-800 rounded-full mb-4">
+                      <Bell className="h-16 w-16 text-gray-600" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-white mb-2">No notifications yet</h3>
+                    <p className="text-gray-400">
+                      {notifications === null ? 'Loading your notifications...' : 'You\'re all caught up! Check back later for updates.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid gap-3 p-6">
+                    {notifications.map((n) => (
+                      <motion.div
+                        key={n.id}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className={`p-5 rounded-xl border-2 transition-all cursor-pointer group ${
+                          !n.read_at
+                            ? 'bg-yellow-900/10 border-yellow-500/50 hover:bg-yellow-900/20 hover:border-yellow-500'
+                            : 'bg-navy-800/50 border-navy-700 hover:bg-navy-800 hover:border-navy-600'
+                        }`}
+                        onClick={async () => {
+                          if (!n.read_at) {
+                            try {
+                              await db.markNotificationAsRead(n.id)
+                              const items = await db.getUserNotifications(profile.id, 50)
+                              setNotifications(items || [])
+                              setUnreadCount((items || []).filter(n => !n.read_at).length)
+                            } catch (_) {}
+                          }
+                          
+                          // Navigate based on notification type for admin users
+                          if (profile?.role === 'admin' && n.data?.link) {
+                            const notifType = n.data?.notification_type
+                            let targetPath = n.data.link
+                            
+                            // Add query params for specific notification types
+                            if (notifType === 'user_report') {
+                              targetPath = '/admin/users?openReports=true'
+                            }
+                            
+                            navigate(targetPath)
+                            setShowNotificationsModal(false)
+                          }
+                        }}
+                      >
+                        <div className="flex items-start gap-4">
+                          {/* Icon */}
+                          <div className={`flex-shrink-0 p-3 rounded-xl ${
+                            !n.read_at ? 'bg-yellow-500/20' : 'bg-navy-700'
+                          }`}>
+                            {n.type === 'user_report' && (
+                              <Flag className="h-6 w-6 text-red-400" />
+                            )}
+                            {n.type === 'donation_request' && (
+                              <Gift className="h-6 w-6 text-blue-400" />
+                            )}
+                            {n.type === 'volunteer_request' && (
+                              <Truck className="h-6 w-6 text-green-400" />
+                            )}
+                            {n.type === 'delivery_completed' && (
+                              <CheckCircle className="h-6 w-6 text-green-400" />
+                            )}
+                            {n.type === 'volunteer_approved' && (
+                              <CheckCircle className="h-6 w-6 text-green-400" />
+                            )}
+                            {n.type === 'delivery_assigned' && (
+                              <Truck className="h-6 w-6 text-blue-400" />
+                            )}
+                            {n.type === 'system_alert' && (
+                              <AlertTriangle className="h-6 w-6 text-yellow-400" />
+                            )}
+                            {!['user_report', 'donation_request', 'volunteer_request', 'delivery_completed', 'volunteer_approved', 'delivery_assigned', 'system_alert'].includes(n.type) && (
+                              <Bell className="h-6 w-6 text-yellow-400" />
+                            )}
+                          </div>
+
+                          {/* Content */}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div className="flex items-center gap-2">
+                                {!n.read_at && (
+                                  <span className="h-2.5 w-2.5 bg-yellow-400 rounded-full flex-shrink-0 animate-pulse"></span>
+                                )}
+                                <h3 className={`text-base font-bold ${
+                                  n.type === 'user_report' ? 'text-red-300' : 'text-white'
+                                }`}>
+                                  {n.title || 'Notification'}
+                                </h3>
+                              </div>
+                              {!n.read_at ? (
+                                <span className="px-2.5 py-1 bg-yellow-500 text-navy-900 text-xs font-bold rounded-full whitespace-nowrap">
+                                  NEW
+                                </span>
+                              ) : (
+                                <span className="px-2.5 py-1 bg-navy-700 text-gray-400 text-xs font-semibold rounded-full whitespace-nowrap">
+                                  READ
+                                </span>
+                              )}
+                            </div>
+                            
+                            <p className={`text-sm mb-3 ${
+                              n.type === 'user_report' ? 'text-red-200' : 'text-gray-300'
+                            }`}>
+                              {n.message}
+                            </p>
+                            
+                            {/* Show clickable hint for admin notifications with links */}
+                            {profile?.role === 'admin' && n.data?.link && (
+                              <div className="flex items-center gap-2 text-blue-400 text-xs font-medium mb-2">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                                </svg>
+                                Click to view details
+                              </div>
+                            )}
+                            
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2 text-gray-400 text-xs">
+                                <Clock className="h-3.5 w-3.5" />
+                                <span>{new Date(n.created_at).toLocaleString()}</span>
+                              </div>
+                              
+                              {!n.read_at && (
+                                <button
+                                  onClick={async (e) => {
+                                    e.stopPropagation()
+                                    try {
+                                      await db.markNotificationAsRead(n.id)
+                                      const items = await db.getUserNotifications(profile.id, 50)
+                                      setNotifications(items || [])
+                                      setUnreadCount((items || []).filter(n => !n.read_at).length)
+                                    } catch (_) {}
+                                  }}
+                                  className="opacity-0 group-hover:opacity-100 transition-opacity px-3 py-1.5 bg-navy-700 hover:bg-navy-600 text-yellow-400 rounded-lg text-xs font-semibold flex items-center gap-1"
+                                >
+                                  <CheckCircle className="h-3.5 w-3.5" />
+                                  Mark as read
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </nav>
   )
 }

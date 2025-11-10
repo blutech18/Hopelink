@@ -1,20 +1,14 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
 import { motion } from 'framer-motion'
 import { useForm, Controller } from 'react-hook-form'
 import { 
-  Truck, 
-  Calendar, 
-  Clock, 
-  MapPin, 
-  Shield, 
   FileText, 
   CheckCircle, 
   AlertCircle,
   Star,
   Navigation,
-  Phone,
-  Mail,
   User,
+  Mail,
   Camera,
   Upload,
   Trash2
@@ -23,11 +17,12 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { IDVerificationBadge } from './VerificationBadge'
 
-const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
+const VolunteerProfileSettings = forwardRef(({ profileData, onUpdate, isEditing }, ref) => {
   const { profile } = useAuth()
   const { success, error } = useToast()
   const [idImagePreview, setIdImagePreview] = useState(profileData?.primary_id_image_url || null)
   const [uploadingImage, setUploadingImage] = useState(false)
+  const [originalValues, setOriginalValues] = useState(null)
 
   const {
     register,
@@ -35,35 +30,14 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
     watch,
     setValue,
     getValues,
+    reset,
     formState: { errors }
   } = useForm({
     defaultValues: {
-      // Vehicle Information
-      has_vehicle: false,
-      vehicle_type: '',
-      vehicle_make_model: '',
-      vehicle_year: '',
-      vehicle_capacity: '',
-      
-      // Availability
-      availability_days: [],
-      availability_times: [],
-      max_delivery_distance: 20,
-      
       // Experience and Skills
       volunteer_experience: '',
       special_skills: [],
       languages_spoken: [],
-      
-      // Background Check and Verification
-      background_check_consent: false,
-      background_check_status: 'pending',
-      background_check_date: '',
-      
-      // Emergency Contact
-      emergency_contact_name: '',
-      emergency_contact_phone: '',
-      emergency_contact_relationship: '',
       
       // Valid ID (Required for volunteers)
       primary_id_type: '',
@@ -83,7 +57,6 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
     }
   })
 
-  const watchedHasVehicle = watch('has_vehicle')
   const watchedHasInsurance = watch('has_insurance')
   const watchedIdType = watch('primary_id_type')
 
@@ -91,33 +64,20 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
   useEffect(() => {
     const subscription = watch((data) => {
       if (onUpdate && typeof onUpdate === 'function') {
-        onUpdate(data)
+        // Pass both current data and original values for comparison
+        onUpdate(data, originalValues)
       }
     })
     return () => subscription.unsubscribe()
-  }, [watch, onUpdate])
+  }, [watch, onUpdate, originalValues])
 
   // Update form when profileData changes
   useEffect(() => {
     if (profileData) {
       const formData = {
-        has_vehicle: profileData?.has_vehicle || false,
-        vehicle_type: profileData?.vehicle_type || '',
-        vehicle_make_model: profileData?.vehicle_make_model || '',
-        vehicle_year: profileData?.vehicle_year || '',
-        vehicle_capacity: profileData?.vehicle_capacity || '',
-        availability_days: Array.isArray(profileData?.availability_days) ? profileData?.availability_days : [],
-        availability_times: Array.isArray(profileData?.availability_times) ? profileData?.availability_times : [],
-        max_delivery_distance: profileData?.max_delivery_distance || 20,
         volunteer_experience: profileData?.volunteer_experience || '',
         special_skills: Array.isArray(profileData?.special_skills) ? profileData?.special_skills : [],
         languages_spoken: Array.isArray(profileData?.languages_spoken) ? profileData?.languages_spoken : [],
-        background_check_consent: profileData?.background_check_consent || false,
-        background_check_status: profileData?.background_check_status || 'pending',
-        background_check_date: profileData?.background_check_date || '',
-        emergency_contact_name: profileData?.emergency_contact_name || '',
-        emergency_contact_phone: profileData?.emergency_contact_phone || '',
-        emergency_contact_relationship: profileData?.emergency_contact_relationship || '',
         primary_id_type: profileData?.primary_id_type || '',
         primary_id_number: profileData?.primary_id_number || '',
         primary_id_expiry: profileData?.primary_id_expiry || '',
@@ -130,6 +90,9 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         communication_preferences: Array.isArray(profileData?.communication_preferences) ? profileData?.communication_preferences : []
       }
       
+      // Store original values for comparison
+      setOriginalValues({ ...formData })
+      
       Object.entries(formData).forEach(([key, value]) => {
         setValue(key, value)
       })
@@ -139,6 +102,42 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
       }
     }
   }, [profileData, setValue])
+
+  // Expose resetForm method to parent via ref
+  useImperativeHandle(ref, () => ({
+    resetForm: () => {
+      // Reset form to original values
+      if (originalValues) {
+        reset(originalValues)
+        // Notify parent that form has been reset
+        if (onUpdate) {
+          onUpdate(originalValues, originalValues)
+        }
+      } else if (profileData) {
+        // If no original values stored, reload from profileData
+        const formData = {
+          volunteer_experience: profileData?.volunteer_experience || '',
+          special_skills: Array.isArray(profileData?.special_skills) ? profileData?.special_skills : [],
+          languages_spoken: Array.isArray(profileData?.languages_spoken) ? profileData?.languages_spoken : [],
+          primary_id_type: profileData?.primary_id_type || '',
+          primary_id_number: profileData?.primary_id_number || '',
+          primary_id_expiry: profileData?.primary_id_expiry || '',
+          primary_id_image_url: profileData?.primary_id_image_url || '',
+          has_insurance: profileData?.has_insurance || false,
+          insurance_provider: profileData?.insurance_provider || '',
+          insurance_policy_number: profileData?.insurance_policy_number || '',
+          preferred_delivery_types: Array.isArray(profileData?.preferred_delivery_types) ? profileData?.preferred_delivery_types : [],
+          delivery_notes: profileData?.delivery_notes || '',
+          communication_preferences: Array.isArray(profileData?.communication_preferences) ? profileData?.communication_preferences : []
+        }
+        reset(formData)
+        setOriginalValues({ ...formData })
+        if (onUpdate) {
+          onUpdate(formData, formData)
+        }
+      }
+    }
+  }), [originalValues, profileData, onUpdate, reset])
 
   // Image handling functions
   const convertToBase64 = (file) => {
@@ -194,11 +193,6 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
 
   const getCompletionPercentage = () => {
     const requiredFields = [
-      'availability_days',
-      'availability_times',
-      'background_check_consent',
-      'emergency_contact_name',
-      'emergency_contact_phone',
       'primary_id_type',
       'primary_id_number',
       'primary_id_image_url'
@@ -213,29 +207,6 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
     
     return Math.round((completedFields.length / requiredFields.length) * 100)
   }
-
-  const vehicleTypes = [
-    { value: 'sedan', label: 'Sedan' },
-    { value: 'suv', label: 'SUV' },
-    { value: 'truck', label: 'Pickup Truck' },
-    { value: 'van', label: 'Van' },
-    { value: 'motorcycle', label: 'Motorcycle' },
-    { value: 'bicycle', label: 'Bicycle' },
-    { value: 'other', label: 'Other' }
-  ]
-
-  const dayOptions = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'
-  ]
-
-  const timeSlots = [
-    'Early Morning (6-9 AM)',
-    'Morning (9-12 PM)',
-    'Afternoon (12-3 PM)',
-    'Late Afternoon (3-6 PM)',
-    'Evening (6-9 PM)',
-    'Night (9 PM-12 AM)'
-  ]
 
   const specialSkills = [
     'Heavy Lifting',
@@ -280,69 +251,6 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
   if (!isEditing) {
     return (
       <div className="space-y-6">
-
-        {/* Vehicle Information Display */}
-        <div className="card p-6">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Truck className="h-5 w-5 text-yellow-400" />
-            Vehicle Information
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-yellow-300">Has Vehicle</label>
-              <p className="text-white">{watchedHasVehicle ? 'Yes' : 'No'}</p>
-            </div>
-            {watchedHasVehicle && (
-              <>
-                <div>
-                  <label className="text-sm text-yellow-300">Vehicle Type</label>
-                  <p className={getValues('vehicle_type') ? 'text-white' : 'text-gray-400 italic'}>
-                    {getValues('vehicle_type') || 'Not specified'}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm text-yellow-300">Make & Model</label>
-                  <p className={getValues('vehicle_make_model') ? 'text-white' : 'text-gray-400 italic'}>
-                    {getValues('vehicle_make_model') || 'Not specified'}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm text-yellow-300">Max Delivery Distance</label>
-                  <p className="text-white">{getValues('max_delivery_distance')} km</p>
-                </div>
-              </>
-            )}
-          </div>
-        </div>
-
-        {/* Availability Display */}
-        <div className="card p-6">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-yellow-400" />
-            Availability
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-sm text-yellow-300">Available Days</label>
-              <p className={getValues('availability_days')?.length ? 'text-white' : 'text-gray-400 italic'}>
-                {getValues('availability_days')?.length ? 
-                  getValues('availability_days').join(', ') : 
-                  'Not specified'
-                }
-              </p>
-            </div>
-            <div>
-              <label className="text-sm text-yellow-300">Available Times</label>
-              <p className={getValues('availability_times')?.length ? 'text-white' : 'text-gray-400 italic'}>
-                {getValues('availability_times')?.length ? 
-                  getValues('availability_times').join(', ') : 
-                  'Not specified'
-                }
-              </p>
-            </div>
-          </div>
-        </div>
-
         {/* Valid ID Information */}
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center justify-between">
@@ -453,268 +361,26 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
             </div>
           </div>
         </div>
-
-        {/* Verification Status */}
-        <div className="card p-6">
-          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-            <Shield className="h-5 w-5 text-yellow-400" />
-            Background Check Status
-          </h3>
-          <div className="flex items-center gap-2">
-            {getValues('background_check_consent') ? (
-              <CheckCircle className="h-4 w-4 text-green-400" />
-            ) : (
-              <AlertCircle className="h-4 w-4 text-yellow-400" />
-            )}
-            <span className="text-white">
-              {getValues('background_check_consent') ? 'Consent Given' : 'Consent Required'}
-            </span>
-          </div>
-        </div>
       </div>
     )
   }
 
   return (
     <div className="space-y-6">
-      {/* Vehicle Information Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className="card p-6"
-      >
-        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Truck className="h-5 w-5 text-yellow-400" />
-          Vehicle Information
-        </h3>
-
-        <div className="space-y-4">
-          {/* Has Vehicle */}
-          <div>
-            <label className="flex items-center gap-3">
-              <input
-                type="checkbox"
-                checked={watchedHasVehicle}
-                onChange={(e) => setValue('has_vehicle', e.target.checked)}
-                className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-              />
-              <span className="text-white">I have access to a vehicle for deliveries</span>
-            </label>
-          </div>
-
-          {watchedHasVehicle && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              className="space-y-4 pl-6 border-l border-navy-600"
-            >
-              {/* Vehicle Type */}
-              <div>
-                <label className="block text-sm text-yellow-300 mb-2">Vehicle Type *</label>
-                <select
-                  {...register('vehicle_type', { 
-                    required: watchedHasVehicle ? 'Vehicle type is required' : false 
-                  })}
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
-                >
-                  <option value="">Select vehicle type</option>
-                  {vehicleTypes.map(type => (
-                    <option key={type.value} value={type.value}>{type.label}</option>
-                  ))}
-                </select>
-                {errors.vehicle_type && (
-                  <p className="mt-1 text-sm text-red-400">{errors.vehicle_type.message}</p>
-                )}
-              </div>
-
-              {/* Vehicle Details */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                              <div>
-                <label className="block text-sm text-yellow-300 mb-2">Make & Model</label>
-                <input
-                  {...register('vehicle_make_model')}
-                  type="text"
-                  placeholder="e.g., Toyota Vios"
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
-                />
-              </div>
-                              <div>
-                <label className="block text-sm text-yellow-300 mb-2">Year</label>
-                <input
-                  {...register('vehicle_year')}
-                  type="number"
-                  placeholder="2020"
-                  min="1990"
-                  max="2025"
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
-                />
-              </div>
-              </div>
-
-              {/* Cargo Capacity */}
-              <div>
-                <label className="block text-sm text-yellow-300 mb-2">Cargo Capacity</label>
-                <select
-                  {...register('vehicle_capacity')}
-                  className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
-                >
-                  <option value="">Select capacity</option>
-                  <option value="small">Small (1-2 boxes)</option>
-                  <option value="medium">Medium (3-5 boxes)</option>
-                  <option value="large">Large (6+ boxes or furniture)</option>
-                </select>
-              </div>
-
-              {/* Insurance */}
-              <div>
-                <label className="flex items-center gap-3 mb-2">
-                  <input
-                    type="checkbox"
-                    checked={watchedHasInsurance}
-                    onChange={(e) => setValue('has_insurance', e.target.checked)}
-                    className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-                  />
-                  <span className="text-white">Vehicle has valid insurance</span>
-                </label>
-
-                {watchedHasInsurance && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
-                    <input
-                      type="text"
-                      value={getValues('insurance_provider')}
-                      onChange={(e) => setValue('insurance_provider', e.target.value)}
-                      placeholder="Insurance provider"
-                      className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
-                    />
-                    <input
-                      type="text"
-                      value={getValues('insurance_policy_number')}
-                      onChange={(e) => setValue('insurance_policy_number', e.target.value)}
-                      placeholder="Policy number"
-                      className="px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
-                    />
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          )}
-
-          {/* Max Delivery Distance */}
-          <div>
-            <label className="block text-sm text-yellow-300 mb-2">
-              Maximum Delivery Distance *
-            </label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min="5"
-                max="100"
-                value={getValues('max_delivery_distance')}
-                onChange={(e) => setValue('max_delivery_distance', parseInt(e.target.value))}
-                className="flex-1 h-2 bg-navy-700 rounded-lg appearance-none cursor-pointer"
-              />
-              <span className="text-white font-medium w-16 text-center">
-                {getValues('max_delivery_distance')} km
-              </span>
-            </div>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Availability Section */}
+      {/* Valid ID Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
         className="card p-6"
       >
-        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Calendar className="h-5 w-5 text-yellow-400" />
-          Availability Schedule
+        <div className="border-b border-navy-700 pb-4 mb-6">
+          <h3 className="text-xl font-semibold text-white flex items-center">
+            <FileText className="h-5 w-5 text-yellow-400 mr-2" />
+            Valid ID (Required for Volunteers)
         </h3>
-
-        <div className="space-y-6">
-          {/* Available Days */}
-          <div>
-            <label className="block text-sm text-yellow-300 mb-3">Available Days *</label>
-            <Controller
-              name="availability_days"
-              control={control}
-              rules={{ required: 'Please select at least one available day' }}
-              render={({ field: { value = [], onChange } }) => (
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {dayOptions.map(day => (
-                    <label key={day} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(day)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            onChange([...value, day])
-                          } else {
-                            onChange(value.filter(item => item !== day))
-                          }
-                        }}
-                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-                      />
-                      <span className="text-white text-sm">{day}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            />
-            {errors.availability_days && (
-              <p className="mt-1 text-sm text-red-400">{errors.availability_days.message}</p>
-            )}
+          <p className="text-sm text-yellow-300 mt-1">Upload your driver's license for verification</p>
           </div>
-
-          {/* Available Times */}
-          <div>
-            <label className="block text-sm text-yellow-300 mb-3">Available Time Slots *</label>
-            <Controller
-              name="availability_times"
-              control={control}
-              rules={{ required: 'Please select at least one available time slot' }}
-              render={({ field: { value = [], onChange } }) => (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {timeSlots.map(slot => (
-                    <label key={slot} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(slot)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            onChange([...value, slot])
-                          } else {
-                            onChange(value.filter(item => item !== slot))
-                          }
-                        }}
-                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-                      />
-                      <span className="text-white text-sm">{slot}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            />
-            {errors.availability_times && (
-              <p className="mt-1 text-sm text-red-400">{errors.availability_times.message}</p>
-            )}
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Valid ID Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-        className="card p-6"
-      >
-        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <FileText className="h-5 w-5 text-yellow-400" />
-          Valid ID (Required for Volunteers)
-        </h3>
 
         <div className="space-y-4">
           <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
@@ -868,149 +534,20 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
         </div>
       </motion.div>
 
-      {/* Background Check Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-        className="card p-6"
-      >
-        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Shield className="h-5 w-5 text-yellow-400" />
-          Background Check & Verification
-        </h3>
-
-        <div className="space-y-4">
-          <div>
-            <label className="flex items-start gap-3">
-              <input
-                type="checkbox"
-                checked={getValues('background_check_consent')}
-                onChange={(e) => setValue('background_check_consent', e.target.checked)}
-                className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400 mt-1"
-              />
-              <div>
-                <span className="text-white block">I consent to a background check *</span>
-                <span className="text-sm text-yellow-300">
-                  This helps ensure the safety of all community members participating in HopeLink
-                </span>
-              </div>
-            </label>
-          </div>
-
-          {getValues('background_check_consent') && (
-            <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
-              <div className="flex items-center gap-3">
-                <CheckCircle className="h-5 w-5 text-green-400" />
-                <div>
-                  <h4 className="text-green-400 font-medium">Background Check Consent Given</h4>
-                  <p className="text-sm text-green-300">
-                    Thank you for your consent. A background check will be conducted as part of the volunteer verification process.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
-      </motion.div>
-
-      {/* Emergency Contact Section */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-        className="card p-6"
-      >
-        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Phone className="h-5 w-5 text-yellow-400" />
-          Emergency Contact
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm text-yellow-300 mb-2">Contact Name *</label>
-            <input
-              {...register('emergency_contact_name', { 
-                validate: {
-                  validIfProvided: (value) => {
-                    if (value && value.trim().length > 0) {
-                      if (value.trim().length < 2) {
-                        return 'Name must be at least 2 characters'
-                      }
-                      if (!/^[a-zA-Z\s\-'.]+$/.test(value)) {
-                        return 'Name can only contain letters, spaces, hyphens, apostrophes, and periods'
-                      }
-                    }
-                    return true
-                  }
-                }
-              })}
-              type="text"
-              placeholder="Full name"
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
-            />
-            {errors.emergency_contact_name && (
-              <p className="mt-1 text-sm text-red-400">{errors.emergency_contact_name.message}</p>
-            )}
-          </div>
-          <div>
-            <label className="block text-sm text-yellow-300 mb-2">Contact Phone *</label>
-            <input
-              {...register('emergency_contact_phone', { 
-                validate: {
-                  validFormat: (value) => {
-                    if (value && value.trim().length > 0) {
-                      const phoneRegex = /^(09|\+639)\d{9}$/
-                      if (!phoneRegex.test(value)) {
-                        return 'Please enter a valid Philippines phone number (e.g., 09123456789 or +639123456789)'
-                      }
-                      if (value === '09000000000') {
-                        return 'Please enter an actual phone number'
-                      }
-                    }
-                    return true
-                  }
-                }
-              })}
-              type="tel"
-              placeholder="09123456789 or +639123456789"
-              maxLength="13"
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
-            />
-            {errors.emergency_contact_phone && (
-              <p className="mt-1 text-sm text-red-400">{errors.emergency_contact_phone.message}</p>
-            )}
-          </div>
-          <div className="md:col-span-2">
-            <label className="block text-sm text-yellow-300 mb-2">Relationship</label>
-            <select
-              value={getValues('emergency_contact_relationship')}
-              onChange={(e) => setValue('emergency_contact_relationship', e.target.value)}
-              className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
-            >
-              <option value="">Select relationship</option>
-              <option value="spouse">Spouse</option>
-              <option value="parent">Parent</option>
-              <option value="sibling">Sibling</option>
-              <option value="child">Child</option>
-              <option value="friend">Friend</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-        </div>
-      </motion.div>
-
       {/* Experience and Skills Section */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
+        transition={{ delay: 0.2 }}
         className="card p-6"
       >
-        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <Star className="h-5 w-5 text-yellow-400" />
+        <div className="border-b border-navy-700 pb-4 mb-6">
+          <h3 className="text-xl font-semibold text-white flex items-center">
+            <Star className="h-5 w-5 text-yellow-400 mr-2" />
           Experience & Skills
         </h3>
+          <p className="text-sm text-yellow-300 mt-1">Share your volunteer experience and special skills</p>
+        </div>
 
         <div className="space-y-6">
           {/* Volunteer Experience */}
@@ -1019,8 +556,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               Previous Volunteer Experience
             </label>
             <textarea
-              value={getValues('volunteer_experience')}
-              onChange={(e) => setValue('volunteer_experience', e.target.value)}
+              {...register('volunteer_experience')}
               placeholder="Describe any previous volunteer work or relevant experience..."
               className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
               rows={3}
@@ -1034,23 +570,26 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               name="special_skills"
               control={control}
               render={({ field: { value = [], onChange } }) => (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {specialSkills.map(skill => (
-                    <label key={skill} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(skill)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            onChange([...value, skill])
-                          } else {
+                    <button
+                      key={skill}
+                      type="button"
+                      onClick={() => {
+                        if (value.includes(skill)) {
                             onChange(value.filter(item => item !== skill))
+                        } else {
+                          onChange([...value, skill])
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-                      />
-                      <span className="text-white text-sm">{skill}</span>
-                    </label>
+                      className={`h-16 w-full rounded-lg border-2 transition-all flex items-center gap-2 px-3 ${
+                        value.includes(skill)
+                          ? 'border-blue-400 bg-blue-500/20 text-white'
+                          : 'border-navy-700 bg-navy-800/50 text-gray-300 hover:border-blue-400/50 hover:bg-navy-700/50'
+                      }`}
+                    >
+                      <span className="text-xs font-medium truncate">{skill}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1064,23 +603,26 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               name="languages_spoken"
               control={control}
               render={({ field: { value = [], onChange } }) => (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {languages.map(language => (
-                    <label key={language} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(language)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            onChange([...value, language])
-                          } else {
+                    <button
+                      key={language}
+                      type="button"
+                      onClick={() => {
+                        if (value.includes(language)) {
                             onChange(value.filter(item => item !== language))
+                        } else {
+                          onChange([...value, language])
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-                      />
-                      <span className="text-white text-sm">{language}</span>
-                    </label>
+                      className={`h-16 w-full rounded-lg border-2 transition-all flex items-center gap-2 px-3 ${
+                        value.includes(language)
+                          ? 'border-blue-400 bg-blue-500/20 text-white'
+                          : 'border-navy-700 bg-navy-800/50 text-gray-300 hover:border-blue-400/50 hover:bg-navy-700/50'
+                      }`}
+                    >
+                      <span className="text-xs font-medium truncate">{language}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1093,13 +635,16 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.6 }}
+        transition={{ delay: 0.3 }}
         className="card p-6"
       >
-        <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-          <User className="h-5 w-5 text-yellow-400" />
+        <div className="border-b border-navy-700 pb-4 mb-6">
+          <h3 className="text-xl font-semibold text-white flex items-center">
+            <User className="h-5 w-5 text-yellow-400 mr-2" />
           Delivery Preferences
         </h3>
+          <p className="text-sm text-yellow-300 mt-1">Set your preferred delivery types and communication methods</p>
+        </div>
 
         <div className="space-y-6">
           {/* Preferred Delivery Types */}
@@ -1111,23 +656,26 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               name="preferred_delivery_types"
               control={control}
               render={({ field: { value = [], onChange } }) => (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {deliveryTypes.map(type => (
-                    <label key={type} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(type)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            onChange([...value, type])
-                          } else {
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => {
+                        if (value.includes(type)) {
                             onChange(value.filter(item => item !== type))
+                        } else {
+                          onChange([...value, type])
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-                      />
-                      <span className="text-white text-sm">{type}</span>
-                    </label>
+                      className={`h-16 w-full rounded-lg border-2 transition-all flex items-center gap-2 px-3 ${
+                        value.includes(type)
+                          ? 'border-blue-400 bg-blue-500/20 text-white'
+                          : 'border-navy-700 bg-navy-800/50 text-gray-300 hover:border-blue-400/50 hover:bg-navy-700/50'
+                      }`}
+                    >
+                      <span className="text-xs font-medium truncate">{type}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1143,23 +691,26 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               name="communication_preferences"
               control={control}
               render={({ field: { value = [], onChange } }) => (
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
                   {communicationPrefs.map(pref => (
-                    <label key={pref} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={value.includes(pref)}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            onChange([...value, pref])
-                          } else {
+                    <button
+                      key={pref}
+                      type="button"
+                      onClick={() => {
+                        if (value.includes(pref)) {
                             onChange(value.filter(item => item !== pref))
+                        } else {
+                          onChange([...value, pref])
                           }
                         }}
-                        className="rounded border-navy-600 bg-navy-800 text-yellow-400 focus:ring-yellow-400"
-                      />
-                      <span className="text-white text-sm">{pref}</span>
-                    </label>
+                      className={`h-16 w-full rounded-lg border-2 transition-all flex items-center gap-2 px-3 ${
+                        value.includes(pref)
+                          ? 'border-blue-400 bg-blue-500/20 text-white'
+                          : 'border-navy-700 bg-navy-800/50 text-gray-300 hover:border-blue-400/50 hover:bg-navy-700/50'
+                      }`}
+                    >
+                      <span className="text-xs font-medium truncate">{pref}</span>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1172,8 +723,7 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
               Additional Notes
             </label>
             <textarea
-              value={getValues('delivery_notes')}
-              onChange={(e) => setValue('delivery_notes', e.target.value)}
+              {...register('delivery_notes')}
               placeholder="Any additional information about your availability, preferences, or special circumstances..."
               className="w-full px-3 py-2 bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
               rows={3}
@@ -1183,6 +733,8 @@ const VolunteerProfileSettings = ({ profileData, onUpdate, isEditing }) => {
       </motion.div>
     </div>
   )
-}
+})
+
+VolunteerProfileSettings.displayName = 'VolunteerProfileSettings'
 
 export default VolunteerProfileSettings 

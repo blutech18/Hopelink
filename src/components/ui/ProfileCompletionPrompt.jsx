@@ -23,16 +23,16 @@ const ProfileCompletionPrompt = () => {
       : ['name', 'phone_number', 'address', 'city', 'primary_id_type', 'primary_id_number']
     
     const roleSpecificFields = {
-      donor: ['donation_types', 'preferred_contact_method'],
+      donor: ['donation_types'],
       recipient: ['household_size', 'assistance_needs', 'emergency_contact_name'],
-      volunteer: ['availability_days', 'background_check_consent'],
+      volunteer: [], // No required fields in volunteer settings tab (removed vehicle, availability, background check, emergency contact)
       admin: [] // Admins have minimal required fields
     }
 
     // Additional recommended fields for better profile completion
     const recommendedFields = {
-      donor: ['bio', 'preferred_pickup_location', 'donation_frequency', 'availability_days'],
-      recipient: [],
+      donor: ['bio', 'donation_frequency'],
+      recipient: ['emergency_contact_phone', 'bio'], // Emergency contact phone and bio for better trust
       volunteer: [],
       admin: []
     }
@@ -53,9 +53,17 @@ const ProfileCompletionPrompt = () => {
       return !value || value === 'To be completed' || value === '09000000000'
     })
     
-    // Special validation for volunteers - must have driver's license (not applicable to admins)
-    if (profile.role === 'volunteer' && profile.primary_id_type !== 'drivers_license') {
-      missingRequired.push('drivers_license_required')
+    // Special validation for volunteers - must have driver's license type and ID image
+    // Note: primary_id_number is already checked in baseRequiredFields above
+    if (profile.role === 'volunteer') {
+      // Check if ID type is specifically driver's license (not just any ID type)
+      if (profile.primary_id_type !== 'drivers_license') {
+        missingRequired.push('drivers_license_required')
+      }
+      // Check if ID image is uploaded (not in baseRequiredFields)
+      if (!profile.primary_id_image_url) {
+        missingRequired.push('primary_id_image_url')
+      }
     }
 
     const missingRecommended = allRecommendedFields.filter(field => {
@@ -75,6 +83,7 @@ const ProfileCompletionPrompt = () => {
       'city': 'City',
       'primary_id_type': 'Primary ID Type',
       'primary_id_number': 'Primary ID Number',
+      'primary_id_image_url': 'Primary ID Image',
       'secondary_id_type': 'Secondary ID Type',
       'secondary_id_number': 'Secondary ID Number',
       'organization_representative_name': 'Organization Representative Name',
