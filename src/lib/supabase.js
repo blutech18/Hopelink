@@ -138,7 +138,7 @@ export const db = {
           emergency_contact_name: recipientProfile.emergency_contact_name,
           emergency_contact_phone: recipientProfile.emergency_contact_phone
         } : {}),
-        // Flatten ID document fields
+        // Flatten ID document fields (from user_id_documents table)
         ...(idDocuments ? {
           primary_id_type: idDocuments.primary_id_type,
           primary_id_number: idDocuments.primary_id_number,
@@ -146,6 +146,18 @@ export const db = {
           secondary_id_type: idDocuments.secondary_id_type,
           secondary_id_number: idDocuments.secondary_id_number,
           secondary_id_image_url: idDocuments.secondary_id_image_url
+        } : {}),
+        // Flatten ID verification fields (from users.id_verification JSONB)
+        ...(user.id_verification ? {
+          primary_id_expiry: user.id_verification.primary_id_expiry,
+          secondary_id_expiry: user.id_verification.secondary_id_expiry,
+          // Override with id_verification data if available (more authoritative)
+          ...(user.id_verification.primary_id_type && { primary_id_type: user.id_verification.primary_id_type }),
+          ...(user.id_verification.primary_id_number && { primary_id_number: user.id_verification.primary_id_number }),
+          ...(user.id_verification.primary_id_image_url && { primary_id_image_url: user.id_verification.primary_id_image_url }),
+          ...(user.id_verification.secondary_id_type && { secondary_id_type: user.id_verification.secondary_id_type }),
+          ...(user.id_verification.secondary_id_number && { secondary_id_number: user.id_verification.secondary_id_number }),
+          ...(user.id_verification.secondary_id_image_url && { secondary_id_image_url: user.id_verification.secondary_id_image_url })
         } : {})
       }
 
@@ -423,9 +435,11 @@ export const db = {
       // ID document fields
       primary_id_type,
       primary_id_number,
+      primary_id_expiry,
       primary_id_image_url,
       secondary_id_type,
       secondary_id_number,
+      secondary_id_expiry,
       secondary_id_image_url,
       // Core user fields (everything else)
       ...userUpdates
@@ -602,7 +616,7 @@ export const db = {
       }
     }
 
-    // Update ID documents
+    // Update ID documents (excluding expiry dates which go to id_verification JSONB)
     const idDocUpdates = {}
     if (primary_id_type !== undefined) idDocUpdates.primary_id_type = primary_id_type
     if (primary_id_number !== undefined) idDocUpdates.primary_id_number = primary_id_number
@@ -610,6 +624,47 @@ export const db = {
     if (secondary_id_type !== undefined) idDocUpdates.secondary_id_type = secondary_id_type
     if (secondary_id_number !== undefined) idDocUpdates.secondary_id_number = secondary_id_number
     if (secondary_id_image_url !== undefined) idDocUpdates.secondary_id_image_url = secondary_id_image_url
+    
+    // Handle ID expiry dates - store in users.id_verification JSONB column
+    if (primary_id_expiry !== undefined || secondary_id_expiry !== undefined) {
+      // Get current id_verification data
+      const { data: currentUser } = await supabase
+        .from('users')
+        .select('id_verification')
+        .eq('id', userId)
+        .single()
+      
+      const currentIdVerification = currentUser?.id_verification || {}
+      const updatedIdVerification = { ...currentIdVerification }
+      
+      if (primary_id_expiry !== undefined) {
+        updatedIdVerification.primary_id_expiry = primary_id_expiry
+      }
+      if (secondary_id_expiry !== undefined) {
+        updatedIdVerification.secondary_id_expiry = secondary_id_expiry
+      }
+      
+      // Also include other ID fields in id_verification for consistency
+      if (primary_id_type !== undefined) updatedIdVerification.primary_id_type = primary_id_type
+      if (primary_id_number !== undefined) updatedIdVerification.primary_id_number = primary_id_number
+      if (primary_id_image_url !== undefined) updatedIdVerification.primary_id_image_url = primary_id_image_url
+      if (secondary_id_type !== undefined) updatedIdVerification.secondary_id_type = secondary_id_type
+      if (secondary_id_number !== undefined) updatedIdVerification.secondary_id_number = secondary_id_number
+      if (secondary_id_image_url !== undefined) updatedIdVerification.secondary_id_image_url = secondary_id_image_url
+      
+      // Update users table with id_verification JSONB
+      const { error: idVerifError } = await supabase
+        .from('users')
+        .update({ 
+          id_verification: updatedIdVerification,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', userId)
+      
+      if (idVerifError) {
+        console.error('Error updating id_verification:', idVerifError)
+      }
+    }
 
     if (Object.keys(idDocUpdates).length > 0) {
       // Check if ID document record exists
