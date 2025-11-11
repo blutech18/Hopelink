@@ -102,7 +102,9 @@ const normalizationFunctions = {
     }
     if (distance <= 0) return 1.0
     if (distance >= maxDistance) return 0.0
-    return Math.max(0, 1 - (distance / maxDistance))
+    const score = Math.max(0, 1 - (distance / maxDistance))
+    // Round to 4 decimal places for precision
+    return Math.round(score * 10000) / 10000
   },
 
   /**
@@ -152,7 +154,10 @@ const normalizationFunctions = {
     
     const difference = Math.abs(level1 - level2)
     // Exponential decay penalizes larger gaps more strongly
-    return Math.exp(-(difference / 1.5))
+    const score = Math.exp(-(difference / 1.5))
+    // Clamp to [0, 1] and round to 4 decimal places for precision
+    const clampedScore = Math.max(0, Math.min(1, score))
+    return Math.round(clampedScore * 10000) / 10000
   },
 
   /**
@@ -166,7 +171,9 @@ const normalizationFunctions = {
     const ratingScore = rating / 5.0
     const experienceBonus = Math.min(totalTasks / 10, 0.2) // Up to 20% bonus for experience
     const reliabilityScore = (ratingScore * 0.7) + (completionRate * 0.3) + experienceBonus
-    return Math.min(1.0, reliabilityScore)
+    // Clamp to [0, 1] and round to 4 decimal places for precision
+    const clampedScore = Math.max(0, Math.min(1.0, reliabilityScore))
+    return Math.round(clampedScore * 10000) / 10000
   },
 
   /**
@@ -183,7 +190,9 @@ const normalizationFunctions = {
     if (timeDiff <= flexibilityHours) return 1.0
     
     const maxReasonableDelay = flexibilityHours * 7 // 1 week max
-    return Math.max(0, 1 - (timeDiff / maxReasonableDelay))
+    const score = Math.max(0, 1 - (timeDiff / maxReasonableDelay))
+    // Round to 4 decimal places for precision
+    return Math.round(score * 10000) / 10000
   },
 
   /**
@@ -194,7 +203,10 @@ const normalizationFunctions = {
    */
   normalizeQuantityMatch(available, needed) {
     if (available >= needed) return 1.0
-    return available / needed
+    const score = available / needed
+    // Clamp to [0, 1] and round to 4 decimal places for precision
+    const clampedScore = Math.max(0, Math.min(1, score))
+    return Math.round(clampedScore * 10000) / 10000
   }
 }
 
@@ -275,7 +287,15 @@ class IntelligentMatcher {
       const detailedMatches = await Promise.all(quickRanked.map(async ({ donation }) => {
         const weights = await this.getContextualWeights(request, donation, baseWeights)
         const scores = await this.calculateDetailedScores(request, donation, groupParams)
-        const totalScore = Object.keys(weights).reduce((sum, criterion) => sum + ((scores[criterion] || 0) * (weights[criterion] || 0)), 0)
+        // Calculate total score with precision control
+        let totalScore = Object.keys(weights).reduce((sum, criterion) => {
+          const score = scores[criterion] || 0
+          const weight = weights[criterion] || 0
+          return sum + (score * weight)
+        }, 0)
+        // Clamp score to [0, 1] range and round to 4 decimal places for precision
+        totalScore = Math.max(0, Math.min(1, totalScore))
+        totalScore = Math.round(totalScore * 10000) / 10000
         return {
           donation,
           score: totalScore,
@@ -329,9 +349,15 @@ class IntelligentMatcher {
           delivery_compatibility: await this.calculateAvailabilityMatch(task, volunteer) // Map availability to delivery compatibility
         }
 
-        const totalScore = Object.keys(weights).reduce((sum, criterion) => {
-          return sum + ((scores[criterion] || 0) * (weights[criterion] || 0))
+        // Calculate total score with precision control
+        let totalScore = Object.keys(weights).reduce((sum, criterion) => {
+          const score = scores[criterion] || 0
+          const weight = weights[criterion] || 0
+          return sum + (score * weight)
         }, 0)
+        // Clamp score to [0, 1] range and round to 4 decimal places for precision
+        totalScore = Math.max(0, Math.min(1, totalScore))
+        totalScore = Math.round(totalScore * 10000) / 10000
 
         matches.push({
           volunteer,
@@ -397,10 +423,15 @@ class IntelligentMatcher {
         delivery_compatibility: await this.calculateAvailabilityMatch(taskWithLocations, volunteer)
       }
 
-      // Calculate total weighted score
-      const totalScore = Object.keys(weights).reduce((sum, criterion) => {
-        return sum + ((scores[criterion] || 0) * (weights[criterion] || 0))
+      // Calculate total weighted score with precision control
+      let totalScore = Object.keys(weights).reduce((sum, criterion) => {
+        const score = scores[criterion] || 0
+        const weight = weights[criterion] || 0
+        return sum + (score * weight)
       }, 0)
+      // Clamp score to [0, 1] range and round to 4 decimal places for precision
+      totalScore = Math.max(0, Math.min(1, totalScore))
+      totalScore = Math.round(totalScore * 10000) / 10000
 
       return {
         score: totalScore,
@@ -587,8 +618,9 @@ class IntelligentMatcher {
     
     // Apply preference boost (capped at 0.3 to prevent score from exceeding 1.0)
     const finalScore = Math.min(1.0, baseScore + preferenceBoost)
-    
-    return finalScore
+    // Clamp to [0, 1] and round to 4 decimal places for precision
+    const clampedScore = Math.max(0, Math.min(1, finalScore))
+    return Math.round(clampedScore * 10000) / 10000
   }
 
   calculateTextSimilarity(text1, text2) {
@@ -952,23 +984,68 @@ class IntelligentMatcher {
     if (perishableCategories.has(category) && groupParams?.perishable_geographic_boost) {
       // Adjust weights for perishable items
       const boost = groupParams.perishable_geographic_boost
+      const otherWeights = {
+        item_compatibility: base.item_compatibility || 0.25,
+        urgency_alignment: base.urgency_alignment || 0.20,
+        delivery_compatibility: base.delivery_compatibility || 0.10
+      }
+      const otherSum = otherWeights.item_compatibility + otherWeights.urgency_alignment + otherWeights.delivery_compatibility
       base.geographic_proximity = boost
-      base.item_compatibility = base.item_compatibility || 0.25
-      base.urgency_alignment = base.urgency_alignment || 0.20
-      base.delivery_compatibility = base.delivery_compatibility || 0.10
-      base.user_reliability = Math.max(0.05, 1 - (boost + base.item_compatibility + base.urgency_alignment + base.delivery_compatibility))
+      base.item_compatibility = otherWeights.item_compatibility
+      base.urgency_alignment = otherWeights.urgency_alignment
+      base.delivery_compatibility = otherWeights.delivery_compatibility
+      // Normalize remaining weight to user_reliability to ensure sum = 1.0
+      base.user_reliability = Math.max(0.05, 1.0 - (boost + otherSum))
+      // Normalize all weights to ensure they sum to exactly 1.0
+      const weightSum = base.geographic_proximity + base.item_compatibility + base.urgency_alignment + base.user_reliability + base.delivery_compatibility
+      if (Math.abs(weightSum - 1.0) > 0.001) {
+        const normalizeFactor = 1.0 / weightSum
+        base.geographic_proximity *= normalizeFactor
+        base.item_compatibility *= normalizeFactor
+        base.urgency_alignment *= normalizeFactor
+        base.user_reliability *= normalizeFactor
+        base.delivery_compatibility *= normalizeFactor
+      }
       return base
     }
 
     if (request?.urgency === 'critical' && groupParams?.critical_urgency_boost) {
       // Adjust weights for critical urgency
       const boost = groupParams.critical_urgency_boost
+      const otherWeights = {
+        item_compatibility: base.item_compatibility || 0.25,
+        geographic_proximity: base.geographic_proximity || 0.30,
+        delivery_compatibility: base.delivery_compatibility || 0.10
+      }
+      const otherSum = otherWeights.item_compatibility + otherWeights.geographic_proximity + otherWeights.delivery_compatibility
       base.urgency_alignment = boost
-      base.item_compatibility = base.item_compatibility || 0.25
-      base.geographic_proximity = base.geographic_proximity || 0.30
-      base.delivery_compatibility = base.delivery_compatibility || 0.10
-      base.user_reliability = Math.max(0.05, 1 - (boost + base.item_compatibility + base.geographic_proximity + base.delivery_compatibility))
+      base.item_compatibility = otherWeights.item_compatibility
+      base.geographic_proximity = otherWeights.geographic_proximity
+      base.delivery_compatibility = otherWeights.delivery_compatibility
+      // Normalize remaining weight to user_reliability to ensure sum = 1.0
+      base.user_reliability = Math.max(0.05, 1.0 - (boost + otherSum))
+      // Normalize all weights to ensure they sum to exactly 1.0
+      const weightSum = base.geographic_proximity + base.item_compatibility + base.urgency_alignment + base.user_reliability + base.delivery_compatibility
+      if (Math.abs(weightSum - 1.0) > 0.001) {
+        const normalizeFactor = 1.0 / weightSum
+        base.geographic_proximity *= normalizeFactor
+        base.item_compatibility *= normalizeFactor
+        base.urgency_alignment *= normalizeFactor
+        base.user_reliability *= normalizeFactor
+        base.delivery_compatibility *= normalizeFactor
+      }
       return base
+    }
+
+    // Ensure base weights sum to exactly 1.0 (normalize if needed)
+    const weightSum = base.geographic_proximity + base.item_compatibility + base.urgency_alignment + base.user_reliability + base.delivery_compatibility
+    if (Math.abs(weightSum - 1.0) > 0.001) {
+      const normalizeFactor = 1.0 / weightSum
+      base.geographic_proximity *= normalizeFactor
+      base.item_compatibility *= normalizeFactor
+      base.urgency_alignment *= normalizeFactor
+      base.user_reliability *= normalizeFactor
+      base.delivery_compatibility *= normalizeFactor
     }
 
     return base

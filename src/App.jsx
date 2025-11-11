@@ -35,6 +35,7 @@ const BrowseDonationsPage = React.lazy(() => import('./pages/recipient/BrowseDon
 const CreateRequestPage = React.lazy(() => import('./pages/recipient/CreateRequestPage'))
 const MyRequestsPage = React.lazy(() => import('./pages/recipient/MyRequestsPage'))
 const MyApprovedDonationsPage = React.lazy(() => import('./pages/recipient/MyApprovedDonationsPage'))
+const MyApprovedRequestsPage = React.lazy(() => import('./pages/recipient/MyApprovedRequestsPage'))
 
 // Volunteer pages
 const VolunteerDashboardPage = React.lazy(() => import('./pages/volunteer/VolunteerDashboardPage'))
@@ -115,7 +116,7 @@ function AppContent() {
   const location = useLocation()
   const navigate = useNavigate()
   const { loading, profile } = useAuth()
-  const { showToast } = useToast()
+  const { showToast, error: showError } = useToast()
   const [showSetupGuide, setShowSetupGuide] = useState(false)
   
   // Hide footer on login and signup pages
@@ -132,6 +133,7 @@ function AppContent() {
       }
     }
   }, [showToast])
+
 
   // Ensure recovery links always land on the reset password page
   useEffect(() => {
@@ -269,7 +271,7 @@ function AppContent() {
               } />
               <Route path="/my-approved-requests" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
-                  <MyApprovedDonationsPage />
+                  <MyApprovedRequestsPage />
                 </ProtectedRoute>
               } />
               

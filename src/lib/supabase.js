@@ -42,19 +42,120 @@ export const db = {
     }
 
     try {
-      const { data, error } = await supabase
+      // Get user data with joined profile tables based on role
+      // Explicitly list users table columns to avoid schema cache issues with moved columns
+      const { data: user, error: userError } = await supabase
         .from('users')
-        .select('*')
+        .select(`
+          id,
+          email,
+          name,
+          role,
+          phone_number,
+          is_verified,
+          is_active,
+          verification_status,
+          address,
+          city,
+          province,
+          latitude,
+          longitude,
+          profile_image_url,
+          bio,
+          birthdate,
+          age,
+          role_preferences,
+          contact_info,
+          address_details,
+          id_verification,
+          organization_info,
+          created_at,
+          updated_at,
+          last_login_at,
+          event_absence_count,
+          event_banned,
+          event_banned_at,
+          event_banned_by,
+          account_type,
+          zip_code,
+          address_barangay,
+          address_house,
+          address_street,
+          address_subdivision,
+          address_landmark,
+          communication_preferences,
+          preferred_delivery_types,
+          languages_spoken,
+          special_skills,
+          support_needs,
+          donor_profile:donor_profiles!donor_profiles_user_id_fkey(*),
+          volunteer_profile:volunteer_profiles!volunteer_profiles_user_id_fkey(*),
+          recipient_profile:recipient_profiles!recipient_profiles_user_id_fkey(*),
+          id_documents:user_id_documents!user_id_documents_user_id_fkey(*)
+        `)
         .eq('id', userId)
-        .maybeSingle() // Use maybeSingle instead of single to avoid throwing on no results
+        .maybeSingle()
       
-      if (error) {
-        // Log the specific error for debugging
-        console.error('Database error in getProfile:', error)
-        throw error
+      if (userError) {
+        console.error('Database error in getProfile:', userError)
+        throw userError
       }
+
+      if (!user) return null
+
+      // Merge profile data into user object for backward compatibility
+      const donorProfile = Array.isArray(user.donor_profile) ? user.donor_profile[0] : user.donor_profile
+      const volunteerProfile = Array.isArray(user.volunteer_profile) ? user.volunteer_profile[0] : user.volunteer_profile
+      const recipientProfile = Array.isArray(user.recipient_profile) ? user.recipient_profile[0] : user.recipient_profile
+      const idDocuments = Array.isArray(user.id_documents) ? user.id_documents[0] : user.id_documents
+
+      const profile = {
+        ...user,
+        // Flatten donor profile fields
+        ...(donorProfile ? {
+          organization_name: donorProfile.organization_name,
+          website_link: donorProfile.website_link,
+          donation_types: donorProfile.donation_types
+        } : {}),
+        // Flatten volunteer profile fields
+        ...(volunteerProfile ? {
+          has_vehicle: volunteerProfile.has_vehicle,
+          vehicle_type: volunteerProfile.vehicle_type,
+          max_delivery_distance: volunteerProfile.max_delivery_distance,
+          volunteer_experience: volunteerProfile.volunteer_experience,
+          background_check_consent: volunteerProfile.background_check_consent,
+          availability_days: volunteerProfile.availability_days,
+          availability_times: volunteerProfile.availability_times,
+          delivery_preferences: volunteerProfile.delivery_preferences,
+          has_insurance: volunteerProfile.has_insurance,
+          insurance_provider: volunteerProfile.insurance_provider,
+          insurance_policy_number: volunteerProfile.insurance_policy_number
+        } : {}),
+        // Flatten recipient profile fields
+        ...(recipientProfile ? {
+          household_size: recipientProfile.household_size,
+          assistance_needs: recipientProfile.assistance_needs,
+          emergency_contact_name: recipientProfile.emergency_contact_name,
+          emergency_contact_phone: recipientProfile.emergency_contact_phone
+        } : {}),
+        // Flatten ID document fields
+        ...(idDocuments ? {
+          primary_id_type: idDocuments.primary_id_type,
+          primary_id_number: idDocuments.primary_id_number,
+          primary_id_image_url: idDocuments.primary_id_image_url,
+          secondary_id_type: idDocuments.secondary_id_type,
+          secondary_id_number: idDocuments.secondary_id_number,
+          secondary_id_image_url: idDocuments.secondary_id_image_url
+        } : {})
+      }
+
+      // Remove nested objects
+      delete profile.donor_profile
+      delete profile.volunteer_profile
+      delete profile.recipient_profile
+      delete profile.id_documents
       
-      return data
+      return profile
     } catch (error) {
       // Handle network errors gracefully
       if (error.message?.includes('Failed to fetch') || 
@@ -68,7 +169,6 @@ export const db = {
           error.statusCode === 504 || 
           error.statusCode === 500) {
         console.warn('Network/server error fetching profile (non-critical):', error.message)
-        // Return null instead of throwing to prevent UI breakage
         return null
       }
       
@@ -115,33 +215,171 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    const { data, error } = await supabase
+    // Separate core user data from role-specific data
+    const {
+      // Donor fields
+      organization_name,
+      website_link,
+      donation_types,
+      // Volunteer fields
+      has_vehicle,
+      vehicle_type,
+      max_delivery_distance,
+      volunteer_experience,
+      background_check_consent,
+      availability_days,
+      availability_times,
+      delivery_preferences,
+      has_insurance,
+      insurance_provider,
+      insurance_policy_number,
+      // Recipient fields
+      household_size,
+      assistance_needs,
+      emergency_contact_name,
+      emergency_contact_phone,
+      // ID document fields
+      primary_id_type,
+      primary_id_number,
+      primary_id_image_url,
+      secondary_id_type,
+      secondary_id_number,
+      secondary_id_image_url,
+      // Core user fields (everything else)
+      ...userData
+    } = profileData
+
+    // Create user record
+    // Only select core fields to avoid schema cache issues with moved columns
+    const { data: user, error: userError } = await supabase
       .from('users')
       .insert({
         id: userId,
-        ...profileData,
+        ...userData,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .select()
+      .select('id, email, name, role, created_at, updated_at')
       .single()
     
-    if (error) throw error
+    if (userError) throw userError
+
+    // Create role-specific profile based on user role
+    const role = userData.role || user.role
+    
+    if (role === 'donor' && (organization_name || website_link || donation_types)) {
+      const { error: donorError } = await supabase
+        .from('donor_profiles')
+        .insert({
+          user_id: userId,
+          organization_name,
+          website_link,
+          donation_types
+        })
+      
+      if (donorError) {
+        console.error('Error creating donor profile:', donorError)
+        // Don't throw - user was created successfully
+      }
+    }
+
+    if (role === 'volunteer' && (
+      has_vehicle !== undefined ||
+      vehicle_type ||
+      max_delivery_distance !== undefined ||
+      volunteer_experience ||
+      background_check_consent !== undefined ||
+      availability_days ||
+      availability_times ||
+      delivery_preferences ||
+      has_insurance !== undefined ||
+      insurance_provider ||
+      insurance_policy_number
+    )) {
+      const { error: volunteerError } = await supabase
+        .from('volunteer_profiles')
+        .insert({
+          user_id: userId,
+          has_vehicle: has_vehicle || false,
+          vehicle_type,
+          max_delivery_distance,
+          volunteer_experience,
+          background_check_consent: background_check_consent || false,
+          availability_days,
+          availability_times,
+          delivery_preferences,
+          has_insurance: has_insurance || false,
+          insurance_provider,
+          insurance_policy_number
+        })
+      
+      if (volunteerError) {
+        console.error('Error creating volunteer profile:', volunteerError)
+        // Don't throw - user was created successfully
+      }
+    }
+
+    if (role === 'recipient' && (
+      household_size !== undefined ||
+      assistance_needs ||
+      emergency_contact_name ||
+      emergency_contact_phone
+    )) {
+      const { error: recipientError } = await supabase
+        .from('recipient_profiles')
+        .insert({
+          user_id: userId,
+          household_size,
+          assistance_needs,
+          emergency_contact_name,
+          emergency_contact_phone
+        })
+      
+      if (recipientError) {
+        console.error('Error creating recipient profile:', recipientError)
+        // Don't throw - user was created successfully
+      }
+    }
+
+    // Create ID documents if provided
+    if (primary_id_type || primary_id_number || primary_id_image_url ||
+        secondary_id_type || secondary_id_number || secondary_id_image_url) {
+      const { error: idDocError } = await supabase
+        .from('user_id_documents')
+        .insert({
+          user_id: userId,
+          primary_id_type,
+          primary_id_number,
+          primary_id_image_url,
+          secondary_id_type,
+          secondary_id_number,
+          secondary_id_image_url,
+          verification_status: 'pending'
+        })
+      
+      if (idDocError) {
+        console.error('Error creating ID documents:', idDocError)
+        // Don't throw - user was created successfully
+      }
+    }
+
+    // Get complete profile with joined data
+    const completeProfile = await this.getProfile(userId)
 
     // Notify admins about new user registration
     try {
-      const userName = data.name || 'A new user'
-      const roleEmoji = data.role === 'donor' ? '💝' : data.role === 'recipient' ? '🤲' : data.role === 'volunteer' ? '🚚' : '👤'
+      const userName = user.name || 'A new user'
+      const roleEmoji = role === 'donor' ? '💝' : role === 'recipient' ? '🤲' : role === 'volunteer' ? '🚚' : '👤'
       
       await this.notifyAllAdmins({
         type: 'system_alert',
         title: `${roleEmoji} New User Registration`,
-        message: `${userName} registered as ${data.role}`,
+        message: `${userName} registered as ${role}`,
         data: {
           user_id: userId,
           user_name: userName,
-          user_role: data.role,
-          user_email: data.email,
+          user_role: role,
+          user_email: user.email,
           link: '/admin/users',
           notification_type: 'new_user'
         }
@@ -151,7 +389,7 @@ export const db = {
       // Don't throw - user was created successfully
     }
 
-    return data
+    return completeProfile || user
   },
 
   async updateProfile(userId, updates) {
@@ -159,43 +397,287 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    const { data, error } = await supabase
-      .from('users')
-      .update({ ...updates, updated_at: new Date().toISOString() })
-      .eq('id', userId)
-      .select()
-      .single()
-    
-    if (error) throw error
+    // Separate updates by table
+    const {
+      // Donor fields
+      organization_name,
+      website_link,
+      donation_types,
+      // Volunteer fields
+      has_vehicle,
+      vehicle_type,
+      max_delivery_distance,
+      volunteer_experience,
+      background_check_consent,
+      availability_days,
+      availability_times,
+      delivery_preferences,
+      has_insurance,
+      insurance_provider,
+      insurance_policy_number,
+      // Recipient fields
+      household_size,
+      assistance_needs,
+      emergency_contact_name,
+      emergency_contact_phone,
+      // ID document fields
+      primary_id_type,
+      primary_id_number,
+      primary_id_image_url,
+      secondary_id_type,
+      secondary_id_number,
+      secondary_id_image_url,
+      // Core user fields (everything else)
+      ...userUpdates
+    } = updates
 
-    // Notify admins when user uploads ID documents
-    if ((updates.primary_id_image_url || updates.secondary_id_image_url) && data) {
-      try {
-        const userName = data.name || 'A user'
-        const idType = updates.primary_id_type || updates.secondary_id_type || 'ID'
+    // Update user table if there are core user fields
+    // Only select necessary fields to avoid schema cache issues
+    let userData = null
+    if (Object.keys(userUpdates).length > 0) {
+      const { data, error } = await supabase
+        .from('users')
+        .update({ ...userUpdates, updated_at: new Date().toISOString() })
+        .eq('id', userId)
+        .select('id, role, name, email, updated_at')
+        .single()
+      
+      if (error) throw error
+      userData = data
+    }
+
+    // Get user role to determine which profile table to update
+    if (!userData) {
+      const { data: user } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', userId)
+        .single()
+      userData = user
+    }
+
+    const role = userData?.role
+
+    // Update donor profile
+    const donorUpdates = {}
+    if (organization_name !== undefined) donorUpdates.organization_name = organization_name
+    if (website_link !== undefined) donorUpdates.website_link = website_link
+    if (donation_types !== undefined) donorUpdates.donation_types = donation_types
+
+    if (role === 'donor' && Object.keys(donorUpdates).length > 0) {
+      // Check if donor profile exists
+      const { data: existingDonor } = await supabase
+        .from('donor_profiles')
+        .select('user_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (existingDonor) {
+        // Update existing profile
+        const { error: donorError } = await supabase
+          .from('donor_profiles')
+          .update({
+            ...donorUpdates,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
         
-        await this.notifyAllAdmins({
-          type: 'system_alert',
-          title: '🆔 New ID Document Uploaded',
-          message: `${userName} uploaded ${idType} for verification`,
-          data: {
+        if (donorError) {
+          console.error('Error updating donor profile:', donorError)
+          // Continue - don't throw
+        }
+      } else {
+        // Insert new profile
+        const { error: donorError } = await supabase
+          .from('donor_profiles')
+          .insert({
             user_id: userId,
-            user_name: userName,
-            user_role: data.role,
-            id_type: idType,
-            has_primary_id: !!updates.primary_id_image_url,
-            has_secondary_id: !!updates.secondary_id_image_url,
-            link: '/admin/id-verification',
-            notification_type: 'new_id_upload'
-          }
-        })
-      } catch (notifError) {
-        console.error('Error notifying admins about ID upload:', notifError)
-        // Don't throw - profile was updated successfully
+            ...donorUpdates,
+            updated_at: new Date().toISOString()
+          })
+        
+        if (donorError) {
+          console.error('Error creating donor profile:', donorError)
+          // Continue - don't throw
+        }
       }
     }
 
-    return data
+    // Update volunteer profile
+    const volunteerUpdates = {}
+    if (has_vehicle !== undefined) volunteerUpdates.has_vehicle = has_vehicle
+    if (vehicle_type !== undefined) volunteerUpdates.vehicle_type = vehicle_type
+    if (max_delivery_distance !== undefined) volunteerUpdates.max_delivery_distance = max_delivery_distance
+    if (volunteer_experience !== undefined) volunteerUpdates.volunteer_experience = volunteer_experience
+    if (background_check_consent !== undefined) volunteerUpdates.background_check_consent = background_check_consent
+    if (availability_days !== undefined) volunteerUpdates.availability_days = availability_days
+    if (availability_times !== undefined) volunteerUpdates.availability_times = availability_times
+    if (delivery_preferences !== undefined) volunteerUpdates.delivery_preferences = delivery_preferences
+    if (has_insurance !== undefined) volunteerUpdates.has_insurance = has_insurance
+    if (insurance_provider !== undefined) volunteerUpdates.insurance_provider = insurance_provider
+    if (insurance_policy_number !== undefined) volunteerUpdates.insurance_policy_number = insurance_policy_number
+
+    if (role === 'volunteer' && Object.keys(volunteerUpdates).length > 0) {
+      // Check if volunteer profile exists
+      const { data: existingVolunteer } = await supabase
+        .from('volunteer_profiles')
+        .select('user_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (existingVolunteer) {
+        // Update existing profile
+        const { error: volunteerError } = await supabase
+          .from('volunteer_profiles')
+          .update({
+            ...volunteerUpdates,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
+        
+        if (volunteerError) {
+          console.error('Error updating volunteer profile:', volunteerError)
+          // Continue - don't throw
+        }
+      } else {
+        // Insert new profile
+        const { error: volunteerError } = await supabase
+          .from('volunteer_profiles')
+          .insert({
+            user_id: userId,
+            ...volunteerUpdates,
+            updated_at: new Date().toISOString()
+          })
+        
+        if (volunteerError) {
+          console.error('Error creating volunteer profile:', volunteerError)
+          // Continue - don't throw
+        }
+      }
+    }
+
+    // Update recipient profile
+    const recipientUpdates = {}
+    if (household_size !== undefined) recipientUpdates.household_size = household_size
+    if (assistance_needs !== undefined) recipientUpdates.assistance_needs = assistance_needs
+    if (emergency_contact_name !== undefined) recipientUpdates.emergency_contact_name = emergency_contact_name
+    if (emergency_contact_phone !== undefined) recipientUpdates.emergency_contact_phone = emergency_contact_phone
+
+    if (role === 'recipient' && Object.keys(recipientUpdates).length > 0) {
+      // Check if recipient profile exists
+      const { data: existingRecipient } = await supabase
+        .from('recipient_profiles')
+        .select('user_id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (existingRecipient) {
+        // Update existing profile
+        const { error: recipientError } = await supabase
+          .from('recipient_profiles')
+          .update({
+            ...recipientUpdates,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
+        
+        if (recipientError) {
+          console.error('Error updating recipient profile:', recipientError)
+          // Continue - don't throw
+        }
+      } else {
+        // Insert new profile
+        const { error: recipientError } = await supabase
+          .from('recipient_profiles')
+          .insert({
+            user_id: userId,
+            ...recipientUpdates,
+            updated_at: new Date().toISOString()
+          })
+        
+        if (recipientError) {
+          console.error('Error creating recipient profile:', recipientError)
+          // Continue - don't throw
+        }
+      }
+    }
+
+    // Update ID documents
+    const idDocUpdates = {}
+    if (primary_id_type !== undefined) idDocUpdates.primary_id_type = primary_id_type
+    if (primary_id_number !== undefined) idDocUpdates.primary_id_number = primary_id_number
+    if (primary_id_image_url !== undefined) idDocUpdates.primary_id_image_url = primary_id_image_url
+    if (secondary_id_type !== undefined) idDocUpdates.secondary_id_type = secondary_id_type
+    if (secondary_id_number !== undefined) idDocUpdates.secondary_id_number = secondary_id_number
+    if (secondary_id_image_url !== undefined) idDocUpdates.secondary_id_image_url = secondary_id_image_url
+
+    if (Object.keys(idDocUpdates).length > 0) {
+      // Check if ID document record exists
+      const { data: existingIdDoc } = await supabase
+        .from('user_id_documents')
+        .select('id')
+        .eq('user_id', userId)
+        .maybeSingle()
+
+      if (existingIdDoc) {
+        // Update existing record
+        const { error: idDocError } = await supabase
+          .from('user_id_documents')
+          .update({
+            ...idDocUpdates,
+            updated_at: new Date().toISOString()
+          })
+          .eq('user_id', userId)
+        
+        if (idDocError) {
+          console.error('Error updating ID documents:', idDocError)
+        }
+      } else {
+        // Create new record
+        const { error: idDocError } = await supabase
+          .from('user_id_documents')
+          .insert({
+            user_id: userId,
+            ...idDocUpdates,
+            verification_status: 'pending'
+          })
+        
+        if (idDocError) {
+          console.error('Error creating ID documents:', idDocError)
+        }
+      }
+
+      // Notify admins when user uploads ID documents
+      if ((primary_id_image_url || secondary_id_image_url) && userData) {
+        try {
+          const userName = userData.name || 'A user'
+          const idType = primary_id_type || secondary_id_type || 'ID'
+          
+          await this.notifyAllAdmins({
+            type: 'system_alert',
+            title: '🆔 New ID Document Uploaded',
+            message: `${userName} uploaded ${idType} for verification`,
+            data: {
+              user_id: userId,
+              user_name: userName,
+              user_role: userData.role,
+              id_type: idType,
+              has_primary_id: !!primary_id_image_url,
+              has_secondary_id: !!secondary_id_image_url,
+              link: '/admin/id-verification',
+              notification_type: 'new_id_upload'
+            }
+          })
+        } catch (notifError) {
+          console.error('Error notifying admins about ID upload:', notifError)
+          // Don't throw - profile was updated successfully
+        }
+      }
+    }
+
+    // Get complete updated profile
+    const completeProfile = await this.getProfile(userId)
+    return completeProfile || userData
   },
 
   // Donations
@@ -222,9 +704,13 @@ export const db = {
           name, 
           email, 
           profile_image_url,
-          donation_types,
           latitude,
-          longitude
+          longitude,
+          donor_profile:donor_profiles(
+            organization_name,
+            website_link,
+            donation_types
+          )
         )
       `)
       .order('created_at', { ascending: false })
@@ -457,11 +943,15 @@ export const db = {
           address_subdivision,
           address_landmark,
           bio,
-          household_size,
-          assistance_needs,
           latitude,
           longitude,
-          created_at
+          created_at,
+          recipient_profile:recipient_profiles(
+            household_size,
+            assistance_needs,
+            emergency_contact_name,
+            emergency_contact_phone
+          )
         )
       `)
       .order('created_at', { ascending: false })
@@ -506,9 +996,13 @@ export const db = {
           address,
           address_barangay,
           bio,
-          household_size,
-          assistance_needs,
-          created_at
+          created_at,
+          recipient_profile:recipient_profiles(
+            household_size,
+            assistance_needs,
+            emergency_contact_name,
+            emergency_contact_phone
+          )
         )
       `)
       .single()
@@ -2361,8 +2855,45 @@ export const db = {
         volunteer:users!deliveries_volunteer_id_fkey(id, name, email, phone_number),
         claim:donation_claims(
           *,
-          donation:donations(title, description, category),
-          recipient:users!donation_claims_recipient_id_fkey(id, name, phone_number)
+          donation:donations(
+            title, 
+            description, 
+            category, 
+            images, 
+            is_urgent, 
+            donation_destination,
+            pickup_location
+          ),
+          donor:users!donation_claims_donor_id_fkey(
+            id, 
+            name, 
+            email,
+            phone_number,
+            city,
+            province,
+            address,
+            address_street,
+            address_house,
+            address_subdivision,
+            address_barangay,
+            address_landmark,
+            zip_code
+          ),
+          recipient:users!donation_claims_recipient_id_fkey(
+            id, 
+            name, 
+            email,
+            phone_number,
+            city,
+            province,
+            address,
+            address_street,
+            address_house,
+            address_subdivision,
+            address_barangay,
+            address_landmark,
+            zip_code
+          )
         )
       `)
       .order('created_at', { ascending: false })
@@ -2472,6 +3003,7 @@ export const db = {
             donor:users!donations_donor_id_fkey(
               id, 
               name, 
+              email,
               phone_number, 
               city, 
               province,

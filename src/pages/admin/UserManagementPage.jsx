@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
+import { motion, AnimatePresence } from 'framer-motion'
 import { useSearchParams } from 'react-router-dom'
 import { 
   Users, 
@@ -21,13 +21,17 @@ import {
   Eye,
   Download,
   Printer,
-  Flag
+  Flag,
+  Ban,
+  Unlock
 } from 'lucide-react'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import { supabase, db } from '../../lib/supabase'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import ReportsModal from '../../components/ui/ReportsModal'
+import { useAuth } from '../../contexts/AuthContext'
+import { useToast } from '../../contexts/ToastContext'
 
 const UserManagementPage = () => {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -41,6 +45,10 @@ const UserManagementPage = () => {
   const [zoomedImage, setZoomedImage] = useState(null)
   const [showReportsModal, setShowReportsModal] = useState(false)
   const [reportCount, setReportCount] = useState(0)
+  const [suspendConfirm, setSuspendConfirm] = useState(null)
+  const [activateConfirm, setActivateConfirm] = useState(null)
+  const { profile } = useAuth()
+  const { success, error: showError } = useToast()
 
   useEffect(() => {
     loadUsers()
@@ -86,6 +94,7 @@ const UserManagementPage = () => {
       setLoading(true)
       
       // Fetch users from database with limit for better performance
+      // Join with user_id_documents table to get ID verification fields
       const { data: users, error } = await supabase
         .from('users')
         .select(`
@@ -99,13 +108,7 @@ const UserManagementPage = () => {
           is_active,
           created_at,
           profile_image_url,
-          primary_id_type,
-          primary_id_number,
-          primary_id_image_url,
-          id_verification_status,
-          secondary_id_type,
-          secondary_id_number,
-          secondary_id_image_url
+          id_documents:user_id_documents!user_id_documents_user_id_fkey(*)
         `)
         .order('created_at', { ascending: false })
         .limit(100) // Limit to 100 most recent users for better performance
@@ -114,7 +117,22 @@ const UserManagementPage = () => {
         console.error('Error loading users:', error)
         setUsers([])
       } else {
-        setUsers(users || [])
+        // Flatten ID document fields from joined table
+        const flattenedUsers = (users || []).map(user => {
+          const idDocuments = Array.isArray(user.id_documents) ? user.id_documents[0] : user.id_documents
+          return {
+            ...user,
+            primary_id_type: idDocuments?.primary_id_type || null,
+            primary_id_number: idDocuments?.primary_id_number || null,
+            primary_id_image_url: idDocuments?.primary_id_image_url || null,
+            secondary_id_type: idDocuments?.secondary_id_type || null,
+            secondary_id_number: idDocuments?.secondary_id_number || null,
+            secondary_id_image_url: idDocuments?.secondary_id_image_url || null,
+            // Map verification_status from id_documents to id_verification_status for backward compatibility
+            id_verification_status: idDocuments?.verification_status || null
+          }
+        })
+        setUsers(flattenedUsers)
       }
     } catch (error) {
       console.error('Error loading users:', error)
@@ -134,14 +152,65 @@ const UserManagementPage = () => {
     }
   }
 
-  const handleSuspendUser = async (userId) => {
+  const handleSuspendUser = async (userId, userName) => {
     try {
-      // Update user status
+      // Update user is_active status to false (suspended)
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ is_active: false })
+        .eq('id', userId)
+
+      if (updateError) {
+        console.error('Error suspending user:', updateError)
+        showError('Failed to suspend user. Please try again.')
+        return
+      }
+
+      // Update local state for immediate feedback
       setUsers(users.map(user => 
-        user.id === userId ? { ...user, status: 'suspended' } : user
+        user.id === userId ? { ...user, is_active: false } : user
       ))
-    } catch (error) {
-      console.error('Error suspending user:', error)
+
+      success(`User ${userName || 'has been'} suspended successfully.`)
+      setSuspendConfirm(null)
+
+      // Reload users to ensure consistency
+      await loadUsers()
+    } catch (err) {
+      console.error('Error suspending user:', err)
+      showError('Failed to suspend user. Please try again.')
+      setSuspendConfirm(null)
+    }
+  }
+
+  const handleActivateUser = async (userId, userName) => {
+    try {
+      // Update user is_active status to true (activated)
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ is_active: true })
+        .eq('id', userId)
+
+      if (updateError) {
+        console.error('Error activating user:', updateError)
+        showError('Failed to activate user. Please try again.')
+        return
+      }
+
+      // Update local state for immediate feedback
+      setUsers(users.map(user => 
+        user.id === userId ? { ...user, is_active: true } : user
+      ))
+
+      success(`User ${userName || 'has been'} activated successfully.`)
+      setActivateConfirm(null)
+
+      // Reload users to ensure consistency
+      await loadUsers()
+    } catch (err) {
+      console.error('Error activating user:', err)
+      showError('Failed to activate user. Please try again.')
+      setActivateConfirm(null)
     }
   }
 
@@ -149,21 +218,24 @@ const UserManagementPage = () => {
     try {
       console.log('Approve ID:', userId, idType)
       
-      // Update database
-      const updateData = {
-        is_verified: true
-      }
-      
-      // Both primary and secondary IDs use the same verification status
-      updateData.id_verification_status = 'verified'
-
-      const { error } = await supabase
+      // Update user verification status
+      const { error: userError } = await supabase
         .from('users')
-        .update(updateData)
+        .update({ is_verified: true })
         .eq('id', userId)
 
-      if (error) {
-        console.error('Error approving ID:', error)
+      if (userError) {
+        console.error('Error updating user verification:', userError)
+      }
+
+      // Update ID document verification status
+      const { error: idDocError } = await supabase
+        .from('user_id_documents')
+        .update({ verification_status: 'verified' })
+        .eq('user_id', userId)
+
+      if (idDocError) {
+        console.error('Error approving ID:', idDocError)
         return
       }
 
@@ -186,16 +258,11 @@ const UserManagementPage = () => {
     try {
       console.log('Reject ID:', userId, idType)
       
-      // Update database
-      const updateData = {}
-      
-      // Both primary and secondary IDs use the same verification status
-      updateData.id_verification_status = 'rejected'
-
+      // Update ID document verification status
       const { error } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', userId)
+        .from('user_id_documents')
+        .update({ verification_status: 'rejected' })
+        .eq('user_id', userId)
 
       if (error) {
         console.error('Error rejecting ID:', error)
@@ -973,14 +1040,14 @@ const UserManagementPage = () => {
                           <>
                             <button
                               onClick={() => handleApproveId(user.id, 'primary')}
-                              className="text-green-400 hover:text-green-300 p-1"
+                              className="text-green-400 hover:text-green-300 p-1 transition-colors"
                               title="Approve Primary ID"
                             >
                               <Check className="h-4 w-4" />
                             </button>
                             <button
                               onClick={() => handleRejectId(user.id, 'primary')}
-                              className="text-red-400 hover:text-red-300 p-1"
+                              className="text-red-400 hover:text-red-300 p-1 transition-colors"
                               title="Reject Primary ID"
                             >
                               <X className="h-4 w-4" />
@@ -990,11 +1057,33 @@ const UserManagementPage = () => {
                         
                         <button
                           onClick={() => handleViewUser(user.id)}
-                          className="text-yellow-400 hover:text-yellow-300 p-1"
+                          className="text-yellow-400 hover:text-yellow-300 p-1.5 rounded-lg hover:bg-yellow-500/10 transition-colors"
                           title="View Details"
                         >
                           <Eye className="h-4 w-4" />
                         </button>
+                        
+                        {user.role !== 'admin' && (
+                          <>
+                            {user.is_active ? (
+                              <button
+                                onClick={() => setSuspendConfirm({ id: user.id, name: user.name })}
+                                className="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                                title="Suspend User"
+                              >
+                                <Ban className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => setActivateConfirm({ id: user.id, name: user.name })}
+                                className="text-green-400 hover:text-green-300 p-1.5 rounded-lg hover:bg-green-500/10 transition-colors"
+                                title="Activate User"
+                              >
+                                <Unlock className="h-4 w-4" />
+                              </button>
+                            )}
+                          </>
+                        )}
                       </div>
                     </td>
                   </motion.tr>
@@ -1232,6 +1321,132 @@ const UserManagementPage = () => {
             loadReportCount()
           }} 
         />
+
+        {/* Suspend Confirmation Modal */}
+        <AnimatePresence>
+          {suspendConfirm && (
+            <div 
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              onClick={() => setSuspendConfirm(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.2 }}
+                className="bg-navy-900 border-2 border-red-500/20 shadow-2xl rounded-xl max-w-md w-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b-2 border-red-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-500/10 rounded-lg">
+                    <Ban className="h-6 w-6 text-red-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Suspend User</h3>
+                    <p className="text-xs text-red-300">This action will restrict user access</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setSuspendConfirm(null)}
+                  className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <p className="text-white mb-4">
+                  Are you sure you want to suspend <span className="font-semibold text-red-400">{suspendConfirm.name}</span>?
+                </p>
+                <p className="text-sm text-gray-400 mb-6">
+                  The user will be unable to access their account until reactivated. This action can be reversed later.
+                </p>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setSuspendConfirm(null)}
+                    className="flex-1 px-4 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleSuspendUser(suspendConfirm.id, suspendConfirm.name)}
+                    className="flex-1 px-4 py-2 bg-red-600/20 hover:bg-red-600/30 border border-red-500/50 text-red-400 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Suspend User
+                  </button>
+                </div>
+              </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Activate Confirmation Modal */}
+        <AnimatePresence>
+          {activateConfirm && (
+            <div 
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+              onClick={() => setActivateConfirm(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                transition={{ duration: 0.2 }}
+                className="bg-navy-900 border-2 border-green-500/20 shadow-2xl rounded-xl max-w-md w-full"
+                onClick={(e) => e.stopPropagation()}
+              >
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b-2 border-green-500/20">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-green-500/10 rounded-lg">
+                    <Unlock className="h-6 w-6 text-green-400" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">Activate User</h3>
+                    <p className="text-xs text-green-300">Restore user account access</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setActivateConfirm(null)}
+                  className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Content */}
+              <div className="p-6">
+                <p className="text-white mb-4">
+                  Are you sure you want to activate <span className="font-semibold text-green-400">{activateConfirm.name}</span>?
+                </p>
+                <p className="text-sm text-gray-400 mb-6">
+                  The user will regain full access to their account and can use all platform features.
+                </p>
+                
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setActivateConfirm(null)}
+                    className="flex-1 px-4 py-2 bg-navy-800 hover:bg-navy-700 border border-navy-700 text-white rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => handleActivateUser(activateConfirm.id, activateConfirm.name)}
+                    className="flex-1 px-4 py-2 bg-green-600/20 hover:bg-green-600/30 border border-green-500/50 text-green-400 rounded-lg text-sm font-medium transition-colors"
+                  >
+                    Activate User
+                  </button>
+                </div>
+              </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )

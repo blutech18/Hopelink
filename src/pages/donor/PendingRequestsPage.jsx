@@ -222,11 +222,18 @@ const PendingRequestsPage = () => {
               return {
                 ...request,
                 donation,
+                requesterProfile,
                 data: {
                   ...request.data,
                   requester_email: requesterProfile?.email || request.data?.requester_email,
                   requester_phone: requesterProfile?.phone_number || request.data?.requester_phone,
-                  requester_address: requesterProfile?.address || request.data?.requester_address
+                  requester_address: requesterProfile?.address || request.data?.requester_address,
+                  requester_address_street: requesterProfile?.address_street,
+                  requester_address_barangay: requesterProfile?.address_barangay,
+                  requester_address_landmark: requesterProfile?.address_landmark,
+                  requester_city: requesterProfile?.city,
+                  requester_province: requesterProfile?.province,
+                  requester_zip_code: requesterProfile?.zip_code
                 }
               }
             })
@@ -241,10 +248,17 @@ const PendingRequestsPage = () => {
               return {
                 ...request,
                 donation,
+                volunteerProfile,
                 data: {
                   ...request.data,
                   volunteer_email: volunteerProfile?.email || request.data?.volunteer_email,
-                  volunteer_phone: volunteerProfile?.phone_number || request.data?.volunteer_phone
+                  volunteer_phone: volunteerProfile?.phone_number || request.data?.volunteer_phone,
+                  volunteer_address_street: volunteerProfile?.address_street,
+                  volunteer_address_barangay: volunteerProfile?.address_barangay,
+                  volunteer_address_landmark: volunteerProfile?.address_landmark,
+                  volunteer_city: volunteerProfile?.city,
+                  volunteer_province: volunteerProfile?.province,
+                  volunteer_zip_code: volunteerProfile?.zip_code
                 }
               }
             })
@@ -792,180 +806,229 @@ const PendingRequestsPage = () => {
         {/* Details Modal */}
         <AnimatePresence>
           {showDetailsModal && selectedRequest && (
-            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowDetailsModal(false)}>
+            <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4" onClick={() => setShowDetailsModal(false)}>
               <motion.div
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
                 transition={{ duration: 0.2 }}
-                className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+                className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* Header */}
-                <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-yellow-500/10 rounded-lg">
-                      <Bell className="h-6 w-6 text-yellow-400" />
+                <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0 gap-3">
+                  <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                    <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                      <Bell className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
                     </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-white">Request Details</h3>
-                      <p className="text-xs text-yellow-300">Complete information</p>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">Request Details</h3>
+                      <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
                     </div>
                   </div>
                   <button
                     onClick={() => setShowDetailsModal(false)}
-                    className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                    className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg flex-shrink-0"
                   >
-                    <X className="h-5 w-5" />
+                    <X className="h-5 w-5 sm:h-6 sm:w-6" />
                   </button>
                 </div>
 
                 {/* Content with Custom Scrollbar */}
-                <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-                  <div className="space-y-6">
+                <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 custom-scrollbar">
+                  <div className="space-y-4 sm:space-y-6">
                     {/* Image Section */}
                     {selectedRequest.donation?.images && selectedRequest.donation.images.length > 0 && (
-                      <div className="relative rounded-lg overflow-hidden border-2 border-yellow-500/30">
+                      <div className="relative rounded-lg overflow-hidden bg-navy-800">
                         <img 
                           src={selectedRequest.donation.images[0]} 
                           alt={selectedRequest.donation.title}
-                          className="w-full h-64 object-cover"
+                          className="w-full h-48 sm:h-64 object-cover"
                         />
-                        <div className="absolute top-3 right-3">
-                          <span className="px-3 py-1.5 rounded-lg text-xs font-semibold text-yellow-400 bg-orange-900/80 backdrop-blur-md border-2 border-orange-500/50 uppercase">
-                            ⏳ Pending Review
-                          </span>
-                        </div>
-                        <div className="absolute top-3 left-3">
-                          <span className="px-3 py-1.5 rounded-lg text-xs font-semibold text-white bg-navy-900/80 backdrop-blur-md border-2 border-navy-700 uppercase capitalize">
-                            {selectedRequest.donation.status?.replace('_', ' ')}
-                          </span>
+                        <div className="absolute top-2 right-2 bg-orange-600 text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center">
+                          <Clock className="h-3 w-3 mr-1" />
+                          Pending Review
                         </div>
                       </div>
                     )}
 
                     {/* Title and Type */}
-                    <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-start justify-between gap-4 mb-3">
-                        <h4 className="text-2xl font-bold text-white">{selectedRequest.donation?.title || 'N/A'}</h4>
+                    <div className="bg-navy-800/50 rounded-lg p-3 sm:p-4 border border-navy-700">
+                      <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-4 mb-2 sm:mb-3">
+                        <h4 className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{selectedRequest.donation?.title || 'N/A'}</h4>
                         {(!selectedRequest.donation?.images || selectedRequest.donation.images.length === 0) && (
-                          <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                          <span className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
                             {selectedRequest.type === 'donation_request' ? 'Donation Request' : 'Volunteer Request'}
                           </span>
                         )}
                       </div>
-                      <p className="text-gray-300 leading-relaxed">{selectedRequest.donation?.description || 'No description provided'}</p>
+                      <p className="text-sm sm:text-base text-gray-300 leading-relaxed">{selectedRequest.donation?.description || 'No description provided'}</p>
                     </div>
 
                     {/* Details Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="h-4 w-4 text-blue-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Category</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-blue-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Category</label>
+                          </div>
+                          <p className="text-white text-lg font-medium">{selectedRequest.donation?.category || 'N/A'}</p>
                         </div>
-                        <p className="text-white text-lg font-medium">{selectedRequest.donation?.category || 'N/A'}</p>
                       </div>
                       
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="h-4 w-4 text-green-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Quantity</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-green-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Quantity</label>
+                          </div>
+                          <p className="text-white text-lg font-medium">{selectedRequest.donation?.quantity || 'N/A'}</p>
                         </div>
-                        <p className="text-white text-lg font-medium">{selectedRequest.donation?.quantity || 'N/A'}</p>
                       </div>
                     </div>
 
                     {/* Delivery Info */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Truck className="h-4 w-4 text-purple-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Delivery Mode</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Truck className="h-4 w-4 text-purple-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Delivery Mode</label>
+                          </div>
+                          <p className="text-white text-lg font-medium capitalize">{selectedRequest.donation?.delivery_mode || 'N/A'}</p>
                         </div>
-                        <p className="text-white text-lg font-medium capitalize">{selectedRequest.donation?.delivery_mode || 'N/A'}</p>
                       </div>
 
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <CheckCircle className="h-4 w-4 text-green-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Status</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <CheckCircle className="h-4 w-4 text-green-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Status</label>
+                          </div>
+                          <p className="text-white text-lg font-medium capitalize">{selectedRequest.donation?.status || 'N/A'}</p>
                         </div>
-                        <p className="text-white text-lg font-medium capitalize">{selectedRequest.donation?.status || 'N/A'}</p>
                       </div>
                     </div>
 
                     {/* Location */}
                     {selectedRequest.donation?.pickup_location && (
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <MapPin className="h-4 w-4 text-green-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-purple-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                          </div>
+                          <p className="text-white text-center max-w-[60%] break-words">{selectedRequest.donation.pickup_location}</p>
                         </div>
-                        <p className="text-white">{selectedRequest.donation.pickup_location}</p>
                       </div>
                     )}
 
-                    {/* Requester/Volunteer Information */}
-                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-3">
-                        <User className="h-4 w-4 text-blue-400" />
-                        <label className="text-sm font-semibold text-yellow-300">
-                          {selectedRequest.type === 'donation_request' ? 'Recipient' : 'Volunteer'} Information
-                        </label>
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex justify-between">
-                          <span className="text-gray-400">Name:</span>
-                          <span className="text-white font-medium">
-                            {selectedRequest.data?.requester_name || selectedRequest.data?.volunteer_name || 'Unknown'}
-                          </span>
+                    {/* Contact Information and Address Details - Same Row */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Requester/Volunteer Information */}
+                      <div className="bg-navy-800/30 rounded-lg p-3 border border-navy-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <User className="h-4 w-4 text-blue-400" />
+                          <label className="text-sm font-semibold text-yellow-300">
+                            {selectedRequest.type === 'donation_request' ? 'Recipient' : 'Volunteer'} Contact
+                          </label>
                         </div>
-                        {(selectedRequest.data?.requester_email || selectedRequest.data?.volunteer_email) && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-400">Email:</span>
-                            <span className="text-white">
-                              {selectedRequest.data?.requester_email || selectedRequest.data?.volunteer_email}
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 text-xs font-medium">Name:</span>
+                            <span className={`font-medium flex-1 break-words text-sm ${(selectedRequest.data?.requester_name || selectedRequest.data?.volunteer_name) ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedRequest.data?.requester_name || selectedRequest.data?.volunteer_name || 'Not provided'}
                             </span>
                           </div>
-                        )}
-                        {(selectedRequest.data?.requester_phone || selectedRequest.data?.volunteer_phone) && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-400">Phone:</span>
-                            <span className="text-white">
-                              {selectedRequest.data?.requester_phone || selectedRequest.data?.volunteer_phone}
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 text-xs font-medium">Email:</span>
+                            <span className={`flex-1 break-words text-sm ${(selectedRequest.data?.requester_email || selectedRequest.data?.volunteer_email) ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedRequest.data?.requester_email || selectedRequest.data?.volunteer_email || 'Not provided'}
                             </span>
                           </div>
-                        )}
-                        {selectedRequest.data?.requester_address && (
-                          <div className="flex justify-between">
-                            <span className="text-gray-400">Address:</span>
-                            <span className="text-white">{selectedRequest.data.requester_address}</span>
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 text-xs font-medium">Phone:</span>
+                            <span className={`flex-1 break-words text-sm ${(selectedRequest.data?.requester_phone || selectedRequest.data?.volunteer_phone) ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedRequest.data?.requester_phone || selectedRequest.data?.volunteer_phone || 'Not provided'}
+                            </span>
                           </div>
-                        )}
+                        </div>
+                      </div>
+
+                      {/* Address Details */}
+                      <div className="bg-navy-800/30 rounded-lg p-3 border border-navy-700">
+                        <div className="flex items-center gap-2 mb-2">
+                          <MapPin className="h-4 w-4 text-purple-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Address Details</label>
+                        </div>
+                        <div className="space-y-2">
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 text-xs font-medium">Street:</span>
+                            <span className={`flex-1 break-words text-sm ${(selectedRequest.data?.requester_address_street || selectedRequest.data?.volunteer_address_street) ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedRequest.data?.requester_address_street || selectedRequest.data?.volunteer_address_street || 'Not provided'}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 text-xs font-medium">Barangay:</span>
+                            <span className={`flex-1 break-words text-sm ${(selectedRequest.data?.requester_address_barangay || selectedRequest.data?.volunteer_address_barangay) ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedRequest.data?.requester_address_barangay || selectedRequest.data?.volunteer_address_barangay || 'Not provided'}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 text-xs font-medium">City:</span>
+                            <span className={`flex-1 break-words text-sm ${(selectedRequest.data?.requester_city || selectedRequest.data?.volunteer_city) ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedRequest.data?.requester_city || selectedRequest.data?.volunteer_city || 'Not provided'}
+                            </span>
+                          </div>
+                          <div className="flex items-start gap-2">
+                            <span className="text-gray-400 text-xs font-medium">Province:</span>
+                            <span className={`flex-1 break-words text-sm ${(selectedRequest.data?.requester_province || selectedRequest.data?.volunteer_province) ? 'text-white' : 'text-gray-400 italic'}`}>
+                              {selectedRequest.data?.requester_province || selectedRequest.data?.volunteer_province || 'Not provided'}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
                     {/* Request Timeline */}
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Calendar className="h-4 w-4 text-purple-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Date Submitted</label>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-orange-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Date Submitted</label>
+                        </div>
+                        <p className="text-white">{new Date(selectedRequest.created_at).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric'
+                        })}</p>
                       </div>
-                      <p className="text-white">{new Date(selectedRequest.created_at).toLocaleDateString()}</p>
                     </div>
 
                     {/* Message */}
                     {selectedRequest.message && (
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <MessageSquare className="h-4 w-4 text-blue-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Message</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <MessageSquare className="h-4 w-4 text-blue-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Message</label>
+                          </div>
+                          <p className="text-white text-center max-w-[60%] break-words">{selectedRequest.message}</p>
                         </div>
-                        <p className="text-white">{selectedRequest.message}</p>
                       </div>
                     )}
                   </div>
+                </div>
+
+                {/* Footer */}
+                <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t-2 border-yellow-500/20 flex justify-end flex-shrink-0">
+                  <button
+                    onClick={() => setShowDetailsModal(false)}
+                    className="px-4 sm:px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
+                  >
+                    Close
+                  </button>
                 </div>
               </motion.div>
             </div>

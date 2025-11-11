@@ -383,27 +383,11 @@ const BrowseDonationsPage = () => {
                 </div>
               </div>
               
-              {/* My Approved Requests Button - Hidden on mobile, shown on tablet+ */}
-              <button
-                onClick={() => navigate('/my-approved-requests')}
-                className="hidden sm:flex items-center gap-1.5 px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-green-500/20 to-emerald-600/20 border-2 border-green-500/40 rounded-full shadow-lg hover:from-green-500/30 hover:to-emerald-600/30 transition-all active:scale-95"
-              >
-                <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-400" />
-                <span className="text-xs sm:text-sm font-medium text-green-300">My Requests</span>
-                <ArrowRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-400" />
-              </button>
+              {/* My Approved Requests Button removed per request */}
             </div>
           </div>
           
-          {/* Mobile My Requests Button */}
-          <button
-            onClick={() => navigate('/my-approved-requests')}
-            className="sm:hidden w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-green-600 to-emerald-700 hover:from-green-700 hover:to-emerald-800 text-white rounded-lg font-semibold transition-all shadow-md active:scale-95"
-          >
-            <Package className="h-4 w-4" />
-            <span>My Approved Requests</span>
-            <ArrowRight className="h-4 w-4" />
-          </button>
+          {/* Mobile My Requests Button removed per request */}
         </motion.div>
 
         {/* Filters */}
@@ -752,7 +736,9 @@ const BrowseDonationsPage = () => {
                             <CheckCircle className="h-4 w-4 text-green-400" />
                             <label className="text-sm font-semibold text-yellow-300">Condition</label>
                           </div>
-                          <p className="text-white text-lg font-medium capitalize">{selectedDonation.condition?.replace('_', ' ') || 'Unknown'}</p>
+                          <p className={`text-lg font-medium capitalize ${selectedDonation.condition ? 'text-white' : 'text-gray-400 italic'}`}>
+                            {selectedDonation.condition?.replace('_', ' ') || 'Not provided'}
+                          </p>
                         </div>
                       </div>
                       
@@ -762,35 +748,37 @@ const BrowseDonationsPage = () => {
                             <User className="h-4 w-4 text-green-400" />
                             <label className="text-sm font-semibold text-yellow-300">Donated By</label>
                           </div>
-                          <p className="text-white text-lg font-medium">{selectedDonation.donor?.name || 'Anonymous'}</p>
+                          <p className={`text-lg font-medium ${selectedDonation.donor?.name ? 'text-white' : 'text-gray-400 italic'}`}>
+                            {selectedDonation.donor?.name || 'Not provided'}
+                          </p>
                         </div>
                       </div>
 
-                      {selectedDonation.estimated_value && (
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Star className="h-4 w-4 text-yellow-400" />
-                              <label className="text-sm font-semibold text-yellow-300">Estimated Value</label>
-                            </div>
-                            <p className="text-white text-lg font-medium">₱{parseInt(selectedDonation.estimated_value).toLocaleString()}</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Location */}
-                    {(selectedDonation.pickup_location || selectedDonation.donor) && (
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <MapPin className="h-4 w-4 text-purple-400" />
-                            <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                            <Star className="h-4 w-4 text-yellow-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Estimated Value</label>
                           </div>
-                          <p className="text-white text-center max-w-[60%] break-words">{formatLocation(selectedDonation)}</p>
+                          <p className={`text-lg font-medium ${selectedDonation.estimated_value ? 'text-white' : 'text-gray-400 italic'}`}>
+                            {selectedDonation.estimated_value ? `₱${parseInt(selectedDonation.estimated_value).toLocaleString()}` : 'Not provided'}
+                          </p>
                         </div>
                       </div>
-                    )}
+                    </div>
+
+                    {/* Location */}
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-purple-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                        </div>
+                        <p className={`text-center max-w-[60%] break-words ${(selectedDonation.pickup_location || selectedDonation.donor) ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {(selectedDonation.pickup_location || selectedDonation.donor) ? formatLocation(selectedDonation) : 'Not provided'}
+                        </p>
+                      </div>
+                    </div>
 
                     {/* Delivery Mode and Posted Date */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -816,22 +804,22 @@ const BrowseDonationsPage = () => {
                     </div>
 
                     {/* Expiry Date */}
-                    {selectedDonation.expiry_date && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-red-400" />
-                            <label className="text-sm font-semibold text-yellow-300">Expires On</label>
-                          </div>
-                          <p className="text-white">{formatDate(selectedDonation.expiry_date)}</p>
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-4 w-4 text-red-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Expires On</label>
                         </div>
+                        <p className={selectedDonation.expiry_date ? 'text-white' : 'text-gray-400 italic'}>
+                          {selectedDonation.expiry_date ? formatDate(selectedDonation.expiry_date) : 'Not provided'}
+                        </p>
                       </div>
-                    )}
+                    </div>
 
                     {/* Tags */}
-                    {selectedDonation.tags && selectedDonation.tags.length > 0 && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <label className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</label>
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <label className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</label>
+                      {selectedDonation.tags && selectedDonation.tags.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                           {selectedDonation.tags.map((tag, tagIndex) => (
                             <span key={tagIndex} className="inline-flex items-center text-xs font-medium bg-navy-700 text-yellow-300 px-3 py-1.5 rounded-lg border border-yellow-500/30">
@@ -840,8 +828,10 @@ const BrowseDonationsPage = () => {
                             </span>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <p className="text-gray-400 italic text-sm">Not provided</p>
+                      )}
+                    </div>
 
                     {/* Action Note */}
                     <div className="bg-yellow-900/20 border border-yellow-500/20 rounded-lg p-4">

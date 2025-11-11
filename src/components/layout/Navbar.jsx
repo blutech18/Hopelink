@@ -295,6 +295,7 @@ const Navbar = () => {
       { path: '/browse-donations', label: 'Browse Donations', icon: Gift },
       { path: '/create-request', label: 'Create Request', icon: Heart },
       { path: '/my-requests', label: 'My Requests', icon: Users },
+      { path: '/my-approved-requests', label: 'My Approved Requests', icon: CheckCircle },
     ],
     volunteer: [
       { path: '/volunteer-dashboard', label: 'Dashboard', icon: User },

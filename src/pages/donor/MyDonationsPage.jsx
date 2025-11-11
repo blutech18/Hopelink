@@ -31,7 +31,8 @@ import {
   RefreshCw,
   Upload,
   Building,
-  Flag
+  Flag,
+  Tag
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -1334,140 +1335,172 @@ const MyDonationsPage = () => {
 
         {/* View Donation Modal */}
         {showViewModal && selectedDonation && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2 }}
-              className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+              className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-yellow-500/10 rounded-lg">
-                    <Gift className="h-6 w-6 text-yellow-400" />
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0 gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                  <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                    <Gift className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">Donation Details</h3>
-                    <p className="text-xs text-yellow-300">Complete information</p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">Donation Details</h3>
+                    <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowViewModal(false)}
-                  className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                  className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg flex-shrink-0"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-5 w-5 sm:h-6 sm:w-6" />
                 </button>
               </div>
 
               {/* Content with Custom Scrollbar */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
-                <div className="space-y-6">
-                  {/* Image Section */}
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 custom-scrollbar">
+                <div className="space-y-4 sm:space-y-6">
+                  {/* Donation Image */}
                   {selectedDonation.images && selectedDonation.images.length > 0 && (
-                    <div className="relative rounded-lg overflow-hidden border-2 border-yellow-500/30">
-                      <img 
-                        src={selectedDonation.images[0]} 
+                    <div className="relative rounded-lg overflow-hidden bg-navy-800">
+                      <img
+                        src={selectedDonation.images[0]}
                         alt={selectedDonation.title}
-                        className="w-full h-64 object-cover"
+                        className="w-full h-48 sm:h-64 object-cover"
                       />
-                      <div className="absolute top-3 right-3">
-                        <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md border-2 ${getStatusColor(selectedDonation.status)}`}>
-                          {selectedDonation.status.replace('_', ' ').toUpperCase()}
-                        </span>
-                      </div>
                       {selectedDonation.is_urgent && (
-                        <div className="absolute top-3 left-3">
-                          <span className="px-3 py-1.5 rounded-lg text-xs font-semibold text-red-400 bg-red-500/80 backdrop-blur-md border-2 border-red-500/50 uppercase">
-                            ⚡ URGENT
-                          </span>
+                        <div className="absolute top-2 right-2 bg-red-600 text-white px-3 py-1.5 rounded-full text-xs font-medium flex items-center">
+                          <AlertCircle className="h-3 w-3 mr-1" />
+                          Urgent
                         </div>
                       )}
                     </div>
                   )}
 
                   {/* Title and Status */}
-                  <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">
-                    <div className="flex items-start justify-between gap-4 mb-3">
-                      <h4 className="text-2xl font-bold text-white">{selectedDonation.title}</h4>
-                      <span className="px-3 py-1.5 rounded-full text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
+                  <div className="bg-navy-800/50 rounded-lg p-3 sm:p-4 border border-navy-700">
+                    <div className="flex flex-col sm:flex-row items-start justify-between gap-2 sm:gap-4 mb-2 sm:mb-3">
+                      <h4 className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{selectedDonation.title}</h4>
+                      <span className="px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[10px] sm:text-xs font-semibold bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 whitespace-nowrap">
                         {selectedDonation.category}
                       </span>
                     </div>
-                    {(!selectedDonation.images || selectedDonation.images.length === 0) && (
-                      <div className="flex items-center gap-2 mb-3">
-                        <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getStatusColor(selectedDonation.status)}`}>
-                          {getStatusIcon(selectedDonation.status)}
-                          <span className="ml-1 capitalize">{selectedDonation.status.replace('_', ' ')}</span>
-                        </span>
-                        {selectedDonation.is_urgent && (
-                          <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold bg-danger-900/20 text-danger-300 border border-danger-500/30">
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                            URGENT
-                          </span>
-                        )}
-                      </div>
-                    )}
-                    <p className="text-gray-300 leading-relaxed">{selectedDonation.description}</p>
+                    <p className="text-sm sm:text-base text-gray-300 leading-relaxed">{selectedDonation.description || 'No description provided'}</p>
                   </div>
 
                   {/* Details Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Package className="h-4 w-4 text-blue-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Quantity</label>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Package className="h-4 w-4 text-blue-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Quantity Available</label>
+                        </div>
+                        <span className={`text-lg font-medium ${selectedDonation.quantity != null ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {selectedDonation.quantity != null ? selectedDonation.quantity : 'Not provided'}
+                        </span>
                       </div>
-                      <p className="text-white text-lg font-medium">{selectedDonation.quantity}</p>
                     </div>
                     
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <CheckCircle className="h-4 w-4 text-green-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Condition</label>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <CheckCircle className="h-4 w-4 text-green-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Condition</label>
+                        </div>
+                        <span className={`text-lg font-medium ${selectedDonation.condition ? 'text-white capitalize' : 'text-gray-400 italic'}`}>
+                          {selectedDonation.condition ? selectedDonation.condition.replace('_', ' ') : 'Not provided'}
+                        </span>
                       </div>
-                      <p className="text-white text-lg font-medium capitalize">{selectedDonation.condition?.replace('_', ' ')}</p>
                     </div>
                   </div>
 
                   {/* Location */}
                   <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                    <div className="flex items-center gap-2 mb-2">
-                      <MapPin className="h-4 w-4 text-green-400" />
-                      <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <MapPin className="h-4 w-4 text-purple-400" />
+                        <label className="text-sm font-semibold text-yellow-300">Pickup Location</label>
+                      </div>
+                      <span className={`text-center max-w-[60%] break-words ${selectedDonation.pickup_location ? 'text-white' : 'text-gray-400 italic'}`}>
+                        {selectedDonation.pickup_location || 'Not provided'}
+                      </span>
                     </div>
-                    <p className="text-white">{selectedDonation.pickup_location}</p>
                   </div>
 
-                  {selectedDonation.pickup_instructions && (
-                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
                         <AlertCircle className="h-4 w-4 text-orange-400" />
                         <label className="text-sm font-semibold text-yellow-300">Pickup Instructions</label>
                       </div>
-                      <p className="text-white">{selectedDonation.pickup_instructions}</p>
+                      <span className={`text-center max-w-[60%] break-words ${selectedDonation.pickup_instructions ? 'text-white' : 'text-gray-400 italic'}`}>
+                        {selectedDonation.pickup_instructions || 'Not provided'}
+                      </span>
                     </div>
-                  )}
+                  </div>
 
-                  {/* Additional Info */}
+                  {/* Delivery Mode and Posted Date */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedDonation.expiry_date && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Clock className="h-4 w-4 text-orange-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Expiry Date</label>
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Package className="h-4 w-4 text-yellow-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Delivery Mode</label>
                         </div>
-                        <p className="text-white">{new Date(selectedDonation.expiry_date).toLocaleDateString()}</p>
+                        <span className={`text-lg font-medium ${selectedDonation.delivery_mode ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {selectedDonation.delivery_mode
+                            ? (selectedDonation.delivery_mode === 'pickup' ? 'Self Pickup'
+                              : selectedDonation.delivery_mode === 'volunteer' ? 'Volunteer Delivery'
+                              : selectedDonation.delivery_mode === 'direct' ? 'Direct Delivery'
+                              : selectedDonation.delivery_mode === 'donor_delivery' ? 'Donor Delivery'
+                              : selectedDonation.delivery_mode === 'organization_pickup' ? 'Organization Pickup'
+                              : selectedDonation.delivery_mode.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()))
+                            : 'Not provided'}
+                        </span>
                       </div>
-                    )}
+                    </div>
 
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Calendar className="h-4 w-4 text-purple-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-orange-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                        </div>
+                        <span className="text-white">
+                          {selectedDonation.created_at
+                            ? new Date(selectedDonation.created_at).toLocaleDateString('en-US', {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric'
+                              })
+                            : 'Not provided'}
+                        </span>
                       </div>
-                      <p className="text-white">{new Date(selectedDonation.created_at).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+
+                  {/* Expiry Date */}
+                  <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-red-400" />
+                        <label className="text-sm font-semibold text-yellow-300">Expires On</label>
+                      </div>
+                      <span className={`text-lg font-medium ${selectedDonation.expiry_date ? 'text-white' : 'text-gray-400 italic'}`}>
+                        {selectedDonation.expiry_date
+                          ? new Date(selectedDonation.expiry_date).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
+                            })
+                          : 'Not provided'}
+                      </span>
                     </div>
                   </div>
 
@@ -1477,11 +1510,9 @@ const MyDonationsPage = () => {
                       <label className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</label>
                       <div className="flex flex-wrap gap-2">
                         {selectedDonation.tags.map((tag, tagIndex) => (
-                          <span
-                            key={tagIndex}
-                            className="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-medium bg-navy-700 text-yellow-300 border border-yellow-500/30"
-                          >
-                            #{tag}
+                          <span key={tagIndex} className="inline-flex items-center text-xs font-medium bg-navy-700 text-yellow-300 px-3 py-1.5 rounded-lg border border-yellow-500/30">
+                            <Tag className="h-3 w-3 mr-1" />
+                            {tag}
                           </span>
                         ))}
                       </div>
@@ -1570,10 +1601,10 @@ const MyDonationsPage = () => {
               </div>
 
               {/* Footer */}
-              <div className="p-6 pt-4 border-t-2 border-yellow-500/20 flex justify-end flex-shrink-0">
+              <div className="p-4 sm:p-6 pt-3 sm:pt-4 border-t-2 border-yellow-500/20 flex justify-end flex-shrink-0">
                 <button
                   onClick={() => setShowViewModal(false)}
-                  className="px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
+                  className="px-4 sm:px-6 py-2.5 bg-navy-800 hover:bg-navy-700 text-white rounded-lg font-medium transition-colors border border-navy-600"
                 >
                   Close
                 </button>

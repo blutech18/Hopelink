@@ -963,15 +963,13 @@ const MyRequestsPage = () => {
                       <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setShowViewModal(false)}
-                      className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg active:scale-95 flex-shrink-0"
-                      aria-label="Close modal"
-                    >
-                      <X className="h-4 w-4 sm:h-5 sm:w-5" />
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setShowViewModal(false)}
+                    className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg flex-shrink-0"
+                    aria-label="Close modal"
+                  >
+                    <X className="h-5 w-5 sm:h-6 sm:w-6" />
+                  </button>
                 </div>
 
                 {/* Content with Custom Scrollbar */}
@@ -1006,24 +1004,28 @@ const MyRequestsPage = () => {
                     </div>
 
                     {/* Details Grid */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Package className="h-4 w-4 text-blue-400 flex-shrink-0" />
-                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Quantity Needed</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Package className="h-4 w-4 text-blue-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Quantity Needed</label>
+                          </div>
+                          <p className="text-white text-lg font-medium">{selectedRequest.quantity_needed}</p>
                         </div>
-                        <p className="text-white text-base sm:text-lg font-medium">{selectedRequest.quantity_needed}</p>
                       </div>
                       
                       {(() => {
                         const statusInfo = getStatusInfo(selectedRequest.status)
                         return (
-                          <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                            <div className="flex items-center gap-2 mb-2">
-                              <AlertCircle className="h-4 w-4 text-orange-400 flex-shrink-0" />
-                              <label className="text-xs sm:text-sm font-semibold text-yellow-300">Status</label>
+                          <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <AlertCircle className="h-4 w-4 text-orange-400" />
+                                <label className="text-sm font-semibold text-yellow-300">Status</label>
+                              </div>
+                              <p className="text-white text-lg font-medium">{statusInfo.label}</p>
                             </div>
-                            <p className="text-white text-base sm:text-lg font-medium">{statusInfo.label}</p>
                           </div>
                         )
                       })()}
@@ -1031,63 +1033,73 @@ const MyRequestsPage = () => {
                       {(() => {
                         const urgencyInfo = getUrgencyInfo(selectedRequest.urgency)
                         return (
-                          <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Clock className="h-4 w-4 text-red-400 flex-shrink-0" />
-                              <label className="text-xs sm:text-sm font-semibold text-yellow-300">Urgency</label>
+                          <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-4 w-4 text-red-400" />
+                                <label className="text-sm font-semibold text-yellow-300">Urgency</label>
+                              </div>
+                              <p className="text-white text-lg font-medium">{urgencyInfo.label}</p>
                             </div>
-                            <p className="text-white text-base sm:text-lg font-medium">{urgencyInfo.label}</p>
                           </div>
                         )
                       })()}
 
-                      {selectedRequest.claims_count > 0 && (
-                        <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Heart className="h-4 w-4 text-green-400 flex-shrink-0" />
-                            <label className="text-xs sm:text-sm font-semibold text-yellow-300">Claims</label>
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Heart className="h-4 w-4 text-green-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Claims</label>
                           </div>
-                          <p className="text-white text-base sm:text-lg font-medium">{selectedRequest.claims_count} claim(s)</p>
+                          <p className={`text-lg font-medium ${selectedRequest.claims_count > 0 ? 'text-white' : 'text-gray-400 italic'}`}>
+                            {selectedRequest.claims_count > 0 ? `${selectedRequest.claims_count} claim(s)` : 'Not provided'}
+                          </p>
                         </div>
-                      )}
+                      </div>
                     </div>
 
                     {/* Location */}
-                    {selectedRequest.location && (
-                      <div className="bg-navy-800/30 rounded-lg p-3 sm:p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <MapPin className="h-4 w-4 text-purple-400 flex-shrink-0" />
-                          <label className="text-xs sm:text-sm font-semibold text-yellow-300">Location</label>
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-purple-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Location</label>
                         </div>
-                        <p className="text-sm sm:text-base text-white">{selectedRequest.location}</p>
+                        <p className={`text-center max-w-[60%] break-words ${selectedRequest.location ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {selectedRequest.location || 'Not provided'}
+                        </p>
                       </div>
-                    )}
+                    </div>
 
                     {/* Dates */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Calendar className="h-4 w-4 text-orange-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Calendar className="h-4 w-4 text-orange-400" />
+                            <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                          </div>
+                          <p className="text-white">{formatDate(selectedRequest.created_at)}</p>
                         </div>
-                        <p className="text-white">{formatDate(selectedRequest.created_at)}</p>
                       </div>
 
-                      {selectedRequest.needed_by && (
-                        <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                          <div className="flex items-center gap-2 mb-2">
+                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-red-400" />
                             <label className="text-sm font-semibold text-yellow-300">Needed By</label>
                           </div>
-                          <p className="text-white">{formatDate(selectedRequest.needed_by)}</p>
+                          <p className={selectedRequest.needed_by ? 'text-white' : 'text-gray-400 italic'}>
+                            {selectedRequest.needed_by ? formatDate(selectedRequest.needed_by) : 'Not provided'}
+                          </p>
                         </div>
-                      )}
+                      </div>
                     </div>
 
                     {/* Tags */}
-                    {selectedRequest.tags && selectedRequest.tags.length > 0 && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <label className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</label>
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <label className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</label>
+                      {selectedRequest.tags && selectedRequest.tags.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
                           {selectedRequest.tags.map((tag, tagIndex) => (
                             <span key={tagIndex} className="inline-flex items-center text-xs font-medium bg-navy-700 text-yellow-300 px-3 py-1.5 rounded-lg border border-yellow-500/30">
@@ -1096,8 +1108,10 @@ const MyRequestsPage = () => {
                             </span>
                           ))}
                         </div>
-                      </div>
-                    )}
+                      ) : (
+                        <p className="text-gray-400 italic text-sm">Not provided</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 

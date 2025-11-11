@@ -836,91 +836,126 @@ const AvailableTasksPage = () => {
 
                   {/* Details Grid */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedTask.quantity && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
                           <Package className="h-4 w-4 text-blue-400" />
                           <label className="text-sm font-semibold text-yellow-300">Quantity</label>
                         </div>
-                        <p className="text-white text-lg font-medium">{selectedTask.quantity}</p>
+                        <span className={`text-lg font-medium ${selectedTask.quantity != null ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {selectedTask.quantity != null ? selectedTask.quantity : 'Not provided'}
+                        </span>
                       </div>
-                    )}
+                    </div>
                     
-                    {selectedTask.condition && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
                           <CheckCircle className="h-4 w-4 text-green-400" />
                           <label className="text-sm font-semibold text-yellow-300">Condition</label>
                         </div>
-                        <p className="text-white text-lg font-medium capitalize">{selectedTask.condition?.replace('_', ' ')}</p>
+                        <span className={`text-lg font-medium ${selectedTask.condition ? 'text-white capitalize' : 'text-gray-400 italic'}`}>
+                          {selectedTask.condition ? selectedTask.condition.replace('_', ' ') : 'Not provided'}
+                        </span>
                       </div>
-                    )}
+                    </div>
                   </div>
 
                   {/* Location Details */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-4">
                     {/* From: Donor location */}
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <MapPin className="h-4 w-4 text-yellow-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Pickup Location (From)</label>
+                      <div className="flex items-center gap-4">
+                        <span className="text-yellow-300 text-sm font-semibold flex-shrink-0 w-40">Pickup Location</span>
+                        <span className={`flex-1 break-words ${formatPickupLocation(selectedTask) ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {formatPickupLocation(selectedTask) || 'Not provided'}
+                        </span>
                       </div>
-                      <p className="text-white">{formatPickupLocation(selectedTask)}</p>
                     </div>
 
                     {/* To: Recipient location */}
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Navigation className="h-4 w-4 text-green-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Delivery Location (To)</label>
+                      <div className="flex items-center gap-4">
+                        <span className="text-yellow-300 text-sm font-semibold flex-shrink-0 w-40">Delivery Location</span>
+                        <span className={`flex-1 break-words ${formatDeliveryLocation(selectedTask) ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {formatDeliveryLocation(selectedTask) || 'Not provided'}
+                        </span>
                       </div>
-                      <p className="text-white">{formatDeliveryLocation(selectedTask)}</p>
                     </div>
                   </div>
 
-                  {/* Donor Information */}
-                  {selectedTask.donor && (
-                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                  {/* Donor Contact and Pickup Instructions - Same Row */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Donor Information */}
+                    <div className="bg-navy-800/30 rounded-lg p-3 border border-navy-700">
                       <div className="flex items-center gap-2 mb-2">
                         <User className="h-4 w-4 text-blue-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Donor</label>
+                        <label className="text-sm font-semibold text-yellow-300">Donor Contact</label>
                       </div>
-                      <p className="text-white">{selectedTask.donor.name || 'Anonymous'}</p>
-                      {selectedTask.donor.email && (
-                        <p className="text-gray-400 text-sm mt-1">{selectedTask.donor.email}</p>
-                      )}
+                      <div className="space-y-2">
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-400 text-xs font-medium">Name:</span>
+                          <span className={`flex-1 break-words text-sm ${selectedTask.donor?.name ? 'text-white' : 'text-gray-400 italic'}`}>
+                            {selectedTask.donor?.name || 'Not provided'}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-400 text-xs font-medium">Mobile:</span>
+                          <span className={`flex-1 break-words text-sm ${
+                            (selectedTask.donor?.phone_number || selectedTask.donor?.phone || selectedTask.donor?.contact_number)
+                              ? 'text-white'
+                              : 'text-gray-400 italic'
+                          }`}>
+                            {selectedTask.donor?.phone_number || selectedTask.donor?.phone || selectedTask.donor?.contact_number || 'Not provided'}
+                          </span>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-gray-400 text-xs font-medium">Email:</span>
+                          <span className={`flex-1 break-words text-sm ${selectedTask.donor?.email ? 'text-white' : 'text-gray-400 italic'}`}>
+                            {selectedTask.donor?.email || 'Not provided'}
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                  )}
 
-                  {/* Pickup Instructions */}
-                  {selectedTask.pickup_instructions && (
+                    {/* Pickup Instructions */}
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-3">
                         <AlertCircle className="h-4 w-4 text-orange-400" />
                         <label className="text-sm font-semibold text-yellow-300">Pickup Instructions</label>
                       </div>
-                      <p className="text-white">{selectedTask.pickup_instructions}</p>
+                      <div className="text-sm">
+                        <span className={`break-words ${selectedTask.pickup_instructions ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {selectedTask.pickup_instructions || 'Not provided'}
+                        </span>
+                      </div>
                     </div>
-                  )}
+                  </div>
 
                   {/* Additional Info */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {selectedTask.expiryDate && (
-                      <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                        <div className="flex items-center gap-2 mb-2">
+                    <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
                           <Clock className="h-4 w-4 text-orange-400" />
                           <label className="text-sm font-semibold text-yellow-300">Expiry Date</label>
                         </div>
-                        <p className="text-white">{new Date(selectedTask.expiryDate).toLocaleDateString()}</p>
+                        <span className={`text-lg font-medium ${selectedTask.expiryDate ? 'text-white' : 'text-gray-400 italic'}`}>
+                          {selectedTask.expiryDate ? new Date(selectedTask.expiryDate).toLocaleDateString() : 'Not provided'}
+                        </span>
                       </div>
-                    )}
+                    </div>
 
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Calendar className="h-4 w-4 text-purple-400" />
-                        <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Calendar className="h-4 w-4 text-purple-400" />
+                          <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                        </div>
+                        <span className="text-lg font-medium text-white">
+                          {new Date(selectedTask.createdAt).toLocaleDateString()}
+                        </span>
                       </div>
-                      <p className="text-white">{new Date(selectedTask.createdAt).toLocaleDateString()}</p>
                     </div>
                   </div>
                 </div>

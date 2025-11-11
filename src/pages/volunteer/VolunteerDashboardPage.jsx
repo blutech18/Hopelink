@@ -36,29 +36,10 @@ const VolunteerDashboardPage = () => {
   const { success, error } = useToast()
   const [stats, setStats] = useState({})
   const [recentDeliveries, setRecentDeliveries] = useState([])
-  const [volunteerNotifications, setVolunteerNotifications] = useState([])
   const [deliveries, setDeliveries] = useState([])
   const [pendingActions, setPendingActions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showNotificationsModal, setShowNotificationsModal] = useState(false)
 
-  const fetchVolunteerNotifications = useCallback(async () => {
-    if (!user?.id) return
-
-    try {
-      // Get notifications for volunteer request responses
-      const notifications = await db.getUserNotifications(user.id, 100)
-      
-      // Filter volunteer-related notifications (responses to volunteer requests)
-      const volunteerResponseNotifications = notifications.filter(n => 
-        (n.type === 'volunteer_approved' || n.type === 'volunteer_declined' || n.type === 'delivery_assigned') && !n.read_at
-      )
-      
-      setVolunteerNotifications(volunteerResponseNotifications)
-    } catch (err) {
-      console.error('Error fetching volunteer notifications:', err)
-    }
-  }, [user?.id])
 
   const loadVolunteerData = async () => {
     if (!profile) return
@@ -148,7 +129,6 @@ const VolunteerDashboardPage = () => {
           },
           () => {
             console.log('🔔 Volunteer notification change detected')
-            fetchVolunteerNotifications()
           }
         )
         .subscribe()
@@ -163,50 +143,9 @@ const VolunteerDashboardPage = () => {
         supabase.removeChannel(notificationsSubscription)
       }
     }
-  }, [profile, fetchVolunteerNotifications])
+  }, [profile])
 
-  useEffect(() => {
-    fetchVolunteerNotifications()
-  }, [fetchVolunteerNotifications])
 
-  const handleMarkNotificationAsRead = async (notificationId) => {
-    try {
-      await db.markNotificationAsRead(notificationId)
-      success('Notification marked as read')
-      await fetchVolunteerNotifications()
-    } catch (err) {
-      console.error('Error marking notification as read:', err)
-      error('Failed to mark notification as read')
-    }
-  }
-
-  const handleViewNotifications = () => {
-    setShowNotificationsModal(true)
-  }
-
-  const getNotificationIcon = (type) => {
-    switch (type) {
-      case 'volunteer_approved':
-      case 'delivery_assigned':
-        return CheckCircle
-      case 'volunteer_declined':
-        return XCircle
-      default:
-        return Bell
-    }
-  }
-
-  const getNotificationColor = (type) => {
-    switch (type) {
-      case 'volunteer_approved':
-      case 'delivery_assigned':
-        return 'text-green-400 bg-green-500/10 border-green-500/20'
-      case 'volunteer_declined':
-        return 'text-red-400 bg-red-500/10 border-red-500/20'
-      default:
-        return 'text-skyblue-400 bg-skyblue-500/10 border-skyblue-500/20'
-    }
-  }
 
   if (loading) {
     return <DashboardSkeleton />
@@ -307,23 +246,6 @@ const VolunteerDashboardPage = () => {
                 Thank you for helping connect our community through volunteer deliveries.
               </p>
             </div>
-            
-            {/* Notification Bell */}
-            {volunteerNotifications.length > 0 && (
-              <div className="flex-shrink-0">
-                <button
-                  onClick={handleViewNotifications}
-                  className="relative p-3 bg-navy-800/50 border border-yellow-500/30 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 hover:border-yellow-500/50 rounded-lg transition-all shadow-lg"
-                  title={`${volunteerNotifications.length} new notification(s)`}
-                  aria-label="View notifications"
-                >
-                  <Bell className="h-6 w-6" />
-                  <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs font-semibold rounded-full h-5 w-5 flex items-center justify-center border-2 border-navy-900 shadow-md">
-                    {volunteerNotifications.length}
-                  </span>
-                </button>
-              </div>
-            )}
           </div>
         </motion.div>
 
@@ -686,90 +608,6 @@ const VolunteerDashboardPage = () => {
           </div>
         </motion.div>
 
-        {/* Notifications Modal */}
-        {showNotificationsModal && (
-          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 20 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 20 }}
-              transition={{ duration: 0.2 }}
-              className="bg-navy-900 border border-navy-700 shadow-xl rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-hidden"
-            >
-              {/* Header */}
-              <div className="flex items-center justify-between mb-6 border-b border-navy-700 pb-4">
-                <div className="flex items-center">
-                  <Bell className="h-6 w-6 text-skyblue-500 mr-3" />
-                  <div>
-                    <h3 className="text-xl font-semibold text-white">Volunteer Notifications</h3>
-                    <p className="text-sm text-skyblue-300">Responses to your volunteer requests</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowNotificationsModal(false)}
-                  className="text-skyblue-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Notifications List */}
-              <div className="space-y-4 max-h-96 overflow-y-auto custom-scrollbar">
-                {volunteerNotifications.length > 0 ? (
-                  volunteerNotifications.map((notification) => {
-                    const Icon = getNotificationIcon(notification.type)
-                    return (
-                      <div key={notification.id} className={`border rounded-lg p-4 ${getNotificationColor(notification.type)}`}>
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <Icon className="h-5 w-5" />
-                              <span className="font-medium text-white">{notification.title}</span>
-                            </div>
-                            
-                            <p className="text-sm text-white mb-3">
-                              {notification.message}
-                            </p>
-
-                            <div className="flex items-center gap-2 mb-3">
-                              <Calendar className="h-4 w-4" />
-                              <span className="text-sm">
-                                {new Date(notification.created_at).toLocaleDateString()}
-                              </span>
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => handleMarkNotificationAsRead(notification.id)}
-                            className="px-3 py-1 bg-navy-700 hover:bg-navy-600 text-white text-sm rounded-lg font-medium transition-colors flex items-center gap-2"
-                          >
-                            <CheckCircle className="h-4 w-4" />
-                            Mark Read
-                          </button>
-                        </div>
-                      </div>
-                    )
-                  })
-                ) : (
-                  <div className="text-center py-8">
-                    <Bell className="h-12 w-12 text-skyblue-400 mx-auto mb-4" />
-                    <p className="text-skyblue-300">No new notifications.</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Footer */}
-              <div className="mt-6 pt-4 border-t border-navy-700 flex justify-end">
-                <button
-                  onClick={() => setShowNotificationsModal(false)}
-                  className="btn btn-secondary"
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
 
       </div>
     </div>

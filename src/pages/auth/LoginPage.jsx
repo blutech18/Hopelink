@@ -57,7 +57,13 @@ const LoginPage = () => {
         navigate(from, { replace: true })
       }, 500)
     } catch (err) {
-      error(err.message || 'Failed to sign in. Please check your credentials.')
+      // Handle account suspension error
+      if (err.message?.includes('ACCOUNT_SUSPENDED')) {
+        const suspendMessage = err.message.replace('ACCOUNT_SUSPENDED: ', '')
+        error(suspendMessage, 'Account Suspended')
+      } else {
+        error(err.message || 'Failed to sign in. Please check your credentials.')
+      }
       setIsLoading(false)
     }
   }

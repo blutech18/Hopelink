@@ -74,12 +74,20 @@ const CallbackPage = () => {
         // Only log unexpected errors, not controlled flow errors
         if (!err.message.includes('Account already exists') && 
             !err.message.includes('No account found') &&
-            !err.message.includes('Role selection required')) {
+            !err.message.includes('Role selection required') &&
+            !err.message.includes('ACCOUNT_SUSPENDED')) {
           console.error('Callback processing error:', err)
         }
         
         // Show error toast and redirect based on error type (fast redirects)
-        if (err.message.includes('No account found')) {
+        if (err.message.includes('ACCOUNT_SUSPENDED')) {
+          const suspendMessage = err.message.replace('ACCOUNT_SUSPENDED: ', '')
+          // Don't show toast here - let LoginPage handle it to avoid duplicate notifications
+          setTimeout(() => {
+            setIsProcessing(false)
+            navigate('/login', { replace: true, state: { error: suspendMessage } })
+          }, 1000)
+        } else if (err.message.includes('No account found')) {
           showError('No account found. Please sign up first.')
           setTimeout(() => {
             setIsProcessing(false)

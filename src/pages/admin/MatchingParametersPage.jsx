@@ -255,11 +255,11 @@ const MatchingParametersPage = () => {
   }
 
   const handleSaveClick = () => {
-    // Validate weight sums before showing confirmation
+    // Validate weight sums before showing confirmation (stricter validation: 0.01 tolerance)
     const weightSum = calculateWeightSum()
     
-    if (Math.abs(weightSum - 1.0) > 0.05) {
-      showError(`Matching weights must sum to 100% (currently ${Math.round(weightSum * 100)}%)`)
+    if (Math.abs(weightSum - 1.0) > 0.01) {
+      showError(`Matching weights must sum to exactly 100% (currently ${(weightSum * 100).toFixed(2)}%)`)
       return
     }
 
@@ -368,7 +368,7 @@ const MatchingParametersPage = () => {
         {/* Settings Container */}
         <div>
           {/* Weight Sum Warning */}
-          {Math.abs(weightSum - 1.0) > 0.05 && (
+          {Math.abs(weightSum - 1.0) > 0.01 && (
             <motion.div
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
@@ -378,8 +378,8 @@ const MatchingParametersPage = () => {
               <div className="flex-1">
                 <h3 className="text-red-400 font-semibold mb-1 text-sm">Weight Sum Validation</h3>
                 <p className="text-red-300/80 text-xs">
-                  The matching weights must sum to 100%. Current total: {Math.round(weightSum * 100)}%. 
-                  Please adjust the weights to ensure they sum to exactly 100%.
+                  The matching weights must sum to exactly 100%. Current total: {(weightSum * 100).toFixed(2)}%. 
+                  Please adjust the weights to ensure they sum to exactly 100% (within 0.01% tolerance).
                 </p>
               </div>
             </motion.div>
@@ -392,8 +392,8 @@ const MatchingParametersPage = () => {
               <div className="bg-navy-800/50 rounded-lg p-3 mb-4">
                 <div className="flex items-center justify-between">
                   <span className="text-white text-sm font-medium">Weight Sum</span>
-                  <span className={`font-semibold text-sm ${Math.abs(weightSum - 1.0) <= 0.05 ? 'text-green-400' : 'text-red-400'}`}>
-                    {Math.round(weightSum * 100)}%
+                  <span className={`font-semibold text-sm ${Math.abs(weightSum - 1.0) <= 0.01 ? 'text-green-400' : 'text-red-400'}`}>
+                    {(weightSum * 100).toFixed(2)}%
                   </span>
                 </div>
               </div>

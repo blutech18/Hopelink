@@ -41,6 +41,7 @@ const IDVerificationPage = () => {
       setLoading(true)
       
       // Use selective columns for better performance (avoid loading large image URLs unnecessarily)
+      // Join with user_id_documents table to get ID verification fields
       const { data, error } = await supabase
         .from('users')
         .select(`
@@ -53,19 +54,29 @@ const IDVerificationPage = () => {
           is_active,
           created_at,
           profile_image_url,
-          primary_id_type,
-          primary_id_number,
-          primary_id_image_url,
-          id_verification_status,
-          secondary_id_type,
-          secondary_id_number,
-          secondary_id_image_url
+          id_documents:user_id_documents!user_id_documents_user_id_fkey(*)
         `)
         .order('created_at', { ascending: false })
         .limit(200) // Reduced limit for better performance
 
       if (error) throw error
-      setUsers(data || [])
+      
+      // Flatten ID document fields from joined table
+      const flattenedUsers = (data || []).map(user => {
+        const idDocuments = Array.isArray(user.id_documents) ? user.id_documents[0] : user.id_documents
+        return {
+          ...user,
+          primary_id_type: idDocuments?.primary_id_type || null,
+          primary_id_number: idDocuments?.primary_id_number || null,
+          primary_id_image_url: idDocuments?.primary_id_image_url || null,
+          secondary_id_type: idDocuments?.secondary_id_type || null,
+          secondary_id_number: idDocuments?.secondary_id_number || null,
+          secondary_id_image_url: idDocuments?.secondary_id_image_url || null,
+          // Map verification_status from id_documents to id_verification_status for backward compatibility
+          id_verification_status: idDocuments?.verification_status || null
+        }
+      })
+      setUsers(flattenedUsers)
     } catch (error) {
       console.error('Error loading users:', error)
       setUsers([])
@@ -102,15 +113,21 @@ const IDVerificationPage = () => {
 
   const handleApproveId = async (userId) => {
     try {
-      const updateData = {
-        is_verified: true,
-        id_verification_status: 'verified'
+      // Update user verification status
+      const { error: userError } = await supabase
+        .from('users')
+        .update({ is_verified: true })
+        .eq('id', userId)
+
+      if (userError) {
+        console.error('Error updating user verification:', userError)
       }
 
+      // Update ID document verification status
       const { error } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', userId)
+        .from('user_id_documents')
+        .update({ verification_status: 'verified' })
+        .eq('user_id', userId)
 
       if (error) {
         console.error('Error approving ID:', error)
@@ -137,14 +154,11 @@ const IDVerificationPage = () => {
     }
 
     try {
-      const updateData = {
-        id_verification_status: 'rejected'
-      }
-
+      // Update ID document verification status
       const { error } = await supabase
-        .from('users')
-        .update(updateData)
-        .eq('id', userId)
+        .from('user_id_documents')
+        .update({ verification_status: 'rejected' })
+        .eq('user_id', userId)
 
       if (error) {
         console.error('Error rejecting ID:', error)

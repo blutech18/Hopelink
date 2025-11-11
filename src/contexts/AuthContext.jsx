@@ -51,6 +51,7 @@ export const AuthProvider = ({ children }) => {
 
   useEffect(() => {
     let mounted = true
+    let accountStatusCheckInterval = null
     
     const initializeAuth = async () => {
       try {
@@ -72,7 +73,21 @@ export const AuthProvider = ({ children }) => {
         setUser(session?.user ?? null)
         
         if (session?.user) {
-          await loadUserProfile(session.user.id)
+          try {
+            await loadUserProfile(session.user.id)
+          } catch (profileError) {
+            // If error is about account suspension, it's already been handled by loadUserProfile
+            // (user signed out, state cleared, event dispatched)
+            // Just set loading to false and let the error propagate if needed
+            if (profileError?.message?.includes('ACCOUNT_SUSPENDED')) {
+              console.log('Account suspended during initialization - already handled')
+              setLoading(false)
+              // Don't re-throw - the suspension has been handled
+              return
+            }
+            // For other errors, set loading to false
+            setLoading(false)
+          }
         } else {
           setLoading(false)
         }
@@ -87,6 +102,12 @@ export const AuthProvider = ({ children }) => {
           setSession(session)
           setUser(session?.user ?? null)
           
+          // Clear existing interval if user logs out
+          if (!session?.user && accountStatusCheckInterval) {
+            clearInterval(accountStatusCheckInterval)
+            accountStatusCheckInterval = null
+          }
+          
           if (session?.user) {
             // Skip profile loading if we're handling Google callback
             if (isHandlingGoogleCallback) {
@@ -97,7 +118,59 @@ export const AuthProvider = ({ children }) => {
             
             try {
               await loadUserProfile(session.user.id)
+              
+              // Set up periodic account status check for logged-in users
+              // Clear any existing interval first
+              if (accountStatusCheckInterval) {
+                clearInterval(accountStatusCheckInterval)
+              }
+              
+              accountStatusCheckInterval = setInterval(async () => {
+                if (!mounted) {
+                  clearInterval(accountStatusCheckInterval)
+                  return
+                }
+                
+                try {
+                  // Get fresh session to check current user
+                  const { data: { session: currentSession } } = await supabase.auth.getSession()
+                  if (!currentSession?.user) {
+                    clearInterval(accountStatusCheckInterval)
+                    return
+                  }
+                  
+                  const userProfile = await db.getProfile(currentSession.user.id)
+                  if (userProfile && userProfile.is_active === false) {
+                    // Account was suspended - sign out immediately
+                    console.error('🚨 Account status check: Account is suspended - signing out')
+                    clearInterval(accountStatusCheckInterval)
+                    await supabase.auth.signOut()
+                    setProfile(null)
+                    setUser(null)
+                    setSession(null)
+                  }
+                } catch (checkError) {
+                  // Ignore errors during status check
+                  if (!checkError.message?.includes('Failed to fetch') && 
+                      !checkError.message?.includes('NetworkError')) {
+                    console.warn('Error checking account status:', checkError)
+                  }
+                }
+              }, 30000) // Check every 30 seconds
             } catch (profileError) {
+              // Check if error is about account suspension
+              if (profileError?.message?.includes('ACCOUNT_SUSPENDED')) {
+                console.error('Account suspended during auth state change:', profileError.message)
+                // Clear interval if account is suspended
+                if (accountStatusCheckInterval) {
+                  clearInterval(accountStatusCheckInterval)
+                  accountStatusCheckInterval = null
+                }
+                // User has already been signed out by loadUserProfile
+                // Set loading to false since suspension is handled
+                setLoading(false)
+                return
+              }
               console.error('Error loading profile after auth change:', profileError)
               // Don't block the auth flow if profile loading fails
               // Just set profile to null and let the user continue
@@ -112,6 +185,9 @@ export const AuthProvider = ({ children }) => {
 
         return () => {
           subscription.unsubscribe()
+          if (accountStatusCheckInterval) {
+            clearInterval(accountStatusCheckInterval)
+          }
         }
       } catch (error) {
         console.error('Error initializing auth:', error)
@@ -125,6 +201,9 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       mounted = false
+      if (accountStatusCheckInterval) {
+        clearInterval(accountStatusCheckInterval)
+      }
       cleanup?.then(unsubscribe => unsubscribe?.())
     }
   }, [])
@@ -165,7 +244,21 @@ export const AuthProvider = ({ children }) => {
         // For volunteers, merge schedule fields from user_metadata (these aren't in the users table)
         if (userProfile.role === 'volunteer') {
           try {
-            const { data: { user: currentUser } } = await supabase.auth.getUser()
+            const { data: { user: currentUser }, error: volMetadataError } = await supabase.auth.getUser()
+            
+            // Handle 403 Forbidden for volunteer metadata
+            if (volMetadataError) {
+              if (volMetadataError.status === 403 || volMetadataError.message?.includes('403') || volMetadataError.message?.includes('Forbidden')) {
+                console.error('🚨 403 Forbidden when fetching volunteer metadata - Invalid JWT token, signing out')
+                await supabase.auth.signOut()
+                setProfile(null)
+                setUser(null)
+                setSession(null)
+                setLoading(false)
+                return
+              }
+            }
+            
             if (currentUser?.user_metadata) {
               // Merge volunteer schedule fields from user_metadata
               userProfile.availability_days = currentUser.user_metadata.availabilityDays || userProfile.availability_days || []
@@ -174,9 +267,39 @@ export const AuthProvider = ({ children }) => {
               userProfile.delivery_preferences = currentUser.user_metadata.deliveryPreferences || userProfile.delivery_preferences || []
             }
           } catch (metadataError) {
+            // Handle 403 in catch block as well
+            if (metadataError?.status === 403 || metadataError?.message?.includes('403') || metadataError?.message?.includes('Forbidden')) {
+              console.error('🚨 403 Forbidden caught when fetching volunteer metadata - signing out')
+              try {
+                await supabase.auth.signOut()
+              } catch (e) {
+                console.error('Error during sign out:', e)
+              }
+              setProfile(null)
+              setUser(null)
+              setSession(null)
+              setLoading(false)
+              return
+            }
             console.warn('Error loading user_metadata for volunteer schedule:', metadataError)
             // Continue with profile even if metadata load fails
           }
+        }
+        
+        // Check if user account is suspended
+        if (userProfile.is_active === false) {
+          console.error('🚨 Account is suspended - signing out user')
+          authDebug.logProfileLoading(userId, 'ACCOUNT_SUSPENDED')
+          // Clear cache
+          profileCacheRef.current.delete(userId)
+          // Sign out the user immediately
+          await supabase.auth.signOut()
+          setProfile(null)
+          setUser(null)
+          setSession(null)
+          setLoading(false)
+          // Throw error with specific message that can be caught by login page
+          throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
         }
         
         // Cache the profile for future use
@@ -188,7 +311,23 @@ export const AuthProvider = ({ children }) => {
         // Profile is null - could be network error or user doesn't exist in database yet
         // Check if this is a network error by trying to get user from auth
         try {
-          const { data: { user: currentUser } } = await supabase.auth.getUser()
+          const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser()
+          
+          // Handle 403 Forbidden - token is invalid, sign out user
+          if (authError) {
+            if (authError.status === 403 || authError.message?.includes('403') || authError.message?.includes('Forbidden')) {
+              console.error('🚨 403 Forbidden - Invalid JWT token, signing out user')
+              authDebug.logProfileLoading(userId, 'INVALID_TOKEN_SIGNOUT')
+              // Sign out to clear invalid session
+              await supabase.auth.signOut()
+              setProfile(null)
+              setUser(null)
+              setSession(null)
+              setLoading(false)
+              return
+            }
+          }
+          
           if (currentUser) {
             // User exists in auth but profile is null - likely network error
             // Set profile to null and continue (don't try to create from metadata)
@@ -199,6 +338,23 @@ export const AuthProvider = ({ children }) => {
             return
           }
         } catch (authError) {
+          // Handle 403 Forbidden errors specifically
+          if (authError?.status === 403 || authError?.message?.includes('403') || authError?.message?.includes('Forbidden')) {
+            console.error('🚨 403 Forbidden caught in catch - Invalid JWT token, signing out user')
+            authDebug.logProfileLoading(userId, 'INVALID_TOKEN_SIGNOUT_CATCH')
+            // Sign out to clear invalid session
+            try {
+              await supabase.auth.signOut()
+            } catch (signOutError) {
+              console.error('Error during emergency sign out:', signOutError)
+            }
+            setProfile(null)
+            setUser(null)
+            setSession(null)
+            setLoading(false)
+            return
+          }
+          
           // Auth check also failed - likely network issue
           console.warn('Both profile and auth check failed - network error, setting profile to null')
           authDebug.logProfileLoading(userId, 'NETWORK_ERROR')
@@ -243,7 +399,21 @@ export const AuthProvider = ({ children }) => {
         try {
           authDebug.logProfileLoading(userId, 'FALLBACK_TO_METADATA')
           // Get the current user to access metadata
-          const { data: { user: currentUser } } = await supabase.auth.getUser()
+          const { data: { user: currentUser }, error: metadataFetchError } = await supabase.auth.getUser()
+          
+          // Handle 403 Forbidden when fetching metadata
+          if (metadataFetchError) {
+            if (metadataFetchError.status === 403 || metadataFetchError.message?.includes('403') || metadataFetchError.message?.includes('Forbidden')) {
+              console.error('🚨 403 Forbidden when fetching metadata - Invalid JWT token, signing out')
+              authDebug.logProfileLoading(userId, 'INVALID_TOKEN_METADATA')
+              await supabase.auth.signOut()
+              setProfile(null)
+              setUser(null)
+              setSession(null)
+              setLoading(false)
+              return
+            }
+          }
           
           console.log('Current user metadata:', currentUser?.user_metadata)
           
@@ -486,6 +656,27 @@ export const AuthProvider = ({ children }) => {
         // Fall through if we can't determine, continue normal flow
       }
       
+      // Check if account is suspended after successful login
+      // The profile will be loaded by the auth state change listener, but we check here for immediate feedback
+      try {
+        if (data?.user?.id) {
+          const userProfile = await db.getProfile(data.user.id)
+          if (userProfile && userProfile.is_active === false) {
+            // Account is suspended - sign out immediately
+            await supabase.auth.signOut()
+            setIsSigningIn(false)
+            throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+          }
+        }
+      } catch (suspendCheckErr) {
+        // If error is about suspension, throw it
+        if (suspendCheckErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+          throw suspendCheckErr
+        }
+        // If it's a network error or profile not found yet, continue - the loadUserProfile will handle it
+        console.warn('Could not check account status immediately:', suspendCheckErr)
+      }
+      
       // Keep signing in flag active for smooth transition
       setTimeout(() => {
         setIsSigningIn(false)
@@ -587,24 +778,48 @@ export const AuthProvider = ({ children }) => {
       
       if (error) throw error
       
-      if (session?.user) {
+      if (!session?.user) {
+        // If no session, check if we were signed out due to suspension
+        // This can happen if loadUserProfile detected suspension during initialization
+        // In that case, throw suspension error instead of "No session found"
+        // Check if there's a pending suspension event or if we just got signed out
+        const suspendError = new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+        throw suspendError
+      }
+      
+      try {
+        // Check if user exists in our database (ignore cache for signup verification)
+        let existingProfile = null
+        let profileError = null
+        
         try {
-          // Check if user exists in our database (ignore cache for signup verification)
-          let existingProfile = null
-          let profileError = null
+          existingProfile = await db.getProfile(session.user.id)
+          console.log('👤 Profile check result:', existingProfile ? 'Found existing profile' : 'No profile found')
           
-          try {
-            existingProfile = await db.getProfile(session.user.id)
-            console.log('👤 Profile check result:', existingProfile ? 'Found existing profile' : 'No profile found')
-          } catch (error) {
-            profileError = error
-            // Profile doesn't exist, which is expected for new users
-            if (!error.code || error.code !== 'PGRST116') {
-              console.error('Unexpected error checking profile:', error)
-            }
+          // Check if account is suspended BEFORE processing the callback
+          // This prevents the "No session found" error that occurs when loadUserProfile signs out the user
+          if (existingProfile && existingProfile.is_active === false) {
+            // Sign out and clear state
+            await supabase.auth.signOut()
+            setProfile(null)
+            setUser(null)
+            setSession(null)
+            // Throw suspension error
+            throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
           }
-          
-          if (isSignup) {
+        } catch (error) {
+          // If error is about suspension, re-throw it
+          if (error?.message?.includes('ACCOUNT_SUSPENDED')) {
+            throw error
+          }
+          profileError = error
+          // Profile doesn't exist, which is expected for new users
+          if (!error.code || error.code !== 'PGRST116') {
+            console.error('Unexpected error checking profile:', error)
+          }
+        }
+        
+        if (isSignup) {
             if (existingProfile) {
               // If we found an existing profile during signup flow, this means the account already exists
               // We should NOT allow signup to proceed - sign out and show error
@@ -690,6 +905,13 @@ export const AuthProvider = ({ children }) => {
             const newProfile = await db.createProfile(session.user.id, profileData)
             console.log('✅ Successfully created new profile for Google signup:', newProfile)
             
+            // Check if account is suspended (shouldn't happen for new accounts, but check anyway)
+            if (newProfile.is_active === false) {
+              await supabase.auth.signOut()
+              localStorage.removeItem('pendingGoogleSignupRole')
+              throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+            }
+            
             // Cache the newly created profile
             profileCacheRef.current.set(session.user.id, newProfile)
             
@@ -708,6 +930,20 @@ export const AuthProvider = ({ children }) => {
               throw new Error('No account found. Please sign up first.')
             }
             
+            // Check if account is suspended
+            if (existingProfile.is_active === false) {
+              // Note: loadUserProfile already dispatched the toast notification during initialization
+              // Don't dispatch again to avoid duplicate notifications
+              // Sign out and clear state
+              await supabase.auth.signOut()
+              setProfile(null)
+              setUser(null)
+              setSession(null)
+              // Create and throw suspension error
+              const suspendError = new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+              throw suspendError
+            }
+            
             // Cache the existing profile for login flow
             profileCacheRef.current.set(session.user.id, existingProfile)
             console.log('✅ Existing profile cached for Google login')
@@ -719,18 +955,31 @@ export const AuthProvider = ({ children }) => {
             return { user: session.user, isNewUser: false, role: existingProfile.role }
           }
         } catch (profileError) {
-          // For any error in profile handling, ensure we sign out
-          await supabase.auth.signOut()
+          // Check if error is about account suspension - if so, don't sign out again (already done)
+          if (profileError?.message?.includes('ACCOUNT_SUSPENDED')) {
+            // Already signed out and dispatched event in the suspension check above
+            // Just re-throw the error without additional processing
+            throw profileError
+          }
+          // For any other error in profile handling, ensure we sign out
+          if (!profileError?.message?.includes('Account already exists') &&
+              !profileError?.message?.includes('No account found') &&
+              !profileError?.message?.includes('Role selection required')) {
+            // Only sign out if we haven't already signed out for other known errors
+            try {
+              await supabase.auth.signOut()
+            } catch (signOutError) {
+              // Ignore sign out errors
+            }
+          }
           throw profileError
         }
-      }
-      
-      throw new Error('No session found')
     } catch (error) {
       // Only log unexpected errors, not controlled flow errors
       if (!error.message.includes('Account already exists') && 
           !error.message.includes('No account found') &&
-          !error.message.includes('Role selection required')) {
+          !error.message.includes('Role selection required') &&
+          !error.message.includes('ACCOUNT_SUSPENDED')) {
         console.error('Google callback error:', error)
       }
       throw error
