@@ -36,25 +36,52 @@ export default defineConfig({
 
           // React core and ALL React-dependent libraries - MUST stay together
           // This prevents "Cannot read properties of undefined" errors for React APIs
-          if (
-            id.includes('node_modules/react') ||
-            id.includes('node_modules/react-dom') ||
-            id.includes('node_modules/@radix-ui') ||
-            id.includes('node_modules/react-router') ||
-            id.includes('node_modules/framer-motion') ||
-            id.includes('node_modules/react-hook-form') ||
-            id.includes('node_modules/recharts') ||
-            id.includes('node_modules/lucide-react') ||
-            id.includes('node_modules/@react-google-maps') ||
-            id.includes('node_modules/@vis.gl/react-google-maps') ||
-            // Catch any package with "react" in its path (including transitive deps)
-            (id.includes('node_modules') && (
+          // Be very aggressive - catch ANY package that might use React
+          
+          // Extract the package name from the path
+          const nodeModulesIndex = id.indexOf('node_modules/')
+          if (nodeModulesIndex !== -1) {
+            const afterNodeModules = id.substring(nodeModulesIndex + 'node_modules/'.length)
+            const packagePath = afterNodeModules.split('/')
+            const packageName = packagePath[0].startsWith('@') 
+              ? `${packagePath[0]}/${packagePath[1]}` 
+              : packagePath[0]
+            
+            // Known React libraries and their common dependencies
+            const reactLibraries = [
+              'react', 'react-dom', 'react-router', 'react-router-dom',
+              'framer-motion', 'recharts', 'lucide-react', 'react-hook-form',
+              '@radix-ui', '@react-google-maps', '@vis.gl/react-google-maps'
+            ]
+            
+            // Check if it's a React library or contains "react" in name/path
+            const isReactRelated = 
+              reactLibraries.some(lib => packageName.includes(lib)) ||
               id.includes('/react') ||
               id.includes('react/') ||
-              id.match(/node_modules\/[^/]*react[^/]*\//)
-            ))
-          ) {
-            return 'vendor-react'
+              id.match(/react/i) ||
+              // Common dependencies of React libraries that might use React
+              packageName.includes('@radix-ui') ||
+              packageName.includes('@floating-ui') || // Used by Radix UI
+              packageName.includes('@dnd-kit') || // Sometimes used with React
+              packageName.includes('zustand') || // React state management
+              packageName.includes('jotai') || // React state management
+              packageName.includes('valtio') || // React state management
+              // Common utility packages used by React libraries
+              packageName === 'clsx' || // Used by many React libraries
+              packageName === 'tailwind-merge' || // Used with React
+              packageName.includes('@emotion') || // CSS-in-JS for React
+              packageName.includes('styled-components') || // CSS-in-JS for React
+              packageName.includes('polished') // CSS utilities used with React
+          
+            if (isReactRelated) {
+              return 'vendor-react'
+            }
+          } else {
+            // Fallback: if we can't parse, check for react in path
+            if (id.includes('react') || id.includes('@radix-ui')) {
+              return 'vendor-react'
+            }
           }
 
           // PDF libraries (large, can be split)
