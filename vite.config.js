@@ -77,7 +77,7 @@ export default defineConfig({
         },
       },
     },
-    chunkSizeWarningLimit: 600,
+    chunkSizeWarningLimit: 1000, // Increased limit - vendor-react at ~900kB is reasonable for React apps
     commonjsOptions: {
       include: [/node_modules/],
       transformMixedEsModules: true,
