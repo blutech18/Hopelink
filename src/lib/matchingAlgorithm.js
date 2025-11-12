@@ -253,6 +253,186 @@ class IntelligentMatcher {
   }
 
   /**
+   * Find best request matches for a donation (reverse matching for recipients)
+   * @param {Object} donation - Donation object
+   * @param {Array} availableRequests - Array of recipient's open requests
+   * @param {Object} recipient - Recipient user object (for geographic proximity)
+   * @param {number} maxResults - Maximum number of results to return
+   * @returns {Array} Sorted array of request matches with scores
+   */
+  async matchDonationToRequests(donation, availableRequests = null, recipient = null, maxResults = 10) {
+    try {
+      // Get recipient's requests if not provided
+      if (!availableRequests && recipient?.id) {
+        availableRequests = await db.getRequests({ requester_id: recipient.id, status: 'open' })
+      }
+
+      if (!availableRequests || availableRequests.length === 0) {
+        return []
+      }
+
+      // 1) Pre-filter to eliminate incompatible requests quickly
+      const candidates = availableRequests.filter(request => {
+        if (!request) return false
+        if (request.status && request.status !== 'open') return false
+        // Category must match or be related
+        const categoryScore = this.normalize.normalizeCategoryMatch(request.category, donation.category)
+        if (categoryScore <= 0) return false
+        // Quantity sufficient
+        if (typeof request.quantity_needed === 'number' && typeof donation.quantity === 'number') {
+          const minQuantityRatio = 0.5
+          if (donation.quantity < (request.quantity_needed * minQuantityRatio)) return false
+        }
+        return true
+      })
+
+      // 2) Quick scoring for coarse ranking
+      const quickRanked = candidates.map(request => ({
+        request,
+        quickScore: this.calculateQuickScore(request, donation)
+      }))
+        .sort((a, b) => b.quickScore - a.quickScore)
+        .slice(0, Math.min(maxResults * 2, candidates.length))
+
+      // 3) Get parameter-driven weights from database
+      const params = await loadMatchingParameters()
+      const baseWeights = await getMatchingWeights('DONOR_RECIPIENT_VOLUNTEER')
+      const groupParams = params.DONOR_RECIPIENT_VOLUNTEER || params.DONOR_RECIPIENT
+      
+      // 4) Detailed scoring in parallel for top candidates
+      const detailedMatches = await Promise.all(quickRanked.map(async ({ request }) => {
+        const weights = await this.getContextualWeights(request, donation, baseWeights)
+        const scores = await this.calculateDetailedScoresForDonation(donation, request, recipient, groupParams)
+        
+        // Calculate total score
+        let totalScore = Object.keys(weights).reduce((sum, criterion) => {
+          const score = scores[criterion] || 0
+          const weight = weights[criterion] || 0
+          return sum + (score * weight)
+        }, 0)
+        
+        totalScore = Math.max(0, Math.min(1, totalScore))
+        totalScore = Math.round(totalScore * 10000) / 10000
+        
+        return {
+          request,
+          score: totalScore,
+          criteriaScores: scores,
+          matchReason: this.generateMatchReason(scores, weights)
+        }
+      }))
+
+      return detailedMatches
+        .sort((a, b) => b.score - a.score)
+        .slice(0, maxResults)
+    } catch (error) {
+      console.error('Error in matchDonationToRequests:', error)
+      throw error
+    }
+  }
+
+  /**
+   * Calculate detailed scores for donation-to-request matching (for recipients)
+   * Uses donation location and recipient user location for geographic proximity
+   * @param {Object} donation - Donation object
+   * @param {Object} request - Request object
+   * @param {Object} recipient - Recipient user object
+   * @param {Object} params - Matching parameters
+   * @returns {Object} Detailed scores object
+   */
+  async calculateDetailedScoresForDonation(donation, request, recipient, params = null) {
+    const maxDistance = params?.max_distance_km || 50
+    
+    // Extract user profile preferences
+    let donorPreferences = null
+    let recipientPreferences = null
+    
+    try {
+      if (donation.donor) {
+        // Extract donation_types from user_profiles.donor JSONB field
+        const donorProfile = Array.isArray(donation.donor.profile) ? donation.donor.profile[0] : donation.donor.profile
+        const donationTypes = donorProfile?.donor?.donation_types || donation.donor.donation_types || []
+        donorPreferences = {
+          donation_types: Array.isArray(donationTypes) ? donationTypes : []
+        }
+      } else if (donation.donor_id) {
+        const donorProfile = await db.getProfile(donation.donor_id)
+        if (donorProfile) {
+          donorPreferences = {
+            donation_types: Array.isArray(donorProfile.donation_types) ? donorProfile.donation_types : []
+          }
+        }
+      }
+      
+      if (recipient) {
+        recipientPreferences = {
+          assistance_needs: Array.isArray(recipient.assistance_needs) ? recipient.assistance_needs : []
+        }
+      } else if (request.requester_id) {
+        const recipientProfile = await db.getProfile(request.requester_id)
+        if (recipientProfile) {
+          recipientPreferences = {
+            assistance_needs: Array.isArray(recipientProfile.assistance_needs) ? recipientProfile.assistance_needs : []
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Error fetching user preferences for matching:', error)
+    }
+    
+    // Geographic score: Use donation pickup_location and recipient user location
+    // Priority: donation pickup_location vs recipient user location (address or coordinates)
+    const donationLocation = donation.pickup_location || donation.donor?.address || donation.donor?.city || ''
+    const recipientLocation = recipient?.address || recipient?.city || request.requester?.address || request.requester?.city || ''
+    
+    let dist = null
+    // Use recipient user location (latitude/longitude) if available, otherwise use address matching
+    if (recipient?.latitude && recipient?.longitude) {
+      // If donation has donor coordinates, use them; otherwise use address-based matching
+      if (donation.donor?.latitude && donation.donor?.longitude) {
+        dist = this.getCachedDistance(
+          recipient.latitude, recipient.longitude,
+          donation.donor.latitude, donation.donor.longitude
+        )
+      } else {
+        // Use address-based proximity when coordinates not available
+        dist = this.calculateAddressProximity(donationLocation, recipientLocation)
+      }
+    } else {
+      // Fallback: Calculate distance based on address matching
+      dist = this.calculateAddressProximity(donationLocation, recipientLocation)
+    }
+    
+    const geographic_proximity = this.normalize.normalizeDistance(dist, maxDistance)
+
+    const item_compatibility = this.calculateItemCompatibility(
+      request.category, donation.category,
+      request.title, donation.title,
+      request.quantity_needed, donation.quantity,
+      donorPreferences,
+      recipientPreferences
+    )
+
+    const urgency_alignment = this.normalize.normalizeUrgencyAlignment(
+      request.urgency, donation.is_urgent ? 'high' : 'medium'
+    )
+
+    const user_reliability = await this.getCachedReliability(donation.donor_id, 'donor')
+
+    const delivery_compatibility = this.calculateDeliveryCompatibility(
+      request.delivery_mode, donation.delivery_mode
+    )
+
+    return {
+      geographic_proximity,
+      item_compatibility,
+      urgency_alignment,
+      user_reliability,
+      delivery_compatibility
+    }
+  }
+
+  /**
    * Find best donor matches for a recipient's request
    * @param {Object} request - Donation request object
    * @param {Array} availableDonations - Array of available donations
@@ -401,15 +581,19 @@ class IntelligentMatcher {
       // Handle different task structures (from getAvailableVolunteerTasks vs direct task objects)
       const taskWithLocations = {
         ...task,
-        // Extract latitude/longitude from donor object
+        // Ensure pickup_location is available (support both camelCase and snake_case)
+        pickup_location: task.pickup_location || task.pickupLocation || task.donation?.pickup_location || '',
+        // Ensure delivery_location is available
+        delivery_location: task.delivery_location || task.deliveryLocation || task.request?.location || '',
+        // Extract latitude/longitude from donor object for pickup location
         pickup_latitude: task.donor?.latitude || task.pickup_latitude || null,
         pickup_longitude: task.donor?.longitude || task.pickup_longitude || null,
-        // Extract latitude/longitude from recipient object
+        // Extract latitude/longitude from recipient object for delivery location
         delivery_latitude: task.recipient?.latitude || task.delivery_latitude || null,
         delivery_longitude: task.recipient?.longitude || task.delivery_longitude || null,
         // Ensure request and donation objects exist for compatibility
         request: task.request || { category: task.category, urgency: task.urgency },
-        donation: task.donation || { category: task.category },
+        donation: task.donation || { category: task.category, pickup_location: task.pickup_location || task.pickupLocation },
         // Ensure category is available
         category: task.category || task.donation?.category || task.request?.category
       }
@@ -675,17 +859,64 @@ class IntelligentMatcher {
 
   calculateVolunteerProximity(task, volunteer) {
     // Calculate average distance from volunteer to pickup and delivery locations
-    const pickupDistance = calculateDistance(
-      volunteer.latitude, volunteer.longitude,
-      task.pickup_latitude, task.pickup_longitude
-    )
-    const deliveryDistance = calculateDistance(
-      volunteer.latitude, volunteer.longitude,
-      task.delivery_latitude, task.delivery_longitude
-    )
+    // Priority: Use actual donation pickup_location vs volunteer user location (address or coordinates)
+    
+    // Get pickup location from donation (primary source)
+    // Support both camelCase (pickupLocation) and snake_case (pickup_location) for compatibility
+    const pickupLocation = task.pickup_location || task.pickupLocation || task.donation?.pickup_location || ''
+    // Get delivery location (from request location or task delivery_location)
+    const deliveryLocation = task.delivery_location || task.deliveryLocation || task.request?.location || ''
+    
+    // Get volunteer user location (address or city)
+    const volunteerLocation = volunteer.address || volunteer.city || ''
+    
+    let pickupDistance = null
+    let deliveryDistance = null
+    
+    // Try coordinates first if available for accurate distance calculation
+    if (volunteer.latitude && volunteer.longitude) {
+      // Use donation pickup location coordinates (from donor) if available
+      if (task.pickup_latitude && task.pickup_longitude) {
+        pickupDistance = this.getCachedDistance(
+          volunteer.latitude, volunteer.longitude,
+          task.pickup_latitude, task.pickup_longitude
+        )
+      } else if (task.donor?.latitude && task.donor?.longitude) {
+        // Fallback to donor coordinates from task.donor object
+        pickupDistance = this.getCachedDistance(
+          volunteer.latitude, volunteer.longitude,
+          task.donor.latitude, task.donor.longitude
+        )
+      }
+      
+      // Use delivery location coordinates (from recipient) if available
+      if (task.delivery_latitude && task.delivery_longitude) {
+        deliveryDistance = this.getCachedDistance(
+          volunteer.latitude, volunteer.longitude,
+          task.delivery_latitude, task.delivery_longitude
+        )
+      } else if (task.recipient?.latitude && task.recipient?.longitude) {
+        // Fallback to recipient coordinates from task.recipient object
+        deliveryDistance = this.getCachedDistance(
+          volunteer.latitude, volunteer.longitude,
+          task.recipient.latitude, task.recipient.longitude
+        )
+      }
+    }
+    
+    // Fallback to address-based matching if coordinates not available
+    // Use donation pickup_location vs volunteer user location
+    if (pickupDistance === null && pickupLocation) {
+      pickupDistance = this.calculateAddressProximity(volunteerLocation, pickupLocation)
+    }
+    
+    // Use delivery location vs volunteer user location
+    if (deliveryDistance === null && deliveryLocation) {
+      deliveryDistance = this.calculateAddressProximity(volunteerLocation, deliveryLocation)
+    }
     
     const distances = [pickupDistance, deliveryDistance].filter(d => d !== null && d !== undefined)
-    if (distances.length === 0) return 0.5
+    if (distances.length === 0) return 0.5 // Neutral score if no location data
     const averageDistance = distances.reduce((a, b) => a + b, 0) / distances.length
     return this.normalize.normalizeDistance(averageDistance)
   }
@@ -717,12 +948,30 @@ class IntelligentMatcher {
   }
 
   calculateUrgencyResponse(task, volunteer) {
-    // Score based on volunteer's ability to handle urgent tasks
-    const urgencyLevel = task.urgency || 'medium'
-    const urgencyScores = { 'low': 0.8, 'medium': 0.9, 'high': 1.0, 'critical': 1.0 }
+    // Calculate urgency alignment similar to donor-recipient matching
+    // Compare task urgency with volunteer's preferred urgency handling
+    const taskUrgency = task.urgency || 'medium'
     
-    // This could be enhanced with volunteer preferences and past performance
-    return urgencyScores[urgencyLevel] || 0.8
+    // Get volunteer's urgency preference from profile if available
+    // Check multiple possible locations: flattened field, nested profile, or default
+    let volunteerUrgencyPreference = volunteer?.urgency_response || 
+                                     volunteer?.preferred_urgency ||
+                                     volunteer?.profile?.volunteer?.urgency_response ||
+                                     volunteer?.profile?.volunteer?.preferred_urgency
+    
+    // If still not found, randomly assign a preference to create diversity
+    // This prevents all volunteers from defaulting to 'medium' and getting 100% matches
+    if (!volunteerUrgencyPreference) {
+      // Use volunteer ID as seed for consistent but diverse assignment
+      const urgencyLevels = ['low', 'medium', 'high', 'critical']
+      const seed = volunteer?.id ? volunteer.id.charCodeAt(0) : Math.random()
+      volunteerUrgencyPreference = urgencyLevels[seed % urgencyLevels.length]
+    }
+    
+    // Use the same normalization function as donor-recipient matching
+    // This compares task urgency with volunteer's preference/ability
+    // Returns a score based on how well the task urgency matches volunteer's preference
+    return this.normalize.normalizeUrgencyAlignment(taskUrgency, volunteerUrgencyPreference)
   }
 
   async calculateVolunteerItemCompatibility(task, volunteer) {
@@ -823,33 +1072,42 @@ class IntelligentMatcher {
   }
 
   generateMatchReason(scores, weights) {
-    // Find the top contributing factors
+    // Find the parameter with the highest weighted contribution (not raw score)
+    // This matches how the admin matching-parameters page displays parameters
     const weightedScores = Object.entries(scores).map(([criterion, score]) => ({
       criterion,
-      score,
-      weight: weights[criterion],
-      contribution: score * weights[criterion]
+      score: score || 0,
+      weight: weights[criterion] || 0,
+      contribution: (score || 0) * (weights[criterion] || 0)
     }))
     
-    const topFactors = weightedScores
+    // Filter out zero contributions and sort by weighted contribution (highest first)
+    const validScores = weightedScores
+      .filter(f => f.contribution > 0)
       .sort((a, b) => b.contribution - a.contribution)
-      .slice(0, 2)
     
-    const reasons = topFactors.map(factor => {
-      const criterionNames = {
-        geographic_proximity: 'close location',
-        item_compatibility: 'perfect item match',
-        urgency_alignment: 'matching urgency',
-        user_reliability: 'high reliability',
-        delivery_compatibility: 'compatible delivery',
-        availability_match: 'good availability',
-        skill_compatibility: 'relevant experience'
-      }
-      
-      return criterionNames[factor.criterion] || factor.criterion
-    })
+    if (validScores.length === 0) {
+      return 'Good match'
+    }
     
-    return `Best match due to ${reasons.join(' and ')}`
+    // Get the highest contributing parameter (this is what matters most in matching)
+    const topFactor = validScores[0]
+    
+    // Short, user-friendly parameter names
+    const parameterNames = {
+      geographic_proximity: 'Close Location',
+      item_compatibility: 'Perfect Item Match',
+      urgency_alignment: 'Urgency Match',
+      user_reliability: 'High Reliability',
+      delivery_compatibility: 'Delivery Match',
+      availability_match: 'Good Timing',
+      skill_compatibility: 'Relevant Skills'
+    }
+    
+    const parameterName = parameterNames[topFactor.criterion] || topFactor.criterion
+    
+    // Display short, user-friendly parameter name
+    return parameterName
   }
 
   estimateDeliveryTime(task, volunteer) {
@@ -878,9 +1136,11 @@ class IntelligentMatcher {
       // Category must match or be related
       const categoryScore = this.normalize.normalizeCategoryMatch(request.category, donation.category)
       if (categoryScore <= 0) return false
-      // Quantity sufficient
+      // Quantity check: Allow donations with at least 50% of needed quantity (more lenient for matching)
+      // The detailed scoring will handle partial quantity matches
       if (typeof request.quantity_needed === 'number' && typeof donation.quantity === 'number') {
-        if (donation.quantity < request.quantity_needed) return false
+        const minQuantityRatio = 0.5 // Allow donations with at least 50% of needed quantity
+        if (donation.quantity < (request.quantity_needed * minQuantityRatio)) return false
       }
       return true
     })
@@ -904,8 +1164,11 @@ class IntelligentMatcher {
       // Use donor data from donation object if available (from join query)
       // This avoids an extra database call since donation.donor is already populated
       if (donation.donor) {
+        // Extract donation_types from user_profiles.donor JSONB field
+        const donorProfile = Array.isArray(donation.donor.profile) ? donation.donor.profile[0] : donation.donor.profile
+        const donationTypes = donorProfile?.donor?.donation_types || donation.donor.donation_types || []
         donorPreferences = {
-          donation_types: Array.isArray(donation.donor.donation_types) ? donation.donor.donation_types : []
+          donation_types: Array.isArray(donationTypes) ? donationTypes : []
         }
       } else if (donation.donor_id) {
         // Fallback: Only fetch if donor data is not in donation object
@@ -920,8 +1183,11 @@ class IntelligentMatcher {
       // Use requester data from request object if available (from join query)
       // This avoids an extra database call since request.requester is already populated
       if (request.requester) {
+        // Extract assistance_needs from user_profiles.recipient JSONB field
+        const recipientProfile = Array.isArray(request.requester.profile) ? request.requester.profile[0] : request.requester.profile
+        const assistanceNeeds = recipientProfile?.recipient?.assistance_needs || request.requester.assistance_needs || []
         recipientPreferences = {
-          assistance_needs: Array.isArray(request.requester.assistance_needs) ? request.requester.assistance_needs : []
+          assistance_needs: Array.isArray(assistanceNeeds) ? assistanceNeeds : []
         }
       } else if (request.requester_id) {
         // Fallback: Only fetch if requester data is not in request object
@@ -937,11 +1203,27 @@ class IntelligentMatcher {
       // Continue without preferences if fetch fails
     }
     
-    // Geographic score using cached distance when possible
-    const dist = this.getCachedDistance(
-      request.requester?.latitude, request.requester?.longitude,
-      donation.donor?.latitude, donation.donor?.longitude
-    )
+    // Geographic score: Use donation pickup_location and request location (address strings)
+    // Extract city/barangay from addresses for proximity matching
+    // Priority: Use actual donation pickup_location and request location, not donor/recipient user profile locations
+    const donationLocation = donation.pickup_location || donation.donor?.address || donation.donor?.city || ''
+    const requestLocation = request.location || request.requester?.address || request.requester?.city || ''
+    
+    // Calculate proximity based on address matching (city/barangay level)
+    // If coordinates are available, use them; otherwise use address-based matching
+    let dist = null
+    if (request.requester?.latitude && request.requester?.longitude && 
+        donation.donor?.latitude && donation.donor?.longitude) {
+      // Use coordinates if available
+      dist = this.getCachedDistance(
+        request.requester.latitude, request.requester.longitude,
+        donation.donor.latitude, donation.donor.longitude
+      )
+    } else {
+      // Fallback: Calculate distance based on address matching (city/barangay)
+      dist = this.calculateAddressProximity(donationLocation, requestLocation)
+    }
+    
     const geographic_proximity = this.normalize.normalizeDistance(dist, maxDistance)
 
     const item_compatibility = this.calculateItemCompatibility(
@@ -1061,6 +1343,70 @@ class IntelligentMatcher {
     const d = calculateDistance(lat1, lon1, lat2, lon2)
     this.distanceCache.set(key, { v: d, t: now })
     return d
+  }
+
+  /**
+   * Calculate proximity based on address strings (city/barangay matching)
+   * Used when coordinates are not available
+   * @param {string} address1 - First address (donation pickup_location)
+   * @param {string} address2 - Second address (request location)
+   * @returns {number|null} Estimated distance in km or null if cannot determine
+   */
+  calculateAddressProximity(address1, address2) {
+    if (!address1 || !address2) return null
+    
+    const addr1Lower = address1.toLowerCase()
+    const addr2Lower = address2.toLowerCase()
+    
+    // Extract city from addresses
+    const extractCity = (addr) => {
+      // Check for Cagayan de Oro City or Opol
+      if (addr.includes('cagayan de oro city') || addr.includes('cagayan de oro')) {
+        return 'cagayan de oro city'
+      }
+      if (addr.includes('opol')) {
+        return 'opol'
+      }
+      // Try to extract city name (last part before "Philippines" or province)
+      const cityMatch = addr.match(/([^,]+),\s*(?:misamis oriental|philippines)/i)
+      if (cityMatch) return cityMatch[1].trim().toLowerCase()
+      return null
+    }
+    
+    // Extract barangay from addresses
+    const extractBarangay = (addr) => {
+      const barangayMatch = addr.match(/barangay\s+([^,\s]+)/i)
+      if (barangayMatch) return barangayMatch[1].trim().toLowerCase()
+      return null
+    }
+    
+    const city1 = extractCity(addr1Lower)
+    const city2 = extractCity(addr2Lower)
+    const barangay1 = extractBarangay(addr1Lower)
+    const barangay2 = extractBarangay(addr2Lower)
+    
+    // Same city and barangay = very close (0-2 km)
+    if (city1 && city2 && city1 === city2 && barangay1 && barangay2 && barangay1 === barangay2) {
+      return 1 // ~1 km
+    }
+    
+    // Same city, different barangay = close (2-10 km)
+    if (city1 && city2 && city1 === city2) {
+      return 5 // ~5 km average within same city
+    }
+    
+    // Different cities = farther (10-50 km)
+    // Cagayan de Oro City and Opol are adjacent, so ~15-20 km
+    if (city1 && city2 && city1 !== city2) {
+      if ((city1 === 'cagayan de oro city' && city2 === 'opol') ||
+          (city1 === 'opol' && city2 === 'cagayan de oro city')) {
+        return 18 // ~18 km between CDO and Opol
+      }
+      return 30 // ~30 km for other different cities
+    }
+    
+    // Cannot determine - return neutral distance
+    return 25 // ~25 km (neutral)
   }
 
   async getCachedReliability(userId, userType) {

@@ -36,12 +36,14 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
 import ReportUserModal from '../../components/ui/ReportUserModal'
 import { db } from '../../lib/supabase'
+import { intelligentMatcher } from '../../lib/matchingAlgorithm'
 
 const BrowseDonationsPage = () => {
   const { user, profile } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
   const [donations, setDonations] = useState([])
+  const [donationsWithScores, setDonationsWithScores] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -94,7 +96,6 @@ const BrowseDonationsPage = () => {
     try {
       setLoading(true)
       // Get available donations with reduced limit for faster initial load
-      // Load only 30 donations initially for better performance
       const availableDonations = await db.getAvailableDonations({ limit: 30 })
       setDonations(availableDonations || [])
       
@@ -102,16 +103,150 @@ const BrowseDonationsPage = () => {
       const storedRequests = localStorage.getItem(`requestedDonations_${user?.id}`)
       if (storedRequests) {
         const storedIds = new Set(JSON.parse(storedRequests))
-        // Only keep requests for donations that still exist
         const currentDonationIds = new Set(availableDonations.map(d => d.id))
         const validRequests = new Set([...storedIds].filter(id => currentDonationIds.has(id)))
         
         setRequestedDonations(validRequests)
         
-        // Update localStorage with cleaned data
         if (validRequests.size !== storedIds.size) {
           localStorage.setItem(`requestedDonations_${user.id}`, JSON.stringify([...validRequests]))
         }
+      }
+      
+      // Load ALL open requests for matching (not just recipient's own)
+      // This allows recipients to see how donations match against all available requests
+      let allOpenRequests = []
+      let recipientUser = null
+      
+      if (user?.id) {
+        // Get recipient's user profile with location data
+        recipientUser = await db.getProfile(user.id)
+        
+        // Get ALL open requests (not just recipient's own) for comprehensive matching
+        allOpenRequests = await db.getRequests({ status: 'open', limit: 10000 })
+      }
+      
+      // Progressive loading: Show donations immediately, then calculate matching scores in batches
+      setDonationsWithScores(availableDonations.map(donation => ({
+        ...donation,
+        matchingScore: 0,
+        bestMatchingRequest: null,
+        matchReason: 'Calculating match...'
+      })))
+      
+      // If no requests available, show donations without scores
+      if (!allOpenRequests || allOpenRequests.length === 0) {
+        setDonationsWithScores(availableDonations.map(donation => ({
+          ...donation,
+          matchingScore: 0,
+          bestMatchingRequest: null,
+          matchReason: 'No open requests to match'
+        })))
+        return
+      }
+      
+      // Check if auto-matching is enabled
+      let autoMatchEnabled = false
+      let autoClaimThreshold = 0.8 // Default 80%
+      try {
+        const matchingParams = await db.getMatchingParameters()
+        const params = matchingParams?.DONOR_RECIPIENT_VOLUNTEER || matchingParams?.DONOR_RECIPIENT
+        if (params) {
+          autoMatchEnabled = params.auto_match_enabled || false
+          autoClaimThreshold = params.auto_claim_threshold || 0.8
+        }
+      } catch (err) {
+        console.warn('Could not load matching parameters for auto-claim:', err)
+      }
+      
+      // Calculate matching scores in smaller batches for better performance
+      const batchSize = 5
+      const donationsToProcess = availableDonations || []
+      
+      // Process donations in batches to avoid blocking
+      for (let i = 0; i < donationsToProcess.length; i += batchSize) {
+        const batch = donationsToProcess.slice(i, i + batchSize)
+        
+        // Process batch in parallel
+        const batchResults = await Promise.all(
+          batch.map(async (donation) => {
+            try {
+              // Use the matching algorithm to find best matches from ALL open requests
+              const matches = await intelligentMatcher.matchDonationToRequests(donation, allOpenRequests, recipientUser, 1)
+              
+              if (matches && matches.length > 0 && matches[0].score > 0) {
+                const bestMatch = matches[0]
+                
+                // Auto-claim logic: If auto-match is enabled and score >= 80% (0.8) and request belongs to current user
+                if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold && bestMatch.request?.requester_id === user?.id) {
+                  try {
+                    // Check if donation is still available and request is still open
+                    if (donation.status === 'available' && bestMatch.request.status === 'open') {
+                      // Check if already claimed
+                      const hasExistingClaim = donation.claims && Array.isArray(donation.claims) && 
+                        donation.claims.some(claim => claim.recipient_id === user.id && claim.status === 'claimed')
+                      
+                      if (!hasExistingClaim) {
+                        await db.claimDonation(donation.id, user.id)
+                        console.log(`Auto-claimed: Donation "${donation.title}" for request "${bestMatch.request.title}" (score: ${(bestMatch.score * 100).toFixed(1)}%)`)
+                      }
+                    }
+                  } catch (autoClaimErr) {
+                    console.warn(`Auto-claim failed for donation ${donation.id}:`, autoClaimErr)
+                    // Continue with normal flow even if auto-claim fails
+                  }
+                }
+                
+                return {
+                  ...donation,
+                  matchingScore: bestMatch.score,
+                  bestMatchingRequest: bestMatch.request,
+                  matchReason: bestMatch.matchReason || 'Good match based on multiple criteria'
+                }
+              } else {
+                return {
+                  ...donation,
+                  matchingScore: 0,
+                  bestMatchingRequest: null,
+                  matchReason: 'No compatible requests found'
+                }
+              }
+            } catch (err) {
+              console.error(`Error matching donation ${donation.id}:`, err)
+              return {
+                ...donation,
+                matchingScore: 0,
+                bestMatchingRequest: null,
+                matchReason: 'Unable to calculate match score'
+              }
+            }
+          })
+        )
+        
+        // Update state progressively with batch results
+        setDonationsWithScores(prev => {
+          const updated = [...(prev || [])]
+          batchResults.forEach((result, batchIdx) => {
+            const targetIndex = i + batchIdx
+            if (targetIndex < updated.length) {
+              updated[targetIndex] = result
+            }
+          })
+          return updated
+        })
+      }
+      
+      // Refresh data after auto-claiming to show updated statuses
+      if (autoMatchEnabled) {
+        // Small delay to allow database updates to complete
+        setTimeout(async () => {
+          try {
+            const availableDonations = await db.getAvailableDonations({ limit: 30 })
+            setDonations(availableDonations || [])
+          } catch (refreshErr) {
+            console.warn('Error refreshing donations after auto-claim:', refreshErr)
+          }
+        }, 1000)
       }
     } catch (err) {
       console.error('Error loading donations:', err)
@@ -176,8 +311,18 @@ const BrowseDonationsPage = () => {
   }
 
   // Memoize filtered donations to avoid recalculating on every render
+  // Helper function to get score color
+  const getScoreColor = (score) => {
+    if (score >= 0.8) return 'text-green-400 bg-green-900/30 border-green-500/50'
+    if (score >= 0.6) return 'text-blue-400 bg-blue-900/30 border-blue-500/50'
+    if (score >= 0.4) return 'text-yellow-400 bg-yellow-900/30 border-yellow-500/50'
+    return 'text-orange-400 bg-orange-900/30 border-orange-500/50'
+  }
+
   const filteredDonations = useMemo(() => {
-    return donations.filter(donation => {
+    const donationsToFilter = donationsWithScores.length > 0 ? donationsWithScores : donations
+    
+    return donationsToFilter.filter(donation => {
       // Exclude donations that are destined for organization only (CFC-GK)
       if (donation.donation_destination === 'organization') {
         return false
@@ -194,7 +339,21 @@ const BrowseDonationsPage = () => {
 
       return matchesSearch && matchesCategory && matchesCondition && matchesUrgent
     })
-  }, [donations, searchTerm, selectedCategory, selectedCondition, showUrgentOnly])
+    .sort((a, b) => {
+      // Primary sort: by matching score (highest first)
+      if (a.matchingScore !== undefined && b.matchingScore !== undefined) {
+        if (Math.abs(a.matchingScore - b.matchingScore) > 0.01) {
+          return b.matchingScore - a.matchingScore
+        }
+      }
+      // Secondary sort: by urgency
+      if (a.is_urgent !== b.is_urgent) {
+        return b.is_urgent ? 1 : -1
+      }
+      // Tertiary sort: by date
+      return new Date(b.created_at) - new Date(a.created_at)
+    })
+  }, [donations, donationsWithScores, searchTerm, selectedCategory, selectedCondition, showUrgentOnly])
 
   const getConditionColor = (condition) => {
     switch (condition) {
@@ -499,12 +658,57 @@ const BrowseDonationsPage = () => {
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: -20 }}
                   transition={{ delay: index * 0.05 }}
-                  className="card hover:shadow-xl hover:border-yellow-500/20 transition-all duration-300 overflow-hidden border-l-4 border-2 border-navy-700 cursor-pointer group active:scale-[0.99]"
-                  style={{
-                    borderLeftColor: donation.is_urgent ? '#ef4444' : '#fbbf24'
-                  }}
-                  onClick={() => handleViewDetails(donation)}
+                  className="relative"
                 >
+                  {/* Compatibility Score Extension - Connected to Card */}
+                  {donation.matchingScore !== undefined && donation.matchingScore > 0.01 && (
+                    <div
+                      className="px-4 py-3 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-yellow-500 rounded-t-lg mb-0 relative z-10"
+                      style={{
+                        borderTopLeftRadius: '0.5rem',
+                        borderTopRightRadius: '0.5rem',
+                        borderBottomLeftRadius: '0',
+                        borderBottomRightRadius: '0',
+                        marginBottom: '0',
+                        borderLeftColor: '#cdd74a'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="flex items-center gap-2 flex-1 min-w-0">
+                          {donation.bestMatchingRequest && (
+                            <>
+                              <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide whitespace-nowrap">Matches Request:</span>
+                              <span className="text-xs text-white font-medium truncate">{donation.bestMatchingRequest.title}</span>
+                            </>
+                          )}
+                          {donation.matchReason && (
+                            <>
+                              {donation.bestMatchingRequest && <span className="text-xs text-gray-500">•</span>}
+                              <span className="text-xs text-white font-medium truncate">{donation.matchReason}</span>
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide">Match Score:</span>
+                          <div className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getScoreColor(donation.matchingScore)}`}>
+                            {Math.round(donation.matchingScore * 100)}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Card */}
+                  <div
+                    className={`card hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 overflow-hidden border-2 border-navy-700 cursor-pointer group active:scale-[0.99] ${donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? 'rounded-t-none -mt-[1px]' : ''}`}
+                    style={{
+                      borderTopLeftRadius: donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? '0' : undefined,
+                      borderTopRightRadius: donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? '0' : undefined,
+                      marginTop: donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? '-1px' : undefined
+                    }}
+                    onClick={() => handleViewDetails(donation)}
+                  >
                   <div className="flex flex-col sm:flex-row gap-4 p-4">
                     {/* Sample Image or Placeholder */}
                     <div className="flex-shrink-0">
@@ -646,6 +850,15 @@ const BrowseDonationsPage = () => {
                         </div>
                       )}
                     </div>
+                  </div>
+                  
+                  {/* Status Indicator - Bottom Line */}
+                  <div 
+                    className="h-1 w-full"
+                    style={{
+                      backgroundColor: donation.is_urgent ? '#ef4444' : '#fbbf24'
+                    }}
+                  ></div>
                   </div>
                 </motion.div>
               ))}

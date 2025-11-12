@@ -594,19 +594,7 @@ const MyDonationsPage = () => {
   }, [donations, searchTerm, statusFilter, categoryFilter])
 
   const getStatusColor = (status, donation) => {
-    // Special handling for direct donations
-    if (donation?.donation_destination === 'organization') {
-      const directStatusColors = {
-        available: donation?.delivery_mode === 'donor_delivery' ? 'bg-blue-900/70 text-white' :
-                    donation?.delivery_mode === 'organization_pickup' ? 'bg-purple-900/70 text-white' :
-                    'bg-yellow-900/70 text-white', // volunteer delivery waiting
-        delivered: 'bg-green-900/70 text-white',
-        claimed: 'bg-emerald-900/70 text-white'
-      }
-      return directStatusColors[status] || colors[status]
-    }
-    
-    // Regular donations
+    // Regular donations color mapping
     const colors = {
       available: 'bg-success-900/70 text-white',
       matched: 'bg-yellow-900/70 text-white',
@@ -618,6 +606,19 @@ const MyDonationsPage = () => {
       cancelled: 'bg-danger-900/70 text-white',
       expired: 'bg-gray-900/70 text-white'
     }
+    
+    // Special handling for direct donations
+    if (donation?.donation_destination === 'organization') {
+      const directStatusColors = {
+        available: donation?.delivery_mode === 'donor_delivery' ? 'bg-blue-900/70 text-white' :
+                    donation?.delivery_mode === 'organization_pickup' ? 'bg-purple-900/70 text-white' :
+                    'bg-yellow-900/70 text-white', // volunteer delivery waiting
+        delivered: 'bg-green-900/70 text-white',
+        claimed: 'bg-emerald-900/70 text-white'
+      }
+      return directStatusColors[status] || colors[status] || 'bg-gray-900/70 text-white'
+    }
+    
     return colors[status] || 'bg-gray-900/70 text-white'
   }
 

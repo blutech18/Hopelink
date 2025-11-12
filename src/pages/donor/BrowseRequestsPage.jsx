@@ -223,90 +223,137 @@ const BrowseRequestsPage = () => {
       const fallbackRequests = rankedRequests.length > 0 ? rankedRequests : (await db.getRequests({ status: 'open', limit: 30 }))
       setRequests(fallbackRequests || [])
       
-      // Load user's donations for matching
+      // Load user's donations for display
       if (user?.id) {
-        const donations = await db.getDonations({ donor_id: user.id, status: 'available' })
-        setUserDonations(donations || [])
-        
-        // If user has no donations, skip matching entirely for faster load
-        if (!donations || donations.length === 0) {
-          setRequestsWithScores(fallbackRequests.map(req => ({
-            ...req,
-            matchingScore: 0,
-            bestMatchingDonation: null,
-            matchReason: 'No available donations to match'
-          })))
-          return
-        }
-        
-        // Progressive loading: Show requests immediately, then calculate matching scores in batches
-        // Set initial requests without blocking
+        const userDonations = await db.getDonations({ donor_id: user.id, status: 'available' })
+        setUserDonations(userDonations || [])
+      }
+      
+      // Load ALL available donations for matching (not just user's)
+      // Get all available donations without limit to ensure complete matching
+      const allDonations = await db.getAvailableDonations({ limit: 10000 })
+      
+      // Progressive loading: Show requests immediately, then calculate matching scores in batches
+      // Set initial requests without blocking
+      setRequestsWithScores(fallbackRequests.map(req => ({
+        ...req,
+        matchingScore: 0,
+        bestMatchingDonation: null,
+        matchReason: 'Calculating match...'
+      })))
+      
+      // If no donations available, show requests without scores
+      if (!allDonations || allDonations.length === 0) {
         setRequestsWithScores(fallbackRequests.map(req => ({
           ...req,
           matchingScore: 0,
           bestMatchingDonation: null,
-          matchReason: 'Calculating match...'
+          matchReason: 'No available donations to match'
         })))
+        return
+      }
+      
+      // Check if auto-matching is enabled
+      let autoMatchEnabled = false
+      let autoClaimThreshold = 0.8 // Default 80%
+      try {
+        const matchingParams = await db.getMatchingParameters()
+        const params = matchingParams?.DONOR_RECIPIENT_VOLUNTEER || matchingParams?.DONOR_RECIPIENT
+        if (params) {
+          autoMatchEnabled = params.auto_match_enabled || false
+          autoClaimThreshold = params.auto_claim_threshold || 0.8
+        }
+      } catch (err) {
+        console.warn('Could not load matching parameters for auto-claim:', err)
+      }
+      
+      // Calculate matching scores in smaller batches for better performance
+      const batchSize = 5
+      const requestsToProcess = fallbackRequests || []
+      
+      // Process requests in batches to avoid blocking
+      for (let i = 0; i < requestsToProcess.length; i += batchSize) {
+        const batch = requestsToProcess.slice(i, i + batchSize)
         
-        // Calculate matching scores in smaller batches for better performance
-        const batchSize = 5
-        const requestsToProcess = fallbackRequests || []
-        
-        // Process requests in batches to avoid blocking
-        for (let i = 0; i < requestsToProcess.length; i += batchSize) {
-          const batch = requestsToProcess.slice(i, i + batchSize)
-          
-          // Process batch in parallel
-          const batchResults = await Promise.all(
-            batch.map(async (request) => {
-              try {
-                // Use the unified matching algorithm to find best matches
-                const matches = await intelligentMatcher.matchDonorsToRequest(request, donations, 1)
+        // Process batch in parallel
+        const batchResults = await Promise.all(
+          batch.map(async (request) => {
+            try {
+              // Use the unified matching algorithm to find best matches from ALL available donations
+              const matches = await intelligentMatcher.matchDonorsToRequest(request, allDonations, 1)
+              
+              if (matches && matches.length > 0 && matches[0].score > 0) {
+                const bestMatch = matches[0]
                 
-                if (matches && matches.length > 0 && matches[0].score > 0) {
-                  const bestMatch = matches[0]
-                  return {
-                    ...request,
-                    matchingScore: bestMatch.score,
-                    bestMatchingDonation: bestMatch.donation,
-                    matchReason: bestMatch.matchReason || 'Good match based on multiple criteria'
-                  }
-                } else {
-                  return {
-                    ...request,
-                    matchingScore: 0,
-                    bestMatchingDonation: null,
-                    matchReason: 'No compatible donations found'
+                // Auto-claim logic: If auto-match is enabled and score >= 80% (0.8) and donation belongs to current user
+                if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold && bestMatch.donation?.donor_id === user?.id) {
+                  try {
+                    // Check if already matched/claimed
+                    const donationStatus = bestMatch.donation.status
+                    if (donationStatus === 'available' && request.status === 'open') {
+                      await db.createSmartMatch(request.id, bestMatch.donation.id)
+                      console.log(`Auto-matched: Donation "${bestMatch.donation.title}" to request "${request.title}" (score: ${(bestMatch.score * 100).toFixed(1)}%)`)
+                    }
+                  } catch (autoMatchErr) {
+                    console.warn(`Auto-match failed for request ${request.id}:`, autoMatchErr)
+                    // Continue with normal flow even if auto-match fails
                   }
                 }
-              } catch (err) {
-                console.error(`Error matching request ${request.id}:`, err)
+                
+                return {
+                  ...request,
+                  matchingScore: bestMatch.score,
+                  bestMatchingDonation: bestMatch.donation,
+                  matchReason: bestMatch.matchReason || 'Good match based on multiple criteria'
+                }
+              } else {
                 return {
                   ...request,
                   matchingScore: 0,
                   bestMatchingDonation: null,
-                  matchReason: 'Unable to calculate match score'
+                  matchReason: 'No compatible donations found'
                 }
               }
-            })
-          )
-          
-          // Update state progressively with batch results
-          // React will batch these updates efficiently
-          setRequestsWithScores(prev => {
-            // Create a new array with updated batch results
-            const updated = [...prev]
-            batchResults.forEach((result, batchIdx) => {
-              const targetIndex = i + batchIdx
-              if (targetIndex < updated.length) {
-                updated[targetIndex] = result
+            } catch (err) {
+              console.error(`Error matching request ${request.id}:`, err)
+              return {
+                ...request,
+                matchingScore: 0,
+                bestMatchingDonation: null,
+                matchReason: 'Unable to calculate match score'
               }
-            })
-            return updated
+            }
           })
-        }
-      } else {
-        setRequestsWithScores(fallbackRequests || [])
+        )
+        
+        // Update state progressively with batch results
+        // React will batch these updates efficiently
+        setRequestsWithScores(prev => {
+          // Create a new array with updated batch results
+          const updated = [...(prev || [])]
+          batchResults.forEach((result, batchIdx) => {
+            const targetIndex = i + batchIdx
+            if (targetIndex < updated.length) {
+              updated[targetIndex] = result
+            }
+          })
+          return updated
+        })
+      }
+      
+      // Refresh data after auto-matching to show updated statuses
+      if (autoMatchEnabled) {
+        // Small delay to allow database updates to complete
+        setTimeout(async () => {
+          try {
+            const ranked = await db.rankOpenRequests({ limit: 30 })
+            const rankedRequests = (ranked || []).map(r => ({ ...r.request, _rankScore: r.score }))
+            const fallbackRequests = rankedRequests.length > 0 ? rankedRequests : (await db.getRequests({ status: 'open', limit: 30 }))
+            setRequests(fallbackRequests || [])
+          } catch (refreshErr) {
+            console.warn('Error refreshing requests after auto-match:', refreshErr)
+          }
+        }, 1000)
       }
     } catch (err) {
       console.error('Error loading requests:', err)
@@ -1009,7 +1056,7 @@ const BrowseRequestsPage = () => {
                     className="relative"
                   >
                     {/* Compatibility Score Extension - Connected to Card */}
-                    {request.matchingScore !== undefined && request.matchingScore > 0 && (
+                    {request.matchingScore !== undefined && request.matchingScore > 0.01 && (
                       <div
                         className="px-4 py-3 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-yellow-500 rounded-t-lg mb-0 relative z-10"
                     style={{
@@ -1023,15 +1070,23 @@ const BrowseRequestsPage = () => {
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="flex items-center justify-between gap-4">
-                          {request.bestMatchingDonation && (
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                              <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide whitespace-nowrap">Matches:</span>
-                              <span className="text-xs text-white font-medium truncate">{request.bestMatchingDonation.title}</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            {request.bestMatchingDonation && (
+                              <>
+                                <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide whitespace-nowrap">Matches:</span>
+                                <span className="text-xs text-white font-medium truncate">{request.bestMatchingDonation.title}</span>
+                              </>
+                            )}
+                            {request.matchReason && (
+                              <>
+                                {request.bestMatchingDonation && <span className="text-xs text-gray-500">•</span>}
+                                <span className="text-xs text-white font-medium truncate">{request.matchReason}</span>
+                              </>
+                            )}
+                          </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide">Match Score:</span>
-                            <div className={`px-2.5 py-0.5 rounded text-xs font-bold ${getScoreColor(request.matchingScore)}`}>
+                            <div className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getScoreColor(request.matchingScore)}`}>
                               {Math.round(request.matchingScore * 100)}%
                             </div>
                           </div>

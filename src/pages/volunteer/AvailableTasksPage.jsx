@@ -17,11 +17,12 @@ import {
   CheckCircle,
   Eye,
   X,
-  Gift
+  Gift,
+  Building
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
 import { intelligentMatcher } from '../../lib/matchingAlgorithm'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 
@@ -63,53 +64,81 @@ const AvailableTasksPage = () => {
 
       // Score tasks using the unified matching algorithm with database-driven parameters
       if (profile?.id) {
-        // Fetch full volunteer profile with all necessary fields (location, preferred_delivery_types, etc.)
+        // Use existing profile data first, fetch full profile in parallel with scoring
         let volunteerProfile = profile
-        try {
-          const fullProfile = await db.getProfile(profile.id)
-          if (fullProfile) {
-            volunteerProfile = { ...profile, ...fullProfile }
-          }
-        } catch (err) {
+        
+        // Start fetching full profile in parallel (non-blocking)
+        const profilePromise = db.getProfile(profile.id).catch(err => {
           console.warn('Could not fetch full volunteer profile, using available profile data:', err)
+          return null
+        })
+        
+        // Limit number of tasks to score for initial load (show first 20 with scores, rest without)
+        const tasksToScore = (taskData || []).slice(0, 20)
+        const remainingTasks = (taskData || []).slice(20)
+        
+        // Calculate matching scores in smaller batches for better performance
+        const batchSize = 5
+        const tasksWithMatchingScores = []
+        
+        // Wait for profile to be ready
+        const fullProfile = await profilePromise
+        if (fullProfile) {
+          volunteerProfile = { ...profile, ...fullProfile }
         }
         
-        const tasksWithMatchingScores = await Promise.all(
-          (taskData || []).map(async (task) => {
-            try {
-              // Ensure task has category field (may be in task.category or task.donation?.category)
-              const taskWithCategory = {
-                ...task,
-                category: task.category || task.donation?.category || task.request?.category,
-                donation: task.donation || { category: task.category },
-                request: task.request || { category: task.category, urgency: task.urgency }
+        // Process tasks in batches to avoid blocking
+        for (let i = 0; i < tasksToScore.length; i += batchSize) {
+          const batch = tasksToScore.slice(i, i + batchSize)
+          
+          const batchResults = await Promise.all(
+            batch.map(async (task) => {
+              try {
+                // Ensure task has category field
+                const taskWithCategory = {
+                  ...task,
+                  category: task.category || task.donation?.category || task.request?.category,
+                  donation: task.donation || { category: task.category },
+                  request: task.request || { category: task.category, urgency: task.urgency }
+                }
+                
+                // Use the unified matching algorithm to score this task
+                const matchResult = await intelligentMatcher.calculateTaskScoreForVolunteer(taskWithCategory, volunteerProfile)
+                
+                return {
+                  ...task,
+                  matchingScore: matchResult.score,
+                  matchReason: matchResult.matchReason,
+                  criteriaScores: matchResult.criteriaScores
+                }
+              } catch (err) {
+                console.error(`Error scoring task ${task.id}:`, err)
+                return {
+                  ...task,
+                  matchingScore: 0.5,
+                  matchReason: 'Unable to calculate match score',
+                  criteriaScores: {}
+                }
               }
-              
-              // Use the unified matching algorithm to score this task for the current volunteer
-              // This uses database-driven parameters (DONOR_RECIPIENT_VOLUNTEER)
-              const matchResult = await intelligentMatcher.calculateTaskScoreForVolunteer(taskWithCategory, volunteerProfile)
-              
-              return {
-                ...task,
-                matchingScore: matchResult.score,
-                matchReason: matchResult.matchReason,
-                criteriaScores: matchResult.criteriaScores
-              }
-            } catch (err) {
-              console.error(`Error scoring task ${task.id}:`, err)
-              // Fallback to task without score
-              return {
-                ...task,
-                matchingScore: 0.5,
-                matchReason: 'Unable to calculate match score',
-                criteriaScores: {}
-              }
-            }
-          })
-        )
+            })
+          )
+          
+          tasksWithMatchingScores.push(...batchResults)
+        }
+        
+        // Add remaining tasks without scores (they'll be scored on demand or in background)
+        const allTasksWithScores = [
+          ...tasksWithMatchingScores,
+          ...remainingTasks.map(task => ({
+            ...task,
+            matchingScore: 0.5, // Default score for unscored tasks
+            matchReason: 'Score pending',
+            criteriaScores: {}
+          }))
+        ]
         
         // Sort tasks by matching score (highest first), then by urgency
-        tasksWithMatchingScores.sort((a, b) => {
+        allTasksWithScores.sort((a, b) => {
           // First sort by matching score
           if (Math.abs(a.matchingScore - b.matchingScore) > 0.01) {
             return b.matchingScore - a.matchingScore
@@ -123,10 +152,12 @@ const AvailableTasksPage = () => {
           return new Date(b.createdAt) - new Date(a.createdAt)
         })
         
-        setTasksWithScores(tasksWithMatchingScores)
+        setTasksWithScores(allTasksWithScores)
         
-        // Load volunteer request statuses for current user
-        await loadVolunteerRequestStatuses(taskData)
+        // Load volunteer request statuses in parallel (non-blocking)
+        loadVolunteerRequestStatuses(taskData).catch(err => {
+          console.warn('Error loading volunteer request statuses:', err)
+        })
       } else {
         setTasksWithScores(taskData)
       }
@@ -139,16 +170,84 @@ const AvailableTasksPage = () => {
   }
 
   const loadVolunteerRequestStatuses = async (taskData) => {
-    if (!profile?.id) return
+    if (!profile?.id || !taskData || taskData.length === 0) return
 
     try {
       const requestStatusMap = new Map()
       
-      // Check each task for existing volunteer requests
-      for (const task of taskData) {
-        const requestStatus = await db.getVolunteerRequestStatus(profile.id, task.id)
-        if (requestStatus) {
-          requestStatusMap.set(task.id, requestStatus)
+      // Extract claim IDs from tasks for batch query
+      const claimIds = []
+      const cfcgkTaskIds = [] // Track CFC-GK task IDs for notification matching
+      
+      taskData.forEach(task => {
+        if (task.id.startsWith('claim-')) {
+          claimIds.push(task.id.replace('claim-', ''))
+        } else if (task.id.startsWith('cfcgk-')) {
+          cfcgkTaskIds.push(task.id) // Store full task ID for CFC-GK
+        }
+      })
+      
+      // Batch fetch all volunteer requests for this volunteer in a single query
+      // Note: volunteer_requests table has claim_id and request_id, but NOT donation_id
+      const { data: allVolunteerRequests, error } = await supabase
+        .from('volunteer_requests')
+        .select('id, volunteer_id, claim_id, request_id, status, created_at, updated_at')
+        .eq('volunteer_id', profile.id)
+        .in('status', ['pending', 'approved', 'rejected'])
+      
+      if (error) {
+        console.warn('Error fetching volunteer requests:', error)
+        return
+      }
+      
+      // Map volunteer requests to tasks
+      if (allVolunteerRequests) {
+        // Match by claim_id for regular tasks
+        allVolunteerRequests.forEach(request => {
+          if (request.claim_id && claimIds.includes(request.claim_id)) {
+            requestStatusMap.set(`claim-${request.claim_id}`, request)
+          }
+        })
+        
+        // For CFC-GK tasks, match via notifications since volunteer_requests doesn't have donation_id
+        // Check notifications sent TO the volunteer that contain donation_id and volunteer_request_id
+        if (cfcgkTaskIds.length > 0) {
+          try {
+            // Get CFC-GK donation IDs from task IDs
+            const cfcgkDonationIds = cfcgkTaskIds.map(id => id.replace('cfcgk-', ''))
+            
+            // Fetch notifications that might contain CFC-GK volunteer request info
+            const { data: notifications } = await supabase
+              .from('notifications')
+              .select('id, data, type')
+              .eq('user_id', profile.id)
+              .in('type', ['volunteer_approved', 'delivery_assigned', 'system_alert'])
+              .not('data', 'is', null)
+              .limit(50) // Limit to recent notifications for performance
+            
+            if (notifications) {
+              // Get volunteer requests with null claim_id/request_id (likely CFC-GK)
+              const cfcgkRequests = allVolunteerRequests.filter(req => !req.claim_id && !req.request_id)
+              
+              notifications.forEach(notif => {
+                const notifData = notif.data
+                // Match if notification has donation_id and volunteer_request_id
+                if (notifData && notifData.donation_id && notifData.volunteer_request_id) {
+                  const donationId = notifData.donation_id
+                  if (cfcgkDonationIds.includes(donationId)) {
+                    // Find matching volunteer request
+                    const matchingRequest = cfcgkRequests.find(req => req.id === notifData.volunteer_request_id)
+                    if (matchingRequest) {
+                      requestStatusMap.set(`cfcgk-${donationId}`, matchingRequest)
+                    }
+                  }
+                }
+              })
+            }
+          } catch (notifErr) {
+            console.warn('Error fetching notifications for CFC-GK matching:', notifErr)
+            // CFC-GK tasks without matched requests will show "Volunteer" button
+          }
         }
       }
       
@@ -234,6 +333,11 @@ const AvailableTasksPage = () => {
       // All tasks are approved donations (requests without donors are not shown)
       if (task.type === 'approved_donation' && task.claimId) {
         requestData.claim_id = task.claimId
+      } else if (task.type === 'approved_donation' && task.id?.startsWith('cfcgk-')) {
+        // For CFC-GK tasks, we need to handle them differently since they don't have claims
+        // Pass the donation ID so we can track the request
+        requestData.donation_id = task.donation?.id || task.originalId
+        requestData.claim_id = null // CFC-GK donations don't have claims
       }
 
       // Create the volunteer request (this will also create notifications)
@@ -242,7 +346,11 @@ const AvailableTasksPage = () => {
       // Update local state to show request sent
       setVolunteerRequests(prev => new Map(prev.set(task.id, volunteerRequest)))
       
-      success('Volunteer request sent! Both donor and recipient will be notified to confirm.')
+      if (task.id?.startsWith('cfcgk-')) {
+        success('Volunteer request sent! The donor and CFC-GK will be notified to confirm.')
+      } else {
+        success('Volunteer request sent! Both donor and recipient will be notified to confirm.')
+      }
     } catch (err) {
       console.error('Error sending volunteer request:', err)
       if (err.message?.includes('duplicate')) {
@@ -263,6 +371,14 @@ const AvailableTasksPage = () => {
       case 'low': return 'text-green-400 bg-green-500/10'
       default: return 'text-gray-400 bg-gray-500/10'
     }
+  }
+
+  // Helper function to get score color
+  const getScoreColor = (score) => {
+    if (score >= 0.8) return 'text-green-400 bg-green-900/30 border-green-500/50'
+    if (score >= 0.6) return 'text-blue-400 bg-blue-900/30 border-blue-500/50'
+    if (score >= 0.4) return 'text-yellow-400 bg-yellow-900/30 border-yellow-500/50'
+    return 'text-orange-400 bg-orange-900/30 border-orange-500/50'
   }
 
   // Helper function to check if a value is a placeholder or invalid
@@ -573,30 +689,62 @@ const AvailableTasksPage = () => {
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.4, delay: index * 0.05 }}
-                  className="card hover:shadow-xl transition-all duration-300 overflow-hidden border-l-4 group"
-                  style={{
-                    borderLeftColor: task.urgency === 'critical' ? '#ef4444' : 
-                                    task.urgency === 'high' ? '#fb923c' : 
-                                    task.urgency === 'medium' ? '#fbbf24' : '#4ade80'
-                  }}
+                  className="relative"
                 >
-                  <div className="p-4 sm:p-6">
-                    <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
-                      {/* Task Image - Left Side */}
-                      <div className="flex-shrink-0">
-                        {task.imageUrl ? (
-                          <div className="relative w-full sm:w-48 lg:w-56 h-40 sm:h-48 rounded-lg overflow-hidden border-2 border-yellow-500/30 shadow-lg">
+                  {/* Compatibility Score Extension - Connected to Card */}
+                  {task.matchingScore !== undefined && task.matchingScore > 0.01 && (
+                    <div
+                      className="px-4 py-3 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-yellow-500 rounded-t-lg mb-0 relative z-10"
+                      style={{
+                        borderTopLeftRadius: '0.5rem',
+                        borderTopRightRadius: '0.5rem',
+                        borderBottomLeftRadius: '0',
+                        borderBottomRightRadius: '0',
+                        marginBottom: '0',
+                        borderLeftColor: '#cdd74a'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="flex items-center justify-between gap-4">
+                        {task.matchReason && (
+                          <div className="flex items-center gap-2 flex-1 min-w-0">
+                            <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide whitespace-nowrap">Match Reason:</span>
+                            <span className="text-xs text-white font-medium truncate">{task.matchReason}</span>
+                          </div>
+                        )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide">Match Score:</span>
+                          <div className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getScoreColor(task.matchingScore)}`}>
+                            {Math.round(task.matchingScore * 100)}%
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Card */}
+                  <div
+                    className={`card hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 overflow-hidden border-2 border-navy-700 cursor-pointer group active:scale-[0.99] ${task.matchingScore !== undefined && task.matchingScore > 0.01 ? 'rounded-t-none -mt-[1px]' : ''}`}
+                    style={{
+                      borderTopLeftRadius: task.matchingScore !== undefined && task.matchingScore > 0.01 ? '0' : undefined,
+                      borderTopRightRadius: task.matchingScore !== undefined && task.matchingScore > 0.01 ? '0' : undefined,
+                      marginTop: task.matchingScore !== undefined && task.matchingScore > 0.01 ? '-1px' : undefined
+                    }}
+                    onClick={() => {
+                      setSelectedTask(task)
+                      setShowViewModal(true)
+                    }}
+                  >
+                  <div className="flex flex-col sm:flex-row gap-4 p-4">
+                    {/* Task Image - Left Side */}
+                    <div className="flex-shrink-0">
+                      {task.imageUrl ? (
+                        <div className="relative w-full sm:w-56 lg:w-64 h-48 sm:h-56 lg:h-64 rounded-lg overflow-hidden border-2 border-yellow-500/30">
                             <img 
                               src={task.imageUrl} 
                               alt={task.title}
                               className="w-full h-full object-cover"
                             />
-                            {/* Category Badge on Image */}
-                            <div className="absolute top-2 left-2">
-                              <span className="px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold bg-navy-900/90 text-yellow-400 backdrop-blur-sm border border-yellow-500/30">
-                                {task.category}
-                              </span>
-                            </div>
                             {/* Urgency Badge on Image */}
                             <div className="absolute top-2 right-2">
                               <span className={`px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold backdrop-blur-md border-2 shadow-lg ${getUrgencyColor(task.urgency)}`}>
@@ -605,7 +753,7 @@ const AvailableTasksPage = () => {
                             </div>
                           </div>
                         ) : (
-                          <div className="w-full sm:w-48 lg:w-56 h-40 sm:h-48 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600 shadow-lg">
+                          <div className="w-full sm:w-56 lg:w-64 h-48 sm:h-56 lg:h-64 rounded-lg bg-gradient-to-br from-navy-800 to-navy-900 flex flex-col items-center justify-center border-2 border-navy-600">
                             <div className="text-5xl mb-2">
                               {getCategoryIcon(task.category)}
                             </div>
@@ -628,6 +776,12 @@ const AvailableTasksPage = () => {
                               <span className="px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-green-500/20 text-green-400 border border-green-500/30 whitespace-nowrap">
                                 ✓ Ready
                               </span>
+                              {task.donation?.donation_destination === 'organization' && (
+                                <span className="inline-flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-semibold bg-blue-500/20 text-blue-400 border border-blue-500/30 whitespace-nowrap">
+                                  <Building className="h-3 w-3" />
+                                  CFC-GK
+                                </span>
+                              )}
                             </div>
                             <p className="text-gray-300 text-xs sm:text-sm line-clamp-2">
                               {task.description || 'No description available'}
@@ -697,7 +851,7 @@ const AvailableTasksPage = () => {
                         {/* Compact Details */}
                         <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 sm:gap-y-2 text-xs sm:text-sm">
                           {/* From: Donor location (pickup location) */}
-                          <div className="flex items-start gap-1.5 text-yellow-300">
+                          <div className="flex items-start gap-1.5 text-yellow-300 col-span-2">
                             <MapPin className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400 mt-0.5 flex-shrink-0" />
                             <div className="flex-1 min-w-0">
                               <span className="font-medium">From:</span>
@@ -706,7 +860,7 @@ const AvailableTasksPage = () => {
                           </div>
                           
                           {/* To: Recipient location (delivery location) */}
-                          <div className="flex items-start gap-1.5 text-yellow-300">
+                          <div className="flex items-start gap-1.5 text-yellow-300 col-span-2">
                             <Navigation className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-400 mt-0.5 flex-shrink-0" />
                             <div className="flex-1 min-w-0">
                               <span className="font-medium">To:</span>
@@ -721,9 +875,18 @@ const AvailableTasksPage = () => {
                             <span className="text-white truncate text-[11px] sm:text-xs">{task.donor?.name || 'Anonymous'}</span>
                           </div>
                           
+                          {/* Recipient */}
+                          <div className="flex items-center gap-1.5 text-yellow-300">
+                            <User className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-green-400 flex-shrink-0" />
+                            <span className="font-medium whitespace-nowrap">Recipient:</span>
+                            <span className="text-white truncate text-[11px] sm:text-xs">
+                              {task.donation?.donation_destination === 'organization' ? 'CFC-GK' : (task.recipient?.name || 'Anonymous')}
+                            </span>
+                          </div>
+                          
                           {/* Quantity */}
                           {task.quantity && (
-                            <div className="flex items-center gap-1.5 text-yellow-300">
+                            <div className="flex items-center gap-1.5 text-yellow-300 col-span-2">
                               <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-400 flex-shrink-0" />
                               <span className="font-medium">Qty:</span>
                               <span className="text-white text-[11px] sm:text-xs">{task.quantity}</span>
@@ -748,6 +911,16 @@ const AvailableTasksPage = () => {
                         </div>
                       </div>
                     </div>
+                  
+                  {/* Urgency Indicator - Bottom Line */}
+                  <div 
+                    className="h-1 w-full"
+                    style={{
+                      backgroundColor: task.urgency === 'critical' ? '#ef4444' : 
+                                      task.urgency === 'high' ? '#a8b03c' : 
+                                      task.urgency === 'medium' ? '#cdd74a' : '#60a5fa'
+                    }}
+                  ></div>
                   </div>
                 </motion.div>
               ))}
@@ -801,11 +974,6 @@ const AvailableTasksPage = () => {
                       <div className="absolute top-3 right-3">
                         <span className={`px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md border-2 ${getUrgencyColor(selectedTask.urgency)}`}>
                           {selectedTask.urgency.toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="absolute top-3 left-3">
-                        <span className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-navy-900/90 text-yellow-400 backdrop-blur-sm border border-yellow-500/30">
-                          {selectedTask.category}
                         </span>
                       </div>
                     </div>

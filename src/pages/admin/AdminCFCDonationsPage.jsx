@@ -53,15 +53,13 @@ const AdminCFCDonationsPage = () => {
     try {
       setLoading(true)
       
-      // Fetch all donations and filter for CFC-GK donations
-      const donationsData = await db.getDonations({ limit: 500 })
+      // Fetch CFC-GK donations directly from database (more efficient)
+      const donationsData = await db.getDonations({ 
+        limit: 100, // Reasonable limit for CFC-GK donations
+        donation_destination: 'organization' // Filter directly in database query
+      })
       
-      // Filter for CFC-GK donations
-      const cfcDonations = donationsData.filter(donation => 
-        donation.donation_destination === 'organization'
-      )
-      
-      setDonations(cfcDonations || [])
+      setDonations(donationsData || [])
     } catch (error) {
       console.error('Error loading CFC-GK donations:', error)
       setDonations([])

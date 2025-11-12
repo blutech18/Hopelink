@@ -566,7 +566,7 @@ const PostDonationPage = () => {
                               To Recipients
                             </h3>
                             <p className="text-sm text-yellow-400 leading-relaxed">
-                              Let recipients choose how to receive (pickup/delivery)
+                              You decide how recipients will receive this donation (pickup/delivery)
                             </p>
                           </div>
                           {donationDestination === 'recipients' && (

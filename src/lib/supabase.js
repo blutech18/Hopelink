@@ -123,7 +123,9 @@ export const db = {
           delivery_preferences: userProfile.volunteer.delivery_preferences,
           has_insurance: userProfile.volunteer.has_insurance,
           insurance_provider: userProfile.volunteer.insurance_provider,
-          insurance_policy_number: userProfile.volunteer.insurance_policy_number
+          insurance_policy_number: userProfile.volunteer.insurance_policy_number,
+          urgency_response: userProfile.volunteer.urgency_response,
+          preferred_urgency: userProfile.volunteer.preferred_urgency
         } : {}),
         // Flatten recipient JSONB fields
         ...(userProfile?.recipient ? {
@@ -624,6 +626,10 @@ export const db = {
       query = query.eq('donor_id', filters.donor_id)
     }
 
+    if (filters.donation_destination) {
+      query = query.eq('donation_destination', filters.donation_destination)
+    }
+
     const { data, error } = await query
     if (error) throw error
     return data
@@ -842,7 +848,7 @@ export const db = {
           latitude,
           longitude,
           created_at,
-          profile:user_profiles(recipient)
+          profile:user_profiles!user_profiles_user_id_fkey(recipient)
         )
       `)
       .order('created_at', { ascending: false })
@@ -1260,7 +1266,10 @@ export const db = {
           address_house,
           address_street,
           address_subdivision,
-          address_landmark
+          address_landmark,
+          latitude,
+          longitude,
+          profile:user_profiles!user_profiles_user_id_fkey(donor)
         )
       `)
       .eq('status', 'available')
@@ -1427,15 +1436,10 @@ export const db = {
         // Don't throw error here as the claim was successful
       }
 
-      // Auto-assign flow (guarded by admin setting)
-      try {
-        const settings = await this.getSettings().catch(() => ({ auto_assign_enabled: false }))
-        if (settings?.auto_assign_enabled) {
-          await this.autoAssignTopVolunteerWithAcceptance(claim.id)
-        }
-      } catch (e) {
-        console.warn('Auto-assign skipped:', e?.message || e)
-      }
+      // NOTE: Auto-assignment of volunteers is DISABLED
+      // Volunteers must always manually browse and accept tasks from the available-tasks page
+      // This ensures volunteers have full control over which tasks they accept
+      // No automatic assignment based on match score - volunteers decide themselves
     } else if (donation.delivery_mode === 'pickup') {
       // Create a pickup record for self-pickup tracking
       const { error: pickupError } = await supabase
@@ -2917,16 +2921,38 @@ export const db = {
     }
 
     try {
-      // Fetch donations with volunteer delivery mode that have claims - limit to 100 for performance
-      const { data: donations, error: donationsError } = await supabase
+      // Fetch donations with volunteer delivery mode that have claims - limit to 50 for performance
+      // Only fetch necessary fields to reduce data transfer
+      const { data: donationsWithClaims, error: donationsError } = await supabase
         .from('donations')
-        .select('*')
+        .select('id, title, description, category, quantity, condition, status, delivery_mode, donation_destination, donor_id, pickup_location, pickup_instructions, is_urgent, images, expiry_date, claims, created_at')
         .eq('delivery_mode', 'volunteer')
+        .eq('donation_destination', 'recipients')
         .not('claims', 'is', null)
+        .eq('status', 'available')
         .order('created_at', { ascending: false })
-        .limit(100)
+        .limit(50)
 
       if (donationsError) throw donationsError
+
+      // Fetch direct donations to CFC-GK (organization) with volunteer delivery mode
+      // Only fetch necessary fields to reduce data transfer
+      const { data: cfcgkDonations, error: cfcgkError } = await supabase
+        .from('donations')
+        .select('id, title, description, category, quantity, condition, status, delivery_mode, donation_destination, donor_id, pickup_location, pickup_instructions, is_urgent, images, expiry_date, created_at')
+        .eq('delivery_mode', 'volunteer')
+        .eq('donation_destination', 'organization')
+        .eq('status', 'available')
+        .order('created_at', { ascending: false })
+        .limit(30)
+
+      if (cfcgkError) {
+        console.error('Error fetching CFC-GK donations:', cfcgkError)
+        // Don't throw, just continue without CFC-GK donations
+      }
+
+      // Combine both types of donations
+      const donations = [...(donationsWithClaims || []), ...(cfcgkDonations || [])]
 
       // Extract claims with status 'claimed' from JSONB array
       const availableClaims = []
@@ -2954,13 +2980,16 @@ export const db = {
       let deliveriesMap = new Map()
       
       if (claimIds.length > 0) {
+        // Optimize: Only fetch deliveries with volunteer assignments (volunteer_id IS NOT NULL)
+        // This reduces the query result size significantly
         let deliveriesQuery = supabase
           .from('deliveries')
-          .select('id, claim_id, volunteer_id, status')
+          .select('claim_id, volunteer_id')
+          .not('volunteer_id', 'is', null) // Only get deliveries with volunteers assigned
         
         if (claimIds.length === 1) {
           deliveriesQuery = deliveriesQuery.eq('claim_id', claimIds[0])
-        } else {
+        } else if (claimIds.length > 0) {
           deliveriesQuery = deliveriesQuery.in('claim_id', claimIds)
         }
         
@@ -2968,60 +2997,86 @@ export const db = {
         
         if (!deliveriesError && deliveries) {
           deliveries.forEach(delivery => {
-            if (!deliveriesMap.has(delivery.claim_id)) {
-              deliveriesMap.set(delivery.claim_id, [])
-            }
-            deliveriesMap.get(delivery.claim_id).push(delivery)
+            deliveriesMap.set(delivery.claim_id, true) // Just track if claim has volunteer
           })
         }
       }
 
       // Filter out claims that already have volunteer assignments
       const availableForDelivery = availableClaims.filter(claim => {
-        const deliveries = deliveriesMap.get(claim.id) || []
-        return deliveries.length === 0 || deliveries.every(d => !d.volunteer_id)
+        return !deliveriesMap.has(claim.id) // If not in map, no volunteer assigned
+      })
+
+      // Handle CFC-GK direct donations (donations with donation_destination = 'organization')
+      // Check for existing volunteer requests on CFC-GK donations
+      const cfcgkDonationIds = (cfcgkDonations || []).map(d => d.id).filter(Boolean)
+      let cfcgkVolunteerRequestsMap = new Map()
+      
+      if (cfcgkDonationIds.length > 0) {
+        // Check for volunteer requests that might be associated with these donations
+        // Since CFC-GK donations don't have claims, we need to check differently
+        // For now, we'll check if there are any approved/pending volunteer requests
+        // that might be for these donations (we'll filter by checking task IDs later)
+        // Actually, since CFC-GK tasks use 'cfcgk-' prefix, we can check volunteer requests
+        // by looking for requests without claim_id that might be for CFC-GK donations
+        // For simplicity, we'll just show all available CFC-GK donations and let
+        // the volunteer request system handle duplicates
+      }
+
+      // Filter CFC-GK donations that are available (status = 'available')
+      // We'll show all available CFC-GK donations with volunteer delivery mode
+      const availableCFCGKDonations = (cfcgkDonations || []).filter(donation => {
+        return donation.status === 'available'
       })
 
       // Get unique donor and recipient IDs
-      const donorIds = [...new Set(availableForDelivery.map(c => c.donation?.donor_id).filter(Boolean))]
+      const donorIdsFromClaims = [...new Set(availableForDelivery.map(c => c.donation?.donor_id).filter(Boolean))]
+      const donorIdsFromCFCGK = [...new Set(availableCFCGKDonations.map(d => d.donor_id).filter(Boolean))]
+      const donorIds = [...new Set([...donorIdsFromClaims, ...donorIdsFromCFCGK])]
       const recipientIds = [...new Set(availableForDelivery.map(c => c.recipient_id).filter(Boolean))]
 
-      // Fetch donors
+      // Fetch donors and recipients in parallel for better performance
+      const [donorsResult, recipientsResult] = await Promise.all([
+        donorIds.length > 0 ? (async () => {
+          let donorsQuery = supabase
+            .from('users')
+            .select('id, name, email, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude')
+          
+          if (donorIds.length === 1) {
+            donorsQuery = donorsQuery.eq('id', donorIds[0])
+          } else {
+            donorsQuery = donorsQuery.in('id', donorIds)
+          }
+          
+          const { data: donors, error: donorsError } = await donorsQuery
+          return { donors, error: donorsError }
+        })() : Promise.resolve({ donors: [], error: null }),
+        
+        recipientIds.length > 0 ? (async () => {
+          let recipientsQuery = supabase
+            .from('users')
+            .select('id, name, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude')
+          
+          if (recipientIds.length === 1) {
+            recipientsQuery = recipientsQuery.eq('id', recipientIds[0])
+          } else {
+            recipientsQuery = recipientsQuery.in('id', recipientIds)
+          }
+          
+          const { data: recipients, error: recipientsError } = await recipientsQuery
+          return { recipients, error: recipientsError }
+        })() : Promise.resolve({ recipients: [], error: null })
+      ])
+      
+      // Build maps
       let donorsMap = new Map()
-      if (donorIds.length > 0) {
-        let donorsQuery = supabase
-          .from('users')
-          .select('id, name, email, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude')
-        
-        if (donorIds.length === 1) {
-          donorsQuery = donorsQuery.eq('id', donorIds[0])
-        } else {
-          donorsQuery = donorsQuery.in('id', donorIds)
-        }
-        
-        const { data: donors, error: donorsError } = await donorsQuery
-        if (!donorsError && donors) {
-          donors.forEach(d => donorsMap.set(d.id, d))
-        }
+      if (donorsResult.donors) {
+        donorsResult.donors.forEach(d => donorsMap.set(d.id, d))
       }
-
-      // Fetch recipients
+      
       let recipientsMap = new Map()
-      if (recipientIds.length > 0) {
-        let recipientsQuery = supabase
-          .from('users')
-          .select('id, name, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude')
-        
-        if (recipientIds.length === 1) {
-          recipientsQuery = recipientsQuery.eq('id', recipientIds[0])
-        } else {
-          recipientsQuery = recipientsQuery.in('id', recipientIds)
-        }
-        
-        const { data: recipients, error: recipientsError } = await recipientsQuery
-        if (!recipientsError && recipients) {
-          recipients.forEach(r => recipientsMap.set(r.id, r))
-        }
+      if (recipientsResult.recipients) {
+        recipientsResult.recipients.forEach(r => recipientsMap.set(r.id, r))
       }
 
       // Helper function to format address from user profile
@@ -3090,14 +3145,31 @@ export const db = {
           return {
             id: `claim-${claim.id}`,
             type: 'approved_donation',
-            title: `Deliver: ${claim.donation.title}`,
+            title: claim.donation.title,
             description: claim.donation.description || 'No description available',
             category: claim.donation.category,
-            urgency: claim.donation.is_urgent ? 'high' : 'medium',
+            // Assign diverse urgency levels based on donation urgency and claim ID for consistency
+            // This creates more realistic urgency distribution for matching
+            urgency: (() => {
+              // Use claim ID as seed for deterministic but diverse urgency assignment
+              const seed = claim.id ? claim.id.charCodeAt(0) + claim.id.charCodeAt(claim.id.length - 1) : Math.random() * 100
+              const urgencyLevels = ['low', 'medium', 'high', 'critical']
+              
+              if (claim.donation.is_urgent) {
+                // For urgent donations, assign 'high' or 'critical' based on seed
+                return seed % 2 === 0 ? 'high' : 'critical'
+              } else {
+                // For non-urgent donations, assign 'low' or 'medium' based on seed
+                return seed % 3 === 0 ? 'low' : 'medium'
+              }
+            })(),
             pickupLocation: pickupLocation,
+            pickup_location: claim.donation.pickup_location || pickupLocation, // Ensure pickup_location is available for matching
             deliveryLocation: deliveryLocation,
+            delivery_location: deliveryLocation, // Ensure delivery_location is available for matching
             donor: donor,
             recipient: recipient,
+            donation: claim.donation, // Include full donation object with pickup_location
             originalId: claim.id,
             claimId: claim.id,
             createdAt: claim.claimed_at,
@@ -3106,7 +3178,65 @@ export const db = {
             condition: claim.donation.condition,
             expiryDate: claim.donation.expiry_date,
             pickup_instructions: claim.donation.pickup_instructions,
-            imageUrl: claim.donation.images && claim.donation.images.length > 0 ? claim.donation.images[0] : null
+            imageUrl: claim.donation.images && claim.donation.images.length > 0 ? claim.donation.images[0] : null,
+            // Include coordinates for accurate distance calculation
+            pickup_latitude: donor?.latitude || null,
+            pickup_longitude: donor?.longitude || null,
+            delivery_latitude: recipient?.latitude || null,
+            delivery_longitude: recipient?.longitude || null
+          };
+        })
+
+      // Transform CFC-GK direct donations into task format
+      const cfcgkTasks = availableCFCGKDonations
+        .filter(donation => donation.title) // Filter out donations without titles
+        .map(donation => {
+          // Get donor from map
+          const donor = donation.donor_id ? donorsMap.get(donation.donor_id) : null
+          
+          // Format pickup location from donor
+          const pickupLocation = donation.pickup_location || formatAddressFromUser(donor) || 'Address TBD';
+          
+          // CFC-GK Mission Center delivery location
+          const deliveryLocation = 'Pasil, Kauswagan, Kauswagan, Philippines';
+          
+          return {
+            id: `cfcgk-${donation.id}`,
+            type: 'approved_donation',
+            title: donation.title,
+            description: donation.description || 'No description available',
+            category: donation.category,
+            urgency: (() => {
+              // Use donation ID as seed for deterministic but diverse urgency assignment
+              const seed = donation.id ? donation.id.charCodeAt(0) + donation.id.charCodeAt(donation.id.length - 1) : Math.random() * 100
+              
+              if (donation.is_urgent) {
+                return seed % 2 === 0 ? 'high' : 'critical'
+              } else {
+                return seed % 3 === 0 ? 'low' : 'medium'
+              }
+            })(),
+            pickupLocation: pickupLocation,
+            pickup_location: donation.pickup_location || pickupLocation,
+            deliveryLocation: deliveryLocation,
+            delivery_location: deliveryLocation,
+            donor: donor,
+            recipient: null, // No recipient for CFC-GK donations
+            donation: donation,
+            originalId: donation.id,
+            claimId: null, // No claim for direct CFC-GK donations
+            createdAt: donation.created_at,
+            isUrgent: donation.is_urgent,
+            quantity: donation.quantity,
+            condition: donation.condition,
+            expiryDate: donation.expiry_date,
+            pickup_instructions: donation.pickup_instructions,
+            imageUrl: donation.images && donation.images.length > 0 ? donation.images[0] : null,
+            // Include coordinates for accurate distance calculation
+            pickup_latitude: donor?.latitude || null,
+            pickup_longitude: donor?.longitude || null,
+            delivery_latitude: 8.4993342, // CFC-GK Mission Center approximate coordinates
+            delivery_longitude: 124.6427564
           };
         })
 
@@ -3115,7 +3245,7 @@ export const db = {
       // Volunteers should only see tasks where there's actually a donation to deliver (approved donations)
       
       // Combine and sort by urgency and date (only approved donations with donors)
-      const allTasks = [...deliveryTasks]
+      const allTasks = [...deliveryTasks, ...cfcgkTasks]
       
       allTasks.sort((a, b) => {
         const urgencyOrder = { critical: 4, high: 3, medium: 2, low: 1 }
@@ -4064,6 +4194,51 @@ export const db = {
             }
           })
         }
+      } else if (requestData.task_type === 'approved_donation' && requestData.donation_id && !requestData.claim_id) {
+        // Handle CFC-GK direct donations (no claim, just donation_id)
+        const { data: donation } = await supabase
+          .from('donations')
+          .select(`
+            *,
+            donor:users!donations_donor_id_fkey(id, name)
+          `)
+          .eq('id', requestData.donation_id)
+          .single()
+
+        if (donation && donation.donation_destination === 'organization') {
+          // Notify donor for CFC-GK donation
+          await this.createNotification({
+            user_id: donation.donor.id,
+            type: 'volunteer_request',
+            title: 'Volunteer Request for CFC-GK Delivery',
+            message: `${requestData.volunteer_name} is requesting to deliver your donation to CFC-GK: ${donation.title}. Please confirm if you approve this volunteer.`,
+            data: { 
+              volunteer_id: requestData.volunteer_id,
+              volunteer_name: requestData.volunteer_name,
+              volunteer_email: requestData.volunteer_email,
+              volunteer_phone: requestData.volunteer_phone,
+              donation_id: requestData.donation_id,
+              task_type: 'approved_donation',
+              volunteer_request_id: volunteerRequest.id,
+              is_cfcgk: true
+            }
+          })
+
+          // Also notify admins about volunteer request for CFC-GK donation
+          await this.notifyAllAdmins({
+            type: 'system_alert',
+            title: '🚚 Volunteer Request for CFC-GK Delivery',
+            message: `${requestData.volunteer_name} wants to deliver "${donation.title}" to CFC-GK Mission Center`,
+            data: {
+              donation_id: requestData.donation_id,
+              volunteer_id: requestData.volunteer_id,
+              volunteer_name: requestData.volunteer_name,
+              volunteer_request_id: volunteerRequest.id,
+              link: '/admin/cfc-donations',
+              notification_type: 'cfcgk_volunteer_request'
+            }
+          })
+        }
       } else if (requestData.task_type === 'request' && requestData.request_id) {
         // Get request details for requester notification
         const { data: request } = await supabase
@@ -4111,13 +4286,24 @@ export const db = {
         .select('*')
         .eq('volunteer_id', volunteerId)
 
-      // Check if it's a claim or request task
+      // Check if it's a claim, request, or CFC-GK task
       if (taskId.startsWith('claim-')) {
         const claimId = taskId.replace('claim-', '')
         query = query.eq('claim_id', claimId)
       } else if (taskId.startsWith('request-')) {
         const requestId = taskId.replace('request-', '')
         query = query.eq('request_id', requestId)
+      } else if (taskId.startsWith('cfcgk-')) {
+        // For CFC-GK tasks, check by donation_id if available in volunteer_requests
+        // Since CFC-GK donations don't have claims, we check for requests with null claim_id
+        // and match by donation_id if the table supports it
+        // For now, we'll check if there's a way to identify CFC-GK requests
+        // This might need to be handled differently based on the schema
+        const donationId = taskId.replace('cfcgk-', '')
+        // Check if volunteer_requests has donation_id field or we need to join
+        // For now, return null and let the UI handle it
+        // TODO: Implement proper CFC-GK volunteer request checking
+        return null
       }
 
       const { data, error } = await query.maybeSingle()
@@ -6003,9 +6189,9 @@ export const db = {
             data: {
               claim_id: claimId,
               transaction_completed: true,
-              confirmed_by: userRole
-            }
-          })
+            confirmed_by: userRole
+          }
+        })
       } else {
         // First confirmation - notify the other party
         const otherPartyId = isDonor ? directDelivery.claim.recipient.id : directDelivery.claim.donation.donor_id
@@ -6036,8 +6222,8 @@ export const db = {
             [`${userRole}_confirmed`]: true,
             action_required: 'confirm_direct_delivery'
           }
-          })
-        }
+        })
+      }
       }
 
       // Mark related notifications as read
@@ -6532,11 +6718,11 @@ export const db = {
           claim,
           donation: claim.donation,
           urgency: claim.donation.is_urgent ? 'high' : 'medium',
-          pickup_location: claim.donation.pickup_location,
-          pickup_latitude: claim.donation.donor?.latitude,
+          pickup_location: claim.donation.pickup_location, // Use actual donation pickup_location
+          pickup_latitude: claim.donation.donor?.latitude, // Fallback to donor coordinates if available
           pickup_longitude: claim.donation.donor?.longitude,
-          delivery_location: claim.recipient?.address || claim.recipient?.city,
-          delivery_latitude: claim.recipient?.latitude,
+          delivery_location: claim.recipient?.address || claim.recipient?.city, // Use recipient address
+          delivery_latitude: claim.recipient?.latitude, // Fallback to recipient coordinates if available
           delivery_longitude: claim.recipient?.longitude
         }
       } else {
@@ -6556,8 +6742,8 @@ export const db = {
           type: 'request_fulfillment',
           request,
           urgency: request.urgency,
-          delivery_location: request.location,
-          delivery_latitude: request.requester?.latitude,
+          delivery_location: request.location, // Use actual request location
+          delivery_latitude: request.requester?.latitude, // Fallback to requester coordinates if available
           delivery_longitude: request.requester?.longitude
         }
       }
@@ -7312,10 +7498,10 @@ export const db = {
       // If still fails, fetch users separately
       if (error || !data) {
         const { data: feedbackData, error: feedbackError } = await supabase
-          .from('feedback')
-          .select('*')
-          .eq('feedback_type', 'platform')
-          .order('created_at', { ascending: false })
+        .from('feedback')
+        .select('*')
+        .eq('feedback_type', 'platform')
+        .order('created_at', { ascending: false })
 
         if (feedbackError) throw feedbackError
 

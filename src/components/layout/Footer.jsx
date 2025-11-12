@@ -106,15 +106,15 @@ const Footer = ({ userRole = null }) => {
             <div className="space-y-1.5">
               <div className="flex items-center space-x-2 text-yellow-200">
                 <Mail className="h-4 w-4 flex-shrink-0" />
-                <span className="text-xs sm:text-sm">support@hopelink.org</span>
+                <span className="text-xs sm:text-sm">cfcgkmisor@gmail.com</span>
               </div>
               <div className="flex items-center space-x-2 text-yellow-200">
                 <Phone className="h-4 w-4 flex-shrink-0" />
-                <span className="text-xs sm:text-sm">1-800-HOPE-LINK</span>
+                <span className="text-xs sm:text-sm">+63 123 456 7890</span>
               </div>
               <div className="flex items-center space-x-2 text-yellow-200">
                 <MapPin className="h-4 w-4 flex-shrink-0" />
-                <span className="text-xs sm:text-sm">Serving communities nationwide</span>
+                <span className="text-xs sm:text-sm">Pasil, Kauswagan, Kauswagan, Philippines</span>
               </div>
             </div>
           </div>

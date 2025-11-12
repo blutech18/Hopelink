@@ -389,9 +389,35 @@ async function diversifyDonationStatuses(donations, claims, deliveries, directDe
   (deliveries || []).forEach((delivery) => applyDeliveryStatus(delivery));
   (directDeliveries || []).forEach((delivery) => applyDeliveryStatus(delivery, 'completed'));
 
-  // Ensure donations with claims have at least claimed status
+  // Track which claims have deliveries
+  const claimsWithDeliveries = new Set();
+  (deliveries || []).forEach((delivery) => {
+    if (delivery.claim_id) {
+      claimsWithDeliveries.add(delivery.claim_id);
+    }
+  });
+
+  // For donations with claims:
+  // - Volunteer donations WITHOUT deliveries should stay 'available' (for available-tasks page)
+  // - Volunteer donations WITH deliveries should be 'matched' or 'in_transit' (already set by applyDeliveryStatus)
+  // - Non-volunteer donations with claims should be 'claimed'
   claimsByDonation.forEach((_claims, donationId) => {
-    setStatusIfUnset(donationId, 'claimed');
+    const donation = donations.find(d => d.id === donationId);
+    if (!donation) return;
+    
+    // Check if any claim for this donation has a delivery
+    const hasDelivery = _claims.some(claim => claimsWithDeliveries.has(claim.id));
+    
+    // If it's a volunteer donation with claims but no delivery, keep it as 'available' for available-tasks page
+    if (donation.delivery_mode === 'volunteer' && !hasDelivery && !statusUpdates.has(donationId)) {
+      // Keep as 'available' - don't set status
+      return;
+    }
+    
+    // For other donations with claims, set to 'claimed' if not already set
+    if (!statusUpdates.has(donationId)) {
+      setStatusIfUnset(donationId, 'claimed');
+    }
   });
 
   // Promote one delivered donation to completed if not already present
@@ -428,10 +454,38 @@ async function diversifyDonationStatuses(donations, claims, deliveries, directDe
   }
 
   // Assign statuses to donations without claims
+  // IMPORTANT: Keep at least 40% of donations as 'available' for matching algorithm
+  // This ensures browse-requests page can find matching donations
   const donationsWithoutClaims = donations.filter((donation) => !statusUpdates.has(donation.id));
-  const fallbackStatuses = ['available', 'available', 'cancelled', 'expired', 'available', 'available'];
-  donationsWithoutClaims.forEach((donation, index) => {
-    const status = fallbackStatuses[index % fallbackStatuses.length] || 'available';
+  
+  // Separate CFC-GK volunteer donations - these MUST stay as 'available' for available-tasks page
+  const cfcgkVolunteerDonations = donationsWithoutClaims.filter(d => 
+    d.donation_destination === 'organization' && d.delivery_mode === 'volunteer'
+  );
+  const otherDonationsWithoutClaims = donationsWithoutClaims.filter(d => 
+    !(d.donation_destination === 'organization' && d.delivery_mode === 'volunteer')
+  );
+  
+  // CFC-GK volunteer donations MUST stay as 'available' - don't change their status
+  // They need to appear on the available-tasks page
+  
+  // For other donations without claims, distribute statuses
+  const totalWithoutClaims = otherDonationsWithoutClaims.length;
+  const availableCount = Math.max(1, Math.floor(totalWithoutClaims * 0.6)); // 60% available for matching
+  const cancelledCount = Math.max(0, Math.floor(totalWithoutClaims * 0.2));
+  const expiredCount = Math.max(0, Math.floor(totalWithoutClaims * 0.2));
+  
+  otherDonationsWithoutClaims.forEach((donation, index) => {
+    let status;
+    if (index < availableCount) {
+      status = 'available';
+    } else if (index < availableCount + cancelledCount) {
+      status = 'cancelled';
+    } else if (index < availableCount + cancelledCount + expiredCount) {
+      status = 'expired';
+    } else {
+      status = 'available'; // Default to available for remaining
+    }
     if (status !== donation.status) {
       statusUpdates.set(donation.id, status);
     }
@@ -475,9 +529,12 @@ async function diversifyRequestStatuses(requests) {
   const updates = [];
 
   const total = requests.length;
-  const fulfilledCount = Math.max(1, Math.floor(total * 0.3));
-  const cancelledCount = Math.max(1, Math.floor(total * 0.2));
-  const expiredCount = Math.max(1, Math.floor(total * 0.1));
+  // IMPORTANT: Keep at least 50% of requests as 'open' for matching algorithm
+  // This ensures browse-requests page has requests to match with donations
+  const maxNonOpenCount = Math.floor(total * 0.5);
+  const fulfilledCount = Math.max(1, Math.min(Math.floor(total * 0.3), maxNonOpenCount - 2));
+  const cancelledCount = Math.max(1, Math.min(Math.floor(total * 0.15), maxNonOpenCount - fulfilledCount - 1));
+  const expiredCount = Math.max(1, Math.min(Math.floor(total * 0.1), maxNonOpenCount - fulfilledCount - cancelledCount));
 
   let index = 0;
   const assignStatus = (count, status) => {
@@ -492,7 +549,7 @@ async function diversifyRequestStatuses(requests) {
   assignStatus(cancelledCount, 'cancelled');
   assignStatus(expiredCount, 'expired');
 
-  // Remaining requests stay open
+  // Remaining requests stay 'open' for matching algorithm
 
   for (const update of updates) {
     await supabase
@@ -755,11 +812,15 @@ const donationTemplates = [
 ];
 
 // Request templates with matching images
+// IMPORTANT: Categories must match donation categories for matching algorithm to work
+// Donation categories: 'Food & Beverages', 'Clothing & Accessories', 'Medical Supplies', 
+// 'Educational Materials', 'Household Items', 'Electronics & Technology', 'Toys & Recreation',
+// 'Personal Care Items', 'Emergency Supplies', 'Other'
 const requestTemplates = [
   {
     title: 'Urgent Need: Food Supplies',
     description: 'Our family is in urgent need of food supplies. Any help would be greatly appreciated.',
-    category: 'Food Items',
+    category: 'Food & Beverages', // Matches donation category
     urgency: 'high',
     quantity: 1,
     image: 'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=800'
@@ -767,7 +828,7 @@ const requestTemplates = [
   {
     title: 'School Supplies for Children',
     description: 'Need school supplies for my three children who are starting school next month.',
-    category: 'School Supplies',
+    category: 'Educational Materials', // Matches donation category
     urgency: 'medium',
     quantity: 3,
     image: 'https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800'
@@ -775,7 +836,7 @@ const requestTemplates = [
   {
     title: 'Baby Items Needed',
     description: 'Expecting a baby soon and need essential baby items.',
-    category: 'Baby Items',
+    category: 'Personal Care Items', // Matches donation category
     urgency: 'high',
     quantity: 1,
     image: 'https://images.unsplash.com/photo-1503454537195-1dcabb73ffb9?w=800'
@@ -783,7 +844,7 @@ const requestTemplates = [
   {
     title: 'Clothing for Family',
     description: 'Looking for clothing donations for a family of five.',
-    category: 'Clothing',
+    category: 'Clothing & Accessories', // Matches donation category
     urgency: 'medium',
     quantity: 5,
     image: 'https://images.unsplash.com/photo-1490578474895-699cd4e2cf59?w=800'
@@ -791,7 +852,7 @@ const requestTemplates = [
   {
     title: 'Medical Supplies Request',
     description: 'Need basic medical supplies for elderly family member.',
-    category: 'Medical Supplies',
+    category: 'Medical Supplies', // Matches donation category
     urgency: 'critical',
     quantity: 1,
     image: 'https://images.unsplash.com/photo-1587854692152-cbe660dbde88?w=800'
@@ -799,7 +860,7 @@ const requestTemplates = [
   {
     title: 'Books for Learning',
     description: 'Seeking educational books for children\'s learning.',
-    category: 'Books',
+    category: 'Educational Materials', // Matches donation category
     urgency: 'low',
     quantity: 10,
     image: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800'
@@ -807,7 +868,7 @@ const requestTemplates = [
   {
     title: 'Household Items',
     description: 'Starting a new home and need basic household items.',
-    category: 'Household Items',
+    category: 'Household Items', // Matches donation category
     urgency: 'medium',
     quantity: 1,
     image: 'https://images.unsplash.com/photo-1586023492125-27b2c045efd7?w=800'
@@ -815,7 +876,7 @@ const requestTemplates = [
   {
     title: 'Furniture Needed',
     description: 'Need furniture for our new home. Any furniture in good condition would help.',
-    category: 'Furniture',
+    category: 'Household Items', // Matches donation category (furniture is household)
     urgency: 'low',
     quantity: 1,
     image: 'https://images.unsplash.com/photo-1555041469-a586c61ea9bc?w=800'
@@ -823,7 +884,7 @@ const requestTemplates = [
   {
     title: 'Emergency Food Assistance',
     description: 'Lost job recently and need immediate food assistance for my family.',
-    category: 'Food Items',
+    category: 'Food & Beverages', // Matches donation category
     urgency: 'critical',
     quantity: 1,
     image: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=800'
@@ -831,7 +892,7 @@ const requestTemplates = [
   {
     title: 'Children\'s Toys Request',
     description: 'Looking for toys for my children\'s birthday celebration.',
-    category: 'Toys',
+    category: 'Toys & Recreation', // Matches donation category
     urgency: 'low',
     quantity: 5,
     image: 'https://images.unsplash.com/photo-1550745165-9bc0b252726f?w=800'
@@ -1152,8 +1213,57 @@ async function seedDonations() {
       } while (usedDonationIds.has(donationId));
       usedDonationIds.add(donationId);
       
+      // Use locations within Cagayan de Oro City and Opol only
+      const localCities = ['Cagayan de Oro City', 'Opol'];
+      const cdoBarangays = [
+        'Barangay Carmen',
+        'Barangay Lapasan',
+        'Barangay Macasandig',
+        'Barangay Nazareth',
+        'Barangay Kauswagan',
+        'Barangay Gusa',
+        'Barangay Bulua',
+        'Barangay Iponan',
+        'Barangay Balulang',
+        'Barangay Patag',
+        'Barangay Cugman',
+        'Barangay Tablon',
+        'Barangay Agusan',
+        'Barangay Bugo',
+        'Barangay Puerto',
+        'Barangay Puntod',
+        'Barangay Consolacion',
+        'Barangay Bonbon'
+      ];
+      const opolBarangays = [
+        'Barangay Poblacion',
+        'Barangay Igpit',
+        'Barangay Taboc',
+        'Barangay Limonda',
+        'Barangay Napo',
+        'Barangay Tingalan'
+      ];
+      const addressSuffixes = ['Street', 'Avenue', 'Road', 'Boulevard', 'Drive', 'Lane'];
+      
+      // Assign location based on donation index - alternate between CDO and Opol
+      const cityIndex = i % localCities.length;
+      const selectedCity = localCities[cityIndex];
+      const barangays = selectedCity === 'Cagayan de Oro City' ? cdoBarangays : opolBarangays;
+      const barangayIndex = i % barangays.length;
+      const selectedBarangay = barangays[barangayIndex];
+      const addressSuffix = addressSuffixes[i % addressSuffixes.length];
+      const addressNumber = (i % 999) + 1;
+      
+      // Create pickup location within CDO or Opol
+      const pickupLocation = `${addressNumber} ${selectedBarangay} ${addressSuffix}, ${selectedCity}, Misamis Oriental, Philippines`;
+      
       // Format donor address properly for pickup location
-      const donorAddress = formatAddress(donor) || `${donor.address || ''}, ${donor.city || ''}`.replace(/^,\s*|,\s*$/g, '').trim() || 'Address TBD';
+      const donorAddress = pickupLocation;
+      
+      // Ensure donations have sufficient quantities for matching (at least 2x request quantities)
+      // Request quantities are typically 1-10, so donations should have at least 2-20
+      const baseQuantity = template.quantity + Math.floor(Math.random() * 3);
+      const minQuantityForMatching = Math.max(baseQuantity, 5); // Ensure at least 5 for better matching
       
       const donation = {
         id: donationId,
@@ -1161,13 +1271,13 @@ async function seedDonations() {
         title: template.title,
         description: template.description,
         category: template.category,
-        quantity: template.quantity + Math.floor(Math.random() * 3),
+        quantity: minQuantityForMatching,
         condition: template.condition,
         pickup_location: donorAddress,
         pickup_instructions: 'Please contact me before pickup. Available weekdays 9 AM - 5 PM.',
         status: 'available',
         delivery_mode: deliveryMode,
-        donation_destination: deliveryMode === 'direct' ? 'organization' : 'recipients', // Direct donations go to organization (CFC-GK)
+        donation_destination: 'recipients', // All regular donations go to recipients (direct delivery mode means donor delivers to recipient, not to CFC-GK)
         tags: [template.category.toLowerCase()],
         images: [template.image],
         is_urgent: Math.random() > 0.8,
@@ -1191,6 +1301,126 @@ async function seedDonations() {
     
   } catch (error) {
     console.error('❌ Error seeding donations:', error);
+    throw error;
+  }
+}
+
+async function seedCFCGKDirectDonations() {
+  console.log('🌱 Seeding additional CFC-GK direct donations...\n');
+  
+  try {
+    let donors = await getUsersByRole('donor');
+    if (donors.length === 0) {
+      console.log('⚠️  No donors found for CFC-GK donations.');
+      return [];
+    }
+    
+    // Select a few templates that are good for organization donations
+    const cfcgkTemplates = [
+      donationTemplates[0],  // Rice and Canned Goods
+      donationTemplates[4],  // Baby Formula and Diapers
+      donationTemplates[5],  // School Supplies Pack
+      donationTemplates[7],  // Medical Supplies
+      donationTemplates[14], // Emergency Food Kit
+      donationTemplates[15], // First Aid Kit
+      donationTemplates[16], // Hygiene Products
+    ];
+    
+    const donationsToInsert = [];
+    const usedDonationIds = new Set();
+    
+    // Create 3-5 additional direct donations to CFC-GK (reasonable number for admin page)
+    const numCFCGKDonations = Math.min(5, Math.max(3, Math.floor(cfcgkTemplates.length * 0.6)));
+    
+    for (let i = 0; i < numCFCGKDonations; i++) {
+      const template = cfcgkTemplates[i];
+      const donor = donors[Math.floor(Math.random() * donors.length)];
+      
+      // Generate unique ID
+      let donationId;
+      do {
+        donationId = randomUUID();
+      } while (usedDonationIds.has(donationId));
+      usedDonationIds.add(donationId);
+      
+      // Use locations within Cagayan de Oro City
+      const cdoBarangays = [
+        'Barangay Carmen',
+        'Barangay Lapasan',
+        'Barangay Macasandig',
+        'Barangay Nazareth',
+        'Barangay Kauswagan',
+        'Barangay Gusa',
+        'Barangay Bulua'
+      ];
+      const addressSuffixes = ['Street', 'Avenue', 'Road'];
+      
+      const barangayIndex = i % cdoBarangays.length;
+      const selectedBarangay = cdoBarangays[barangayIndex];
+      const addressSuffix = addressSuffixes[i % addressSuffixes.length];
+      const addressNumber = (i % 999) + 1;
+      
+      // Create pickup location
+      const pickupLocation = `${addressNumber} ${selectedBarangay} ${addressSuffix}, Cagayan de Oro City, Misamis Oriental, Philippines`;
+      
+      // Base quantity
+      const baseQuantity = template.quantity + Math.floor(Math.random() * 5);
+      const minQuantityForMatching = Math.max(baseQuantity, 5);
+      
+      // Create direct donation to CFC-GK
+      // Prioritize volunteer delivery mode so they appear on available-tasks page
+      // Distribution: 60% volunteer, 20% donor_delivery, 20% organization_pickup
+      let deliveryMode;
+      if (i % 5 < 3) {
+        // First 3 out of 5 = volunteer mode (60%)
+        deliveryMode = 'volunteer';
+      } else if (i % 5 === 3) {
+        // 4th = donor_delivery (20%)
+        deliveryMode = 'donor_delivery';
+      } else {
+        // 5th = organization_pickup (20%)
+        deliveryMode = 'organization_pickup';
+      }
+      
+      const donation = {
+        id: donationId,
+        donor_id: donor.id,
+        title: template.title,
+        description: `${template.description} This donation is being sent directly to CFC-GK Mission Center for distribution to those in need.`,
+        category: template.category,
+        quantity: minQuantityForMatching,
+        condition: template.condition,
+        pickup_location: pickupLocation,
+        pickup_instructions: 'Please contact CFC-GK Mission Center for pickup coordination. Available weekdays 9 AM - 5 PM.',
+        status: 'available',
+        delivery_mode: deliveryMode,
+        donation_destination: 'organization', // Always organization for CFC-GK
+        tags: [template.category.toLowerCase(), 'cfc-gk', 'direct-donation'],
+        images: [template.image],
+        is_urgent: Math.random() > 0.7, // 30% urgent
+        estimated_value: Math.floor(Math.random() * 5000) + 500,
+        created_at: new Date(Date.now() - Math.random() * 20 * 24 * 60 * 60 * 1000).toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      donationsToInsert.push(donation);
+    }
+    
+    const { data, error } = await supabase
+      .from('donations')
+      .insert(donationsToInsert)
+      .select();
+    
+    if (error) throw error;
+    
+    // Count how many have volunteer delivery mode (for available-tasks page)
+    const volunteerCount = data.filter(d => d.delivery_mode === 'volunteer').length;
+    console.log(`✅ Created ${data.length} additional CFC-GK direct donations`);
+    console.log(`   • ${volunteerCount} with volunteer delivery mode (will appear on available-tasks page)\n`);
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Error seeding CFC-GK direct donations:', error);
     throw error;
   }
 }
@@ -1228,6 +1458,50 @@ async function seedRequests() {
       } while (usedRequestIds.has(requestId));
       usedRequestIds.add(requestId);
       
+      // Use locations within Cagayan de Oro City and Opol only
+      const localCities = ['Cagayan de Oro City', 'Opol'];
+      const cdoBarangays = [
+        'Barangay Carmen',
+        'Barangay Lapasan',
+        'Barangay Macasandig',
+        'Barangay Nazareth',
+        'Barangay Kauswagan',
+        'Barangay Gusa',
+        'Barangay Bulua',
+        'Barangay Iponan',
+        'Barangay Balulang',
+        'Barangay Patag',
+        'Barangay Cugman',
+        'Barangay Tablon',
+        'Barangay Agusan',
+        'Barangay Bugo',
+        'Barangay Puerto',
+        'Barangay Puntod',
+        'Barangay Consolacion',
+        'Barangay Bonbon'
+      ];
+      const opolBarangays = [
+        'Barangay Poblacion',
+        'Barangay Igpit',
+        'Barangay Taboc',
+        'Barangay Limonda',
+        'Barangay Napo',
+        'Barangay Tingalan'
+      ];
+      const addressSuffixes = ['Street', 'Avenue', 'Road', 'Boulevard', 'Drive'];
+      
+      // Assign location based on request index - alternate between CDO and Opol
+      const cityIndex = i % localCities.length;
+      const selectedCity = localCities[cityIndex];
+      const barangays = selectedCity === 'Cagayan de Oro City' ? cdoBarangays : opolBarangays;
+      const barangayIndex = i % barangays.length;
+      const selectedBarangay = barangays[barangayIndex];
+      const addressSuffix = addressSuffixes[i % addressSuffixes.length];
+      const addressNumber = (i % 999) + 1;
+      
+      // Create request location within CDO or Opol
+      const requestLocation = `${addressNumber} ${selectedBarangay} ${addressSuffix}, ${selectedCity}, Misamis Oriental, Philippines`;
+      
       const request = {
         id: requestId,
         requester_id: recipient.id,
@@ -1236,7 +1510,7 @@ async function seedRequests() {
         category: template.category,
         quantity_needed: template.quantity,
         urgency: template.urgency,
-        location: `${recipient.address}, ${recipient.city}`,
+        location: requestLocation,
         needed_by: new Date(Date.now() + Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         status: 'open',
         delivery_mode: deliveryMode,
@@ -2533,6 +2807,69 @@ async function seedDirectDeliveries(claims, donations, recipients) {
   }
 }
 
+async function seedMatchingParameters() {
+  console.log('🌱 Seeding matching_parameters...\n');
+  
+  try {
+    // Check if matching parameters exist
+    const { data: existingParams, error: checkError } = await supabase
+      .from('matching_parameters')
+      .select('*')
+      .eq('parameter_group', 'DONOR_RECIPIENT_VOLUNTEER')
+      .limit(1);
+    
+    if (checkError && !checkError.message.includes('does not exist')) {
+      console.error('⚠️  Error checking matching parameters:', checkError.message);
+      return null;
+    }
+    
+    if (existingParams && existingParams.length > 0) {
+      console.log('✅ Matching parameters already exist, skipping...\n');
+      return existingParams;
+    }
+    
+    // Create default matching parameters for DONOR_RECIPIENT_VOLUNTEER group
+    // These are the default weights that sum to 1.0 (100%)
+    const matchingParamsToInsert = {
+      id: randomUUID(),
+      parameter_group: 'DONOR_RECIPIENT_VOLUNTEER',
+      geographic_proximity_weight: 0.30,        // 30% - Distance between donor, recipient, and volunteer
+      item_compatibility_weight: 0.25,          // 25% - Donor's item matches recipient's request
+      urgency_alignment_weight: 0.20,           // 20% - Priority matching for urgent requests
+      user_reliability_weight: 0.15,           // 15% - User ratings and history
+      delivery_compatibility_weight: 0.10,      // 10% - Delivery method preferences
+      auto_match_enabled: false,                // Auto-matching disabled by default
+      auto_match_threshold: 0.75,               // 75% score threshold for auto-matching
+      auto_claim_threshold: 0.85,               // 85% score threshold for auto-claiming
+      max_matching_distance_km: 50,             // Maximum 50km for geographic matching
+      min_quantity_match_ratio: 0.8,           // 80% quantity match required
+      perishable_geographic_boost: 0.35,        // 35% boost for perishable items
+      critical_urgency_boost: 0.30,             // 30% boost for critical urgency
+      description: 'Unified matching parameters for donors, recipients, and volunteers',
+      is_active: true,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    };
+    
+    const { data, error } = await supabase
+      .from('matching_parameters')
+      .insert(matchingParamsToInsert)
+      .select();
+    
+    if (error) {
+      console.error('⚠️  Error seeding matching_parameters:', error.message);
+      return null;
+    }
+    
+    console.log(`✅ Created matching parameters for DONOR_RECIPIENT_VOLUNTEER group\n`);
+    return data;
+    
+  } catch (error) {
+    console.error('❌ Error seeding matching_parameters:', error);
+    return null;
+  }
+}
+
 async function seedSettings() {
   console.log('🌱 Seeding system_settings...\n');
   
@@ -2872,7 +3209,80 @@ async function seedPerformanceMetrics(allUsers) {
 // - seedUserVerifications (user_profiles.id_documents)
 // - seedVolunteerRatings (consolidated into feedback table)
 
-async function seedVolunteerRequests(claims, volunteers) {
+async function seedVolunteerUrgencyPreferences(volunteers) {
+  console.log('🌱 Seeding volunteer urgency preferences...\n');
+  
+  try {
+    if (!volunteers || volunteers.length === 0) {
+      console.log('⚠️  No volunteers available for urgency preferences.');
+      return;
+    }
+    
+    const urgencyLevels = ['low', 'medium', 'high', 'critical'];
+    let updatedCount = 0;
+    
+    // Distribute urgency preferences evenly across volunteers for better diversity
+    // This ensures we have volunteers with all urgency preferences
+    const urgencyDistribution = [];
+    for (let i = 0; i < volunteers.length; i++) {
+      urgencyDistribution.push(urgencyLevels[i % urgencyLevels.length]);
+    }
+    // Shuffle for more natural distribution
+    urgencyDistribution.sort(() => Math.random() - 0.5);
+    
+    for (let i = 0; i < volunteers.length; i++) {
+      const volunteer = volunteers[i];
+      // Assign urgency preference from distributed array for better diversity
+      const urgencyPreference = urgencyDistribution[i] || urgencyLevels[i % urgencyLevels.length];
+      
+      // Check if user_profiles row exists
+      const { data: existingProfile } = await supabase
+        .from('user_profiles')
+        .select('user_id, volunteer')
+        .eq('user_id', volunteer.id)
+        .maybeSingle();
+      
+      if (existingProfile) {
+        // Update existing profile with volunteer urgency preference
+        const volunteerData = existingProfile.volunteer || {};
+        volunteerData.urgency_response = urgencyPreference;
+        
+        const { error: updateError } = await supabase
+          .from('user_profiles')
+          .update({ volunteer: volunteerData })
+          .eq('user_id', volunteer.id);
+        
+        if (updateError) {
+          console.error(`⚠️  Error updating urgency preference for volunteer ${volunteer.id}:`, updateError.message);
+        } else {
+          updatedCount++;
+        }
+      } else {
+        // Create new profile with volunteer urgency preference
+        const { error: insertError } = await supabase
+          .from('user_profiles')
+          .insert({
+            user_id: volunteer.id,
+            volunteer: {
+              urgency_response: urgencyPreference
+            }
+          });
+        
+        if (insertError) {
+          console.error(`⚠️  Error creating profile with urgency preference for volunteer ${volunteer.id}:`, insertError.message);
+        } else {
+          updatedCount++;
+        }
+      }
+    }
+    
+    console.log(`✅ Seeded urgency preferences for ${updatedCount} volunteers\n`);
+  } catch (error) {
+    console.error('❌ Error seeding volunteer urgency preferences:', error);
+  }
+}
+
+async function seedVolunteerRequests(claims, volunteers, donations) {
   console.log('🌱 Seeding volunteer requests...\n');
   
   try {
@@ -2881,11 +3291,23 @@ async function seedVolunteerRequests(claims, volunteers) {
       return [];
     }
     
+    // Create a map of donations by ID for quick lookup
+    const donationsMap = new Map();
+    if (donations && donations.length > 0) {
+      donations.forEach(donation => {
+        donationsMap.set(donation.id, donation);
+      });
+    }
+    
     // Only create requests for claims that need volunteer delivery
+    // Filter claims where the donation has delivery_mode = 'volunteer'
     const volunteerClaims = claims.filter(c => {
-      // This would need to check the donation's delivery_mode
-      // For now, we'll use a subset of claims
-      return true;
+      const donation = donationsMap.get(c.donation_id);
+      // Only include claims for donations with volunteer delivery mode
+      // Exclude CFC-GK donations (donation_destination = 'organization') as they don't have claims
+      return donation && 
+             donation.delivery_mode === 'volunteer' && 
+             donation.donation_destination === 'recipients';
     });
     
     if (volunteerClaims.length === 0) {
@@ -2911,6 +3333,9 @@ async function seedVolunteerRequests(claims, volunteers) {
       
       const statuses = ['pending', 'approved', 'rejected'];
       
+      // Note: volunteer_requests table has claim_id and request_id, but NOT donation_id
+      // CFC-GK donations don't have claims, so they won't have volunteer requests seeded here
+      // Volunteer requests for CFC-GK donations are created when volunteers accept tasks in the UI
       requestsToInsert.push({
         id: requestId,
         volunteer_id: volunteer.id,
@@ -2938,7 +3363,8 @@ async function seedVolunteerRequests(claims, volunteers) {
       return [];
     }
     
-    console.log(`✅ Created ${data.length} volunteer requests\n`);
+    console.log(`✅ Created ${data.length} volunteer requests for regular donations (with claims)`);
+    console.log(`   Note: CFC-GK donations don't have claims, so volunteer requests for them are created when volunteers accept tasks in the UI\n`);
     return data;
     
   } catch (error) {
@@ -3022,6 +3448,10 @@ async function main() {
     
     // Seed core data
     const donations = await seedDonations();
+    // Seed additional CFC-GK direct donations
+    const cfcgkDonations = await seedCFCGKDirectDonations();
+    // Combine all donations
+    const allDonations = [...(donations || []), ...(cfcgkDonations || [])];
     const requests = await seedRequests();
     const events = await seedEvents();
     
@@ -3061,30 +3491,36 @@ async function main() {
     }
     
     // Seed related data
-    const claims = await seedDonationClaims(donations, recipients);
+    const claims = await seedDonationClaims(allDonations, recipients);
     const participants = await seedEventParticipants(events, allUsers);
-    const deliveries = await seedDeliveries(claims, volunteers, donations, recipients);
-    const directDeliveries = await seedDirectDeliveries(claims, donations, recipients);
-    const notifications = await seedNotifications(allUsers, donations, events, claims);
+    const deliveries = await seedDeliveries(claims, volunteers, allDonations, recipients);
+    const directDeliveries = await seedDirectDeliveries(claims, allDonations, recipients);
+    const notifications = await seedNotifications(allUsers, allDonations, events, claims);
+    const matchingParams = await seedMatchingParameters();
     const settings = await seedSettings();
     // Seed a small set of user reports for the admin moderation UI
     const seededReports = await seedSampleReports(allUsers);
+    // Seed volunteer urgency preferences for proper urgency matching
+    await seedVolunteerUrgencyPreferences(volunteers);
     
     // Seed additional tables
-    const deliveryConfirmations = await seedDeliveryConfirmations(donations, deliveries);
-    const feedbackRatings = await seedFeedbackRatings(donations, requests, allUsers);
+    const deliveryConfirmations = await seedDeliveryConfirmations(allDonations, deliveries);
+    const feedbackRatings = await seedFeedbackRatings(allDonations, requests, allUsers);
     const performanceMetrics = await seedPerformanceMetrics(allUsers);
     // Note: user_preferences, user_reports, user_verifications, volunteer_ratings are now JSONB in user_profiles
-    const volunteerRequests = await seedVolunteerRequests(claims, volunteers);
+    // Pass donations to seedVolunteerRequests so it can filter by delivery_mode
+    const volunteerRequests = await seedVolunteerRequests(claims, volunteers, allDonations);
     const volunteerTimeTracking = await seedVolunteerTimeTracking(deliveries, volunteers);
 
-    await diversifyDonationStatuses(donations, claims, deliveries, directDeliveries);
+    await diversifyDonationStatuses(allDonations, claims, deliveries, directDeliveries);
     await diversifyRequestStatuses(requests);
     await diversifyEventStatuses(events);
     
     console.log('✅ All done! Database fully seeded.\n');
     console.log('📊 Summary:');
-    console.log(`  - Donations: ${donations?.length || 0} with matching images`);
+    console.log(`  - Regular Donations (to recipients): ${donations?.length || 0} with matching images`);
+    console.log(`  - CFC-GK Direct Donations (to organization): ${cfcgkDonations?.length || 0}`);
+    console.log(`    • Total Donations: ${allDonations?.length || 0}`);
     console.log(`    • Claims added as JSONB: ${claims?.length || 0}`);
     console.log(`    • Confirmations added as JSONB: in ${deliveryConfirmations?.length || 0} donations`);
     console.log(`  - Requests: ${requests?.length || 0} with matching images`);
@@ -3093,13 +3529,14 @@ async function main() {
     console.log(`  - Volunteer Deliveries: ${deliveries?.length || 0} (with various statuses)`);
     console.log(`  - Direct Deliveries: ${directDeliveries?.length || 0} (with various statuses)`);
     console.log(`  - Notifications: ${notifications?.length || 0}`);
+    console.log(`  - Matching Parameters: ${matchingParams ? 'Created' : 'Skipped'}`);
     console.log(`  - System Settings: ${settings ? 'Created' : 'Skipped'}`);
     console.log(`  - Feedback: ${feedbackRatings?.length || 0}`);
     console.log(`  - Performance Metrics: ${performanceMetrics?.length || 0}`);
     console.log(`  - Volunteer Requests: ${volunteerRequests?.length || 0}`);
     console.log(`  - Volunteer Time Tracking: ${volunteerTimeTracking?.length || 0}`);
     console.log(`  - User Reports (JSONB): ${seededReports?.length || 0}`);
-    console.log(`\n  Note: User preferences, reports, verifications now stored in user_profiles JSONB\n`);
+    console.log(`\n  Note: All data is stored in database. User preferences, reports, verifications stored in user_profiles JSONB\n`);
     
     console.log('  Status breakdowns:');
     logStatusBreakdown('Donations by status', donations);
