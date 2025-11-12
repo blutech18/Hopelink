@@ -830,11 +830,35 @@ async function seedDonations() {
     const numDonations = donationTemplates.length;
     const deliveryModeDistribution = ['volunteer', 'volunteer', 'volunteer', 'volunteer', 'direct', 'direct', 'direct', 'pickup', 'pickup', 'pickup']; // 40% volunteer, 30% direct, 30% pickup
     
+    // Prioritize preferred donor: give them 60% of donations to ensure they have enough for notifications
+    const preferredDonorIndex = preferredDonor ? 0 : -1;
+    const donationsForPreferredDonor = preferredDonor ? Math.floor(numDonations * 0.6) : 0;
+    
+    // Track delivery modes for preferred donor to ensure they get volunteer-mode donations
+    let preferredDonorVolunteerCount = 0;
+    const preferredDonorVolunteerTarget = preferredDonor ? Math.floor(donationsForPreferredDonor * 0.5) : 0; // 50% volunteer mode
+    
     for (let i = 0; i < numDonations; i++) {
       const template = donationTemplates[i];
-      const donor = donors[Math.floor(Math.random() * donors.length)];
-      // Use distribution array to ensure more volunteer-mode donations (cycles through the distribution)
-      const deliveryMode = deliveryModeDistribution[i % deliveryModeDistribution.length];
+      // Assign more donations to preferred donor for pending-requests page
+      let donor;
+      let deliveryMode;
+      
+      if (preferredDonor && i < donationsForPreferredDonor) {
+        donor = preferredDonor;
+        // Prioritize volunteer-mode donations for preferred donor to generate volunteer requests
+        if (preferredDonorVolunteerCount < preferredDonorVolunteerTarget) {
+          deliveryMode = 'volunteer';
+          preferredDonorVolunteerCount++;
+        } else {
+          // Use distribution array for remaining donations
+          deliveryMode = deliveryModeDistribution[i % deliveryModeDistribution.length];
+        }
+      } else {
+        donor = donors[Math.floor(Math.random() * donors.length)];
+        // Use distribution array to ensure more volunteer-mode donations (cycles through the distribution)
+        deliveryMode = deliveryModeDistribution[i % deliveryModeDistribution.length];
+      }
       
       // Generate unique ID
       let donationId;
@@ -1506,21 +1530,31 @@ async function seedNotifications(users, donations, events, claims) {
     if (donors.length > 0 && donations && donations.length > 0) {
       console.log(`   Creating donor notifications with real data for ${donors.length} donor(s)...`);
       
+      // Find preferred donor to prioritize
+      const preferredDonor = donors.find(d => d.email && d.email.toLowerCase() === PREFERRED.donorEmail.toLowerCase());
+      
       for (const donor of donors) {
         const donorNotifications = [];
         
         // Get donations by this donor (use more donations to create more requests)
         const donorDonations = donations.filter(d => d.donor_id === donor.id);
         
+        // For preferred donor, use ALL their donations to create more notifications
+        // For other donors, use up to 8 donations
+        const maxDonationsToUse = (preferredDonor && donor.id === preferredDonor.id) 
+          ? donorDonations.length 
+          : Math.min(8, donorDonations.length);
+        
         // Create donation requests for each donor's donations
-        // Use up to 5 donations per donor to ensure we have enough requests
-        for (const donation of donorDonations.slice(0, 5)) {
-          // Donation request from recipient - create 2-3 requests per donation
+        for (const donation of donorDonations.slice(0, maxDonationsToUse)) {
+          // Donation request from recipient - create 2-4 requests per donation (more for preferred donor)
           if (recipients.length > 0) {
-            const numRequests = Math.floor(Math.random() * 2) + 2; // 2-3 requests per donation
+            const numRequests = (preferredDonor && donor.id === preferredDonor.id) 
+              ? Math.floor(Math.random() * 3) + 3  // 3-5 requests for preferred donor
+              : Math.floor(Math.random() * 2) + 2;   // 2-3 requests for others
             const selectedRecipients = [...recipients]
               .sort(() => 0.5 - Math.random())
-              .slice(0, numRequests);
+              .slice(0, Math.min(numRequests, recipients.length));
             
             for (const recipient of selectedRecipients) {
               donorNotifications.push({
@@ -1542,12 +1576,14 @@ async function seedNotifications(users, donations, events, claims) {
             }
           }
           
-          // Volunteer request - create 1-2 requests per donation
+          // Volunteer request - create 2-3 requests per donation (more for preferred donor)
           if (volunteers.length > 0 && donation.delivery_mode === 'volunteer') {
-            const numVolunteerRequests = Math.floor(Math.random() * 2) + 1; // 1-2 requests per donation
+            const numVolunteerRequests = (preferredDonor && donor.id === preferredDonor.id)
+              ? Math.floor(Math.random() * 2) + 2  // 2-3 requests for preferred donor
+              : Math.floor(Math.random() * 2) + 1; // 1-2 requests for others
             const selectedVolunteers = [...volunteers]
               .sort(() => 0.5 - Math.random())
-              .slice(0, numVolunteerRequests);
+              .slice(0, Math.min(numVolunteerRequests, volunteers.length));
             
             for (const volunteer of selectedVolunteers) {
               donorNotifications.push({
@@ -1568,8 +1604,8 @@ async function seedNotifications(users, donations, events, claims) {
             }
           }
           
-          // Delivery status update (can be read)
-          if (volunteers.length > 0 && Math.random() > 0.7) {
+          // Delivery status update (can be read) - skip for preferred donor to focus on pending requests
+          if (volunteers.length > 0 && (!preferredDonor || donor.id !== preferredDonor.id) && Math.random() > 0.7) {
             const volunteer = volunteers[Math.floor(Math.random() * volunteers.length)];
             donorNotifications.push({
               title: '✅ Delivery In Progress',
@@ -1596,7 +1632,7 @@ async function seedNotifications(users, donations, events, claims) {
           } while (usedNotificationIds.has(notificationId));
           usedNotificationIds.add(notificationId);
           
-          // For donation_request and volunteer_request, keep them unread (read_at = null)
+          // For donation_request and volunteer_request, ALWAYS keep them unread (read_at = null)
           // For other notifications, randomly mark as read
           const shouldBeUnread = notifTemplate.isUnread || 
             (notifTemplate.type === 'donation_request' || notifTemplate.type === 'volunteer_request');
@@ -1608,9 +1644,17 @@ async function seedNotifications(users, donations, events, claims) {
             title: notifTemplate.title,
             message: notifTemplate.message,
             data: notifTemplate.data,
+            // CRITICAL: donation_request and volunteer_request MUST be unread (null) for pending-requests page
             read_at: shouldBeUnread ? null : (Math.random() > 0.3 ? new Date(Date.now() - Math.random() * 3 * 24 * 60 * 60 * 1000).toISOString() : null),
             created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
           });
+        }
+        
+        // Log notification count for preferred donor
+        if (preferredDonor && donor.id === preferredDonor.id) {
+          const unreadDonationRequests = donorNotifications.filter(n => n.type === 'donation_request').length;
+          const unreadVolunteerRequests = donorNotifications.filter(n => n.type === 'volunteer_request').length;
+          console.log(`   ✅ Created ${unreadDonationRequests} donation requests and ${unreadVolunteerRequests} volunteer requests for ${donor.email || donor.name}`);
         }
       }
     }

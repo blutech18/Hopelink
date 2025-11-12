@@ -128,19 +128,31 @@ const PendingRequestsPage = () => {
             const volunteerIds = []
             
             donationRequestNotifications.forEach(request => {
-              if (request.data?.donation_id && !donationIds.includes(request.data.donation_id)) {
+              // Validate donation_id is a valid UUID string
+              if (request.data?.donation_id && 
+                  typeof request.data.donation_id === 'string' && 
+                  request.data.donation_id.length > 0 &&
+                  !donationIds.includes(request.data.donation_id)) {
                 donationIds.push(request.data.donation_id)
               }
-              if (request.data?.requester_id && !requesterIds.includes(request.data.requester_id)) {
+              if (request.data?.requester_id && 
+                  typeof request.data.requester_id === 'string' &&
+                  !requesterIds.includes(request.data.requester_id)) {
                 requesterIds.push(request.data.requester_id)
               }
             })
             
             volunteerRequestNotifications.forEach(request => {
-              if (request.data?.donation_id && !donationIds.includes(request.data.donation_id)) {
+              // Validate donation_id is a valid UUID string
+              if (request.data?.donation_id && 
+                  typeof request.data.donation_id === 'string' && 
+                  request.data.donation_id.length > 0 &&
+                  !donationIds.includes(request.data.donation_id)) {
                 donationIds.push(request.data.donation_id)
               }
-              if (request.data?.volunteer_id && !volunteerIds.includes(request.data.volunteer_id)) {
+              if (request.data?.volunteer_id && 
+                  typeof request.data.volunteer_id === 'string' &&
+                  !volunteerIds.includes(request.data.volunteer_id)) {
                 volunteerIds.push(request.data.volunteer_id)
               }
             })
@@ -149,25 +161,53 @@ const PendingRequestsPage = () => {
             const donationsMap = new Map()
             if (donationIds.length > 0) {
               try {
-                // Use supabase directly to fetch donations by IDs (single query instead of N queries)
-                const { data: donations, error: donationsError } = await supabase
-                  .from('donations')
-                  .select(`
-                    *,
-                    donor:users!donations_donor_id_fkey(
-                      id,
-                      name, 
-                      email, 
-                      profile_image_url,
-                      donation_types,
-                      latitude,
-                      longitude
-                    )
-                  `)
-                  .in('id', donationIds)
+                // Filter out any invalid IDs (must be valid UUIDs)
+                const validDonationIds = donationIds.filter(id => 
+                  typeof id === 'string' && 
+                  id.length === 36 && // UUID length
+                  id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+                )
                 
-                if (!donationsError && donations) {
-                  donations.forEach(d => donationsMap.set(d.id, d))
+                if (validDonationIds.length === 0) {
+                  console.warn('No valid donation IDs found for batch fetch')
+                } else {
+                  // Use simpler query without foreign key reference to avoid errors
+                  // Fetch donations first, then fetch donors separately if needed
+                  const { data: donations, error: donationsError } = await supabase
+                    .from('donations')
+                    .select('*')
+                    .in('id', validDonationIds)
+                  
+                  if (donationsError) {
+                    console.error('Error batch fetching donations:', donationsError)
+                  } else if (donations && donations.length > 0) {
+                    // Fetch donors separately for the donations we found
+                    const donorIds = [...new Set(donations.map(d => d.donor_id).filter(Boolean))]
+                    
+                    if (donorIds.length > 0) {
+                      const { data: donors, error: donorsError } = await supabase
+                        .from('users')
+                        .select('id, name, email, profile_image_url, donation_types, latitude, longitude')
+                        .in('id', donorIds)
+                      
+                      if (!donorsError && donors) {
+                        const donorsMap = new Map(donors.map(d => [d.id, d]))
+                        // Attach donor data to each donation
+                        donations.forEach(donation => {
+                          if (donorsMap.has(donation.donor_id)) {
+                            donation.donor = donorsMap.get(donation.donor_id)
+                          }
+                          donationsMap.set(donation.id, donation)
+                        })
+                      } else {
+                        // Even if donor fetch fails, still add donations without donor data
+                        donations.forEach(d => donationsMap.set(d.id, d))
+                      }
+                    } else {
+                      // No donor IDs, just add donations
+                      donations.forEach(d => donationsMap.set(d.id, d))
+                    }
+                  }
                 }
               } catch (err) {
                 console.error('Error batch fetching donations:', err)
