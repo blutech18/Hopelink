@@ -26,47 +26,8 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
-      output: {
-        manualChunks: (id) => {
-          // Don't chunk source files
-          if (!id.includes('node_modules')) {
-            return null
-          }
-
-          // Bundle ALL React and React-dependent code together
-          // This ensures React is always available when needed
-          if (
-            id.includes('node_modules/react') ||
-            id.includes('node_modules/react-dom') ||
-            id.includes('node_modules/@radix-ui') ||
-            id.includes('node_modules/react-router') ||
-            id.includes('node_modules/framer-motion') ||
-            id.includes('node_modules/react-hook-form') ||
-            id.includes('node_modules/recharts') ||
-            id.includes('node_modules/lucide-react') ||
-            id.includes('node_modules/@react-google-maps') ||
-            id.includes('node_modules/@vis.gl/react-google-maps') ||
-            // Catch any package with "react" in its path (including transitive deps)
-            (id.includes('node_modules') && (
-              id.includes('/react') ||
-              id.includes('react/') ||
-              id.match(/node_modules\/[^/]*react[^/]*\//)
-            ))
-          ) {
-            return 'vendor-react'
-          }
-
-          // Supabase (non-React)
-          if (id.includes('node_modules/@supabase')) {
-            return 'vendor-supabase'
-          }
-
-          // Other large node_modules (non-React)
-          return 'vendor-misc'
-        },
-      },
-    },
+    // Let Vite handle chunking automatically - it's smarter about React dependencies
+    // This prevents "Cannot read properties of undefined" errors for React APIs
     chunkSizeWarningLimit: 600,
     commonjsOptions: {
       include: [/node_modules/],
