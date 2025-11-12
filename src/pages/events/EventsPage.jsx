@@ -97,21 +97,12 @@ const EventsPage = () => {
   }, [user, events])
 
   const checkParticipationStatus = async () => {
-    if (!user || !supabase) return
-    
+    if (!user) return
     try {
-      const eventIds = events.map(e => e.id).filter(Boolean)
-      if (eventIds.length === 0) return
-
-      const { data: participations } = await supabase
-        .from('event_participants')
-        .select('event_id')
-        .eq('user_id', user.id)
-        .in('event_id', eventIds)
-
       const statusMap = {}
-      participations?.forEach(p => {
-        statusMap[p.event_id] = true
+      events.forEach(evt => {
+        const parts = Array.isArray(evt.participants) ? evt.participants : []
+        statusMap[evt.id] = parts.some(p => p.user_id === user.id)
       })
       setParticipantStatus(statusMap)
     } catch (err) {

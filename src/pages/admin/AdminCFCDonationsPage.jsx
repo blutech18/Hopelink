@@ -583,19 +583,19 @@ const AdminCFCDonationsPage = () => {
                   <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Donation
                   </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Donor
                   </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Delivery
                   </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-semibold text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Posted
                   </th>
-                  <th className="px-4 py-2.5 text-right text-xs font-semibold text-yellow-300 uppercase tracking-wider">
+                  <th className="px-4 py-2.5 text-center text-xs font-semibold text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -614,39 +614,35 @@ const AdminCFCDonationsPage = () => {
                     >
                       <td className="px-4 py-2.5">
                         <div className="flex items-center gap-2">
-                          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                            <Building className="h-2.5 w-2.5" />
-                            Direct
-                          </span>
                           <span className="text-sm font-medium text-white truncate max-w-xs">{donation.title}</span>
                         </div>
                       </td>
                       
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 text-center">
                         <div className="text-xs text-white truncate max-w-xs">{donation.donor?.name || 'Unknown'}</div>
                       </td>
                       
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 text-center">
                         <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 truncate max-w-[120px]">
                           {getDeliveryModeLabel(donation.delivery_mode)}
                         </span>
                       </td>
                       
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 text-center">
                         <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getStatusColor(donation.status)}`}>
                           <StatusIcon className="h-2.5 w-2.5 mr-1" />
                           {donation.status}
                         </span>
                       </td>
                       
-                      <td className="px-4 py-2.5">
+                      <td className="px-4 py-2.5 text-center">
                         <div className="text-xs text-yellow-400">
                           {new Date(donation.created_at).toLocaleDateString()}
                         </div>
                       </td>
                       
-                      <td className="px-4 py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
+                      <td className="px-4 py-2.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
                           {/* Enhanced Status Dropdown */}
                           <div className="relative status-dropdown-container">
                             <button
@@ -656,8 +652,8 @@ const AdminCFCDonationsPage = () => {
                               }}
                               disabled={updatingDonationId === donation.id}
                               className={`
-                                flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
-                                ${getStatusColor(donation.status)}
+                                flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all
+                                ${getStatusConfig(donation.status).color}
                                 ${updatingDonationId === donation.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
                                 focus:outline-none focus:ring-2 focus:ring-yellow-500/50
                               `}
@@ -729,10 +725,11 @@ const AdminCFCDonationsPage = () => {
 
                           <button
                             onClick={() => handleViewDonation(donation)}
-                            className="p-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded transition-all active:scale-95"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded transition-all active:scale-95"
                             title="View Details"
                           >
                             <Eye className="h-4 w-4" />
+                            <span className="text-xs font-medium">View Details</span>
                           </button>
                         </div>
                       </td>
@@ -915,8 +912,8 @@ const AdminCFCDonationsPage = () => {
                     }}
                     disabled={updatingDonationId === selectedDonation.id}
                     className={`
-                      flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg border transition-all
-                      ${getStatusColor(selectedDonation.status)}
+                      flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-lg transition-all
+                      ${getStatusConfig(selectedDonation.status).color}
                       ${updatingDonationId === selectedDonation.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
                       focus:outline-none focus:ring-2 focus:ring-yellow-500/50
                     `}

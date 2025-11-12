@@ -6,11 +6,14 @@ import { Eye, EyeOff, Heart, LogIn } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
+import CaptchaModal from '../../components/security/CaptchaModal'
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
+  const [captchaOpen, setCaptchaOpen] = useState(false)
+  const [captchaEmail, setCaptchaEmail] = useState('')
   const { signIn: emailSignIn, signInWithGoogle, isSigningIn } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
@@ -61,10 +64,49 @@ const LoginPage = () => {
       if (err.message?.includes('ACCOUNT_SUSPENDED')) {
         const suspendMessage = err.message.replace('ACCOUNT_SUSPENDED: ', '')
         error(suspendMessage, 'Account Suspended')
+      } else if (err.message?.toLowerCase().includes('too many failed attempts')) {
+        error(err.message, 'Temporarily Locked')
+        // If configured, prompt the CAPTCHA to request safe server-side suspension
+        const fnUrl = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL
+        const captchaSiteKey = import.meta.env.VITE_HCAPTCHA_SITE_KEY
+        if (fnUrl && captchaSiteKey) {
+          setCaptchaEmail(data.email)
+          setCaptchaOpen(true)
+        }
+      } else if (err.message?.toLowerCase().includes('multiple failed attempts detected')) {
+        error(err.message, 'Security Warning')
       } else {
         error(err.message || 'Failed to sign in. Please check your credentials.')
       }
       setIsLoading(false)
+    }
+  }
+
+  const handleCaptchaVerified = async (token) => {
+    try {
+      const fnUrl = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL
+      if (!fnUrl) {
+        error('Service unavailable. Please try again later.')
+        setCaptchaOpen(false)
+        return
+      }
+      const resp = await fetch(`${fnUrl}/auto_suspend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: captchaEmail,
+          captchaToken: token
+        })
+      })
+      const body = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        error(body?.error || 'Failed to submit verification. Please try again.')
+        return
+      }
+      success('Account flagged for review due to repeated failed attempts.')
+      setCaptchaOpen(false)
+    } catch (e) {
+      error('Network error while submitting verification. Please try again.')
     }
   }
 
@@ -283,6 +325,14 @@ const LoginPage = () => {
           </motion.div>
         </div>
         </div>
+        <CaptchaModal
+          open={captchaOpen}
+          siteKey={import.meta.env.VITE_HCAPTCHA_SITE_KEY}
+          onVerified={handleCaptchaVerified}
+          onClose={() => setCaptchaOpen(false)}
+          title="Additional verification required"
+          description="Due to repeated failed login attempts, please complete the CAPTCHA. If abuse is detected, your account may be suspended for protection."
+        />
       </div>
     </div>
   )

@@ -264,10 +264,10 @@ const ReportsModal = ({ isOpen, onClose }) => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-navy-700">
-                    {filteredReports.map((report) => {
+                    {filteredReports.map((report, idx) => {
                       return (
                         <motion.tr
-                          key={report.id}
+                          key={report.id || `${report.reported_user_id || 'unknown'}-${report.created_at || 'na'}-${idx}`}
                           initial={{ opacity: 0 }}
                           animate={{ opacity: 1 }}
                           className="hover:bg-navy-800/30 transition-colors"

@@ -227,21 +227,9 @@ const AdminDashboard = () => {
         db.getRequests({ limit: 50 }),
         db.getDeliveries({ limit: 200 }),
         db.getEvents({ limit: 50 }),
-        // Also fetch direct_deliveries for the delivery status chart
-        supabase ? supabase.from('direct_deliveries').select('status').limit(200).then(({ data, error }) => {
-          if (error) {
-            console.error('Error fetching direct_deliveries:', error)
-            return []
-          }
-          return data || []
-        }) : Promise.resolve([])
-      ]).then(([users, donations, requests, deliveries, events, directDeliveries]) => {
-        // Combine volunteer deliveries and direct deliveries for the chart
-        // Convert direct deliveries to have the same structure as volunteer deliveries
-        const allDeliveries = [
-          ...deliveries,
-          ...(directDeliveries.map(dd => ({ status: dd.status })))
-        ]
+      ]).then(([users, donations, requests, deliveries, events]) => {
+        // Use unified deliveries table; includes delivery_mode to distinguish direct vs volunteer
+        const allDeliveries = deliveries || []
         // Prepare chart data with filtered data
       prepareChartData(users, donations, requests, allDeliveries, events)
       

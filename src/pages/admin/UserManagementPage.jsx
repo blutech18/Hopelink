@@ -94,7 +94,7 @@ const UserManagementPage = () => {
       setLoading(true)
       
       // Fetch users from database with limit for better performance
-      // Join with user_id_documents table to get ID verification fields
+      // Join with user_profiles to get id_documents JSONB
       const { data: users, error } = await supabase
         .from('users')
         .select(`
@@ -108,7 +108,7 @@ const UserManagementPage = () => {
           is_active,
           created_at,
           profile_image_url,
-          id_documents:user_id_documents!user_id_documents_user_id_fkey(*)
+          profile:user_profiles(id_documents)
         `)
         .order('created_at', { ascending: false })
         .limit(100) // Limit to 100 most recent users for better performance
@@ -117,9 +117,9 @@ const UserManagementPage = () => {
         console.error('Error loading users:', error)
         setUsers([])
       } else {
-        // Flatten ID document fields from joined table
+        // Flatten ID document fields from joined profile JSONB
         const flattenedUsers = (users || []).map(user => {
-          const idDocuments = Array.isArray(user.id_documents) ? user.id_documents[0] : user.id_documents
+          const idDocuments = user.profile?.id_documents || null
           return {
             ...user,
             primary_id_type: idDocuments?.primary_id_type || null,
@@ -228,11 +228,27 @@ const UserManagementPage = () => {
         console.error('Error updating user verification:', userError)
       }
 
-      // Update ID document verification status
-      const { error: idDocError } = await supabase
-        .from('user_id_documents')
-        .update({ verification_status: 'verified' })
+      // Update ID document verification status in user_profiles.id_documents JSONB
+      // 1) Fetch existing id_documents
+      const { data: profile, error: fetchErr } = await supabase
+        .from('user_profiles')
+        .select('id, id_documents')
         .eq('user_id', userId)
+        .single()
+
+      if (fetchErr) {
+        console.error('Error fetching user profile:', fetchErr)
+      } else {
+        const updatedIdDocs = { ...(profile?.id_documents || {}), verification_status: 'verified' }
+        const { error: idDocError } = await supabase
+          .from('user_profiles')
+          .update({ id_documents: updatedIdDocs })
+          .eq('id', profile.id)
+        if (idDocError) {
+          console.error('Error approving ID:', idDocError)
+          return
+        }
+      }
 
       if (idDocError) {
         console.error('Error approving ID:', idDocError)
@@ -258,11 +274,23 @@ const UserManagementPage = () => {
     try {
       console.log('Reject ID:', userId, idType)
       
-      // Update ID document verification status
-      const { error } = await supabase
-        .from('user_id_documents')
-        .update({ verification_status: 'rejected' })
+      // Update ID document verification status in user_profiles.id_documents JSONB
+      const { data: profile, error: fetchErr } = await supabase
+        .from('user_profiles')
+        .select('id, id_documents')
         .eq('user_id', userId)
+        .single()
+
+      if (fetchErr) {
+        console.error('Error fetching user profile:', fetchErr)
+        return
+      }
+
+      const updatedIdDocs = { ...(profile?.id_documents || {}), verification_status: 'rejected' }
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ id_documents: updatedIdDocs })
+        .eq('id', profile.id)
 
       if (error) {
         console.error('Error rejecting ID:', error)
@@ -887,22 +915,22 @@ const UserManagementPage = () => {
                   <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     User
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Role
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Contact
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     ID Verification
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Joined
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -944,28 +972,28 @@ const UserManagementPage = () => {
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap">
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getRoleBadgeColor(user.role)}`}>
                         <span className={getRoleColor(user.role)}>{user.role}</span>
                       </span>
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-300">
-                      <div className="flex flex-col space-y-1">
-                        <div className="flex items-center">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-300 text-center">
+                      <div className="inline-flex flex-col space-y-1">
+                        <div className="flex items-center justify-center">
                           <Phone className="h-3 w-3 mr-1" />
-                                                        {user.phone_number}
+                          {user.phone_number}
                         </div>
-                        <div className="flex items-center">
+                        <div className="flex items-center justify-center">
                           <MapPin className="h-3 w-3 mr-1" />
                           {user.city}
                         </div>
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col space-y-1">
-                        <div className="flex items-center">
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="inline-flex flex-col space-y-1">
+                        <div className="flex items-center justify-center">
                           {user.is_verified ? (
                             <>
                               <CheckCircle className="h-4 w-4 text-green-400 mr-1" />
@@ -979,7 +1007,7 @@ const UserManagementPage = () => {
                           )}
                         </div>
                         {!user.is_active && (
-                          <div className="flex items-center">
+                          <div className="flex items-center justify-center">
                             <XCircle className="h-4 w-4 text-red-400 mr-1" />
                             <span className="text-red-400 text-xs">Suspended</span>
                           </div>
@@ -987,8 +1015,8 @@ const UserManagementPage = () => {
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="flex flex-col space-y-1">
+                    <td className="px-6 py-4 whitespace-nowrap text-center">
+                      <div className="inline-flex flex-col space-y-1">
                         {user.role !== 'admin' && (
                           <>
                             {user.primary_id_type ? (
@@ -1027,40 +1055,21 @@ const UserManagementPage = () => {
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-300">
-                      <div className="flex items-center">
-                        <Calendar className="h-3 w-3 mr-1" />
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-300 text-center">
+                      <div className="">
                         {new Date(user.created_at).toLocaleDateString()}
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                      <div className="flex items-center justify-end space-x-2">
-                        {user.role !== 'admin' && user.primary_id_type && user.id_verification_status === 'pending' && (
-                          <>
-                            <button
-                              onClick={() => handleApproveId(user.id, 'primary')}
-                              className="text-green-400 hover:text-green-300 p-1 transition-colors"
-                              title="Approve Primary ID"
-                            >
-                              <Check className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={() => handleRejectId(user.id, 'primary')}
-                              className="text-red-400 hover:text-red-300 p-1 transition-colors"
-                              title="Reject Primary ID"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </>
-                        )}
-                        
+                    <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                      <div className="flex items-center justify-center space-x-2">
                         <button
                           onClick={() => handleViewUser(user.id)}
-                          className="text-yellow-400 hover:text-yellow-300 p-1.5 rounded-lg hover:bg-yellow-500/10 transition-colors"
+                          className="flex items-center gap-1.5 px-3 py-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                           title="View Details"
                         >
                           <Eye className="h-4 w-4" />
+                          <span className="text-xs font-medium">View Details</span>
                         </button>
                         
                         {user.role !== 'admin' && (
@@ -1068,18 +1077,20 @@ const UserManagementPage = () => {
                             {user.is_active ? (
                               <button
                                 onClick={() => setSuspendConfirm({ id: user.id, name: user.name })}
-                                className="text-red-400 hover:text-red-300 p-1.5 rounded-lg hover:bg-red-500/10 transition-colors"
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                                 title="Suspend User"
                               >
                                 <Ban className="h-4 w-4" />
+                                <span className="text-xs font-medium">Suspend</span>
                               </button>
                             ) : (
                               <button
                                 onClick={() => setActivateConfirm({ id: user.id, name: user.name })}
-                                className="text-green-400 hover:text-green-300 p-1.5 rounded-lg hover:bg-green-500/10 transition-colors"
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-green-400 hover:text-green-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                                 title="Activate User"
                               >
                                 <Unlock className="h-4 w-4" />
+                                <span className="text-xs font-medium">Activate</span>
                               </button>
                             )}
                           </>
@@ -1104,7 +1115,7 @@ const UserManagementPage = () => {
         {/* User Details Modal */}
         {showUserModal && selectedUser && (
           <div 
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4"
+            className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4"
             onClick={closeUserModal}
           >
             <motion.div
@@ -1112,30 +1123,30 @@ const UserManagementPage = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2 }}
-              className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+              className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
-              <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-yellow-500/10 rounded-lg">
-                    <Users className="h-6 w-6 text-yellow-400" />
+              <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0 gap-3">
+                <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                  <div className="p-1.5 sm:p-2 bg-yellow-500/10 rounded-lg flex-shrink-0">
+                    <Users className="h-5 w-5 sm:h-6 sm:w-6 text-yellow-400" />
                   </div>
-                  <div>
-                    <h3 className="text-xl font-bold text-white">User Details</h3>
-                    <p className="text-xs text-yellow-300">Complete information</p>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="text-base sm:text-lg lg:text-xl font-bold text-white truncate">User Details</h3>
+                    <p className="text-[10px] sm:text-xs text-yellow-300">Complete information</p>
                   </div>
                 </div>
                 <button
                   onClick={closeUserModal}
-                  className="text-gray-400 hover:text-white transition-colors p-2 hover:bg-navy-800 rounded-lg"
+                  className="text-gray-400 hover:text-white transition-colors p-1.5 sm:p-2 hover:bg-navy-800 rounded-lg flex-shrink-0"
                 >
-                  <X className="h-5 w-5" />
+                  <X className="h-5 w-5 sm:h-6 sm:w-6" />
                 </button>
               </div>
 
               {/* Content with Custom Scrollbar */}
-              <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-3 sm:py-4 custom-scrollbar">
                 <div className="space-y-6">
                   {/* User Profile Header */}
                   <div className="bg-navy-800/50 rounded-lg p-4 border border-navy-700">

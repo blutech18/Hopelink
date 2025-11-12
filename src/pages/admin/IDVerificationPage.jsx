@@ -41,7 +41,7 @@ const IDVerificationPage = () => {
       setLoading(true)
       
       // Use selective columns for better performance (avoid loading large image URLs unnecessarily)
-      // Join with user_id_documents table to get ID verification fields
+      // Join with user_profiles to get id_documents JSONB
       const { data, error } = await supabase
         .from('users')
         .select(`
@@ -54,16 +54,16 @@ const IDVerificationPage = () => {
           is_active,
           created_at,
           profile_image_url,
-          id_documents:user_id_documents!user_id_documents_user_id_fkey(*)
+          profile:user_profiles(id_documents)
         `)
         .order('created_at', { ascending: false })
         .limit(200) // Reduced limit for better performance
 
       if (error) throw error
       
-      // Flatten ID document fields from joined table
+      // Flatten ID document fields from joined profile JSONB
       const flattenedUsers = (data || []).map(user => {
-        const idDocuments = Array.isArray(user.id_documents) ? user.id_documents[0] : user.id_documents
+        const idDocuments = user.profile?.id_documents || null
         return {
           ...user,
           primary_id_type: idDocuments?.primary_id_type || null,
@@ -123,11 +123,24 @@ const IDVerificationPage = () => {
         console.error('Error updating user verification:', userError)
       }
 
-      // Update ID document verification status
-      const { error } = await supabase
-        .from('user_id_documents')
-        .update({ verification_status: 'verified' })
+      // Update ID document verification status in user_profiles.id_documents JSONB
+      const { data: profile, error: fetchErr } = await supabase
+        .from('user_profiles')
+        .select('id, id_documents')
         .eq('user_id', userId)
+        .single()
+
+      if (fetchErr) {
+        console.error('Error fetching user profile:', fetchErr)
+        alert('Failed to approve verification. Please try again.')
+        return
+      }
+
+      const updatedIdDocs = { ...(profile?.id_documents || {}), verification_status: 'verified' }
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ id_documents: updatedIdDocs })
+        .eq('id', profile.id)
 
       if (error) {
         console.error('Error approving ID:', error)
@@ -154,11 +167,24 @@ const IDVerificationPage = () => {
     }
 
     try {
-      // Update ID document verification status
-      const { error } = await supabase
-        .from('user_id_documents')
-        .update({ verification_status: 'rejected' })
+      // Update ID document verification status in user_profiles.id_documents JSONB
+      const { data: profile, error: fetchErr } = await supabase
+        .from('user_profiles')
+        .select('id, id_documents')
         .eq('user_id', userId)
+        .single()
+
+      if (fetchErr) {
+        console.error('Error fetching user profile:', fetchErr)
+        alert('Failed to reject verification. Please try again.')
+        return
+      }
+
+      const updatedIdDocs = { ...(profile?.id_documents || {}), verification_status: 'rejected' }
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({ id_documents: updatedIdDocs })
+        .eq('id', profile.id)
 
       if (error) {
         console.error('Error rejecting ID:', error)
@@ -663,16 +689,16 @@ const IDVerificationPage = () => {
                   <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     User
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Contact
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     ID Type
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -715,14 +741,14 @@ const IDVerificationPage = () => {
                         </div>
                       </td>
                       
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-300 space-y-1">
-                          <div className="flex items-center gap-2">
+                      <td className="px-6 py-4 text-center">
+                        <div className="inline-flex text-sm text-gray-300 space-y-1 flex-col">
+                          <div className="flex items-center justify-center gap-2">
                             <Mail className="h-3.5 w-3.5 text-yellow-400" />
                             <span>{user.email}</span>
                           </div>
                           {user.phone_number && (
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center gap-2">
                               <Phone className="h-3.5 w-3.5 text-yellow-400" />
                               <span>{user.phone_number}</span>
                             </div>
@@ -730,8 +756,8 @@ const IDVerificationPage = () => {
                         </div>
                       </td>
                       
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-white">
+                      <td className="px-6 py-4 text-center">
+                        <div className="text-sm text-white ">
                           {user.primary_id_type || 'Not provided'}
                         </div>
                         {user.secondary_id_type && (
@@ -741,39 +767,42 @@ const IDVerificationPage = () => {
                         )}
                       </td>
                       
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-center">
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold border ${getStatusColor(actualStatus)}`}>
                           <StatusIcon className="h-3.5 w-3.5" />
                           {getStatusLabel(actualStatus)}
                         </span>
                       </td>
                       
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center space-x-2">
                           {actualStatus === 'pending' && (
                             <>
                               <button
                                 onClick={() => handleApproveId(user.id)}
-                                className="p-2 text-green-400 hover:text-green-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-green-400 hover:text-green-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                                 title="Approve Verification"
                               >
                                 <Check className="h-4 w-4" />
+                                <span className="text-xs font-medium">Approve</span>
                               </button>
                               <button
                                 onClick={() => handleRejectId(user.id)}
-                                className="p-2 text-red-400 hover:text-red-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
+                                className="flex items-center gap-1.5 px-3 py-1.5 text-red-400 hover:text-red-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                                 title="Reject Verification"
                               >
                                 <X className="h-4 w-4" />
+                                <span className="text-xs font-medium">Reject</span>
                               </button>
                             </>
                           )}
                           <button
                             onClick={() => handleViewUser(user.id)}
-                            className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
                             title="View Details"
                           >
                             <Eye className="h-4 w-4" />
+                            <span className="text-xs font-medium">View Details</span>
                           </button>
                         </div>
                       </td>

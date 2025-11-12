@@ -1,6 +1,7 @@
 import React from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import db, { supabase } from '../../lib/supabase'
+import { checkRateLimit, recordAttempt, resetRateLimit, getRateLimitMessage } from '../../lib/rateLimiter'
 
 const ResetPasswordPage = () => {
   const navigate = useNavigate()
@@ -130,6 +131,21 @@ const ResetPasswordPage = () => {
       return
     }
 
+    // Check rate limit
+    const rateLimitStatus = checkRateLimit('passwordReset')
+    if (!rateLimitStatus.allowed) {
+      const message = getRateLimitMessage('passwordReset')
+      setErrorMessage(message || 'Too many password reset attempts. Please try again later.')
+      return
+    }
+
+    // Record attempt
+    if (!recordAttempt('passwordReset')) {
+      const message = getRateLimitMessage('passwordReset')
+      setErrorMessage(message || 'Too many password reset attempts. Please try again later.')
+      return
+    }
+
     setIsValidatingEmail(true)
     try {
       // Check if email exists in our users table
@@ -151,6 +167,10 @@ const ResetPasswordPage = () => {
       const redirectTo = `${window.location.origin}/reset-password?recover=1`
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo })
       if (error) throw error
+      
+      // Reset rate limit on successful email send
+      resetRateLimit('passwordReset')
+      
       setHasSentEmail(true)
       // Briefly show success then redirect
       setTimeout(() => navigate('/login'), 2000)

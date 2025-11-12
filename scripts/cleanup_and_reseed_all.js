@@ -7,6 +7,14 @@ import { randomUUID } from 'crypto';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Preferred test accounts for deterministic seeding
+const PREFERRED = {
+  donorEmail: 'cjjumawan43925@liceo.edu.ph',
+  recipientEmail: 'cristanjade14@gmail.com',
+  volunteerEmail: 'cristanjade70@gmail.com',
+  adminEmail: 'blutech18@gmail.com'
+};
+
 dotenv.config({ path: join(__dirname, '../.env') });
 
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
@@ -24,26 +32,34 @@ async function cleanupAll() {
   
   try {
     // Clean up in order to respect foreign key constraints
-    await supabase.from('event_participants').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted event_participants');
+    // Note: event_participants, donation_claims, delivery_confirmations are now JSONB in parent tables
     
     await supabase.from('deliveries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     console.log('✅ Deleted deliveries');
     
-    await supabase.from('direct_deliveries').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted direct_deliveries');
-    
     await supabase.from('volunteer_requests').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     console.log('✅ Deleted volunteer_requests');
     
-    await supabase.from('donation_claims').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted donation_claims');
-    
-    await supabase.from('event_items').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted event_items');
+    // Clear JSONB fields in events (participants, items are now arrays)
+    const { data: allEvents } = await supabase.from('events').select('id');
+    if (allEvents && allEvents.length > 0) {
+      await supabase.from('events')
+        .update({ participants: null, items: null })
+        .in('id', allEvents.map(e => e.id));
+      console.log('✅ Cleared events participants and items JSONB fields');
+    }
     
     await supabase.from('events').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     console.log('✅ Deleted events');
+    
+    // Clear JSONB fields in donations (claims, confirmations are now arrays)
+    const { data: allDonations } = await supabase.from('donations').select('id');
+    if (allDonations && allDonations.length > 0) {
+      await supabase.from('donations')
+        .update({ claims: null, confirmations: null })
+        .in('id', allDonations.map(d => d.id));
+      console.log('✅ Cleared donations claims and confirmations JSONB fields');
+    }
     
     await supabase.from('donations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     console.log('✅ Deleted donations');
@@ -55,27 +71,31 @@ async function cleanupAll() {
     await supabase.from('notifications').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     console.log('✅ Deleted notifications');
     
-    // Clean up additional tables
-    await supabase.from('delivery_confirmations').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted delivery_confirmations');
-    
-    await supabase.from('feedback_ratings').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted feedback_ratings');
+    // Clean up consolidated tables
+    await supabase.from('feedback').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Deleted feedback');
     
     await supabase.from('performance_metrics').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     console.log('✅ Deleted performance_metrics');
     
-    await supabase.from('user_preferences').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted user_preferences');
+    // Clear JSONB fields in user_profiles (donor, recipient, volunteer, preferences, id_documents, reports)
+    const { data: allProfiles } = await supabase.from('user_profiles').select('id');
+    if (allProfiles && allProfiles.length > 0) {
+      await supabase.from('user_profiles')
+        .update({ 
+          donor: null, 
+          recipient: null, 
+          volunteer: null, 
+          preferences: null, 
+          id_documents: null, 
+          reports: null 
+        })
+        .in('id', allProfiles.map(p => p.id));
+      console.log('✅ Cleared user_profiles JSONB fields');
+    }
     
-    await supabase.from('user_reports').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted user_reports');
-    
-    await supabase.from('user_verifications').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted user_verifications');
-    
-    await supabase.from('volunteer_ratings').delete().neq('id', '00000000-0000-0000-0000-000000000000');
-    console.log('✅ Deleted volunteer_ratings');
+    await supabase.from('user_profiles').delete().neq('id', '00000000-0000-0000-0000-000000000000');
+    console.log('✅ Deleted user_profiles');
     
     await supabase.from('volunteer_time_tracking').delete().neq('id', '00000000-0000-0000-0000-000000000000');
     console.log('✅ Deleted volunteer_time_tracking');
@@ -88,12 +108,151 @@ async function cleanupAll() {
   }
 }
 
+// Ensure users have display-friendly fields (avoid "Unknown"/"N/A" in UI)
+async function normalizeUsers() {
+  console.log('🧩 Normalizing user display fields (name, email, address)...');
+  try {
+    const { data: users, error } = await supabase
+      .from('users')
+      .select('id, role, name, email, address, city')
+      .limit(1000);
+    if (error) throw error;
+
+    if (!users || users.length === 0) {
+      console.log('⚠️  No users found to normalize.');
+      return;
+    }
+
+    const updates = [];
+    for (const u of users) {
+      const needsName = !u.name || !String(u.name).trim() || String(u.name).toLowerCase().includes('unknown');
+      const needsEmail = !u.email || !String(u.email).includes('@');
+      const needsAddress = !u.address || !String(u.address).trim() || String(u.address).toLowerCase() === 'n/a';
+      const needsCity = !u.city || !String(u.city).trim() || String(u.city).toLowerCase() === 'n/a';
+
+      if (needsName || needsEmail || needsAddress || needsCity) {
+        const rolePrefix =
+          u.role === 'donor' ? 'Donor' :
+          u.role === 'recipient' ? 'Recipient' :
+          u.role === 'volunteer' ? 'Volunteer' :
+          'User';
+        const shortId = String(u.id).split('-')[0];
+        updates.push({
+          id: u.id,
+          name: needsName ? `${rolePrefix} ${shortId}` : u.name,
+          email: needsEmail ? `${rolePrefix.toLowerCase()}_${shortId}@example.com` : u.email,
+          address: needsAddress ? `${rolePrefix} Address` : u.address,
+          city: needsCity ? 'Metro City' : u.city,
+          updated_at: new Date().toISOString()
+        });
+      }
+    }
+
+    // Batch update in chunks
+    const chunkSize = 200;
+    for (let i = 0; i < updates.length; i += chunkSize) {
+      const chunk = updates.slice(i, i + chunkSize);
+      if (chunk.length > 0) {
+        const { error: updErr } = await supabase.from('users').upsert(chunk);
+        if (updErr) console.error('⚠️  Error normalizing users chunk:', updErr.message);
+      }
+    }
+    console.log(`✅ Normalized ${updates.length} users`);
+  } catch (e) {
+    console.error('❌ Error normalizing users:', e);
+  }
+}
+
+// Seed sample user reports into user_profiles.reports JSONB using real users
+async function seedSampleReports(allUsers) {
+  console.log('🌱 Seeding sample user reports (JSONB)...');
+  try {
+    if (!allUsers || allUsers.length < 2) {
+      console.log('⚠️  Not enough users to seed reports.');
+      return [];
+    }
+
+    const usedPairs = new Set();
+    const reasons = ['inappropriate_behavior', 'spam', 'fraud', 'harassment', 'other'];
+    const reportsPerBatch = Math.min(5, Math.floor(allUsers.length / 2));
+    const created = [];
+
+    // Helper to upsert a report into a user's profile.reports JSONB
+    const upsertReport = async (reportedId, reportObj) => {
+      // Ensure a user_profiles row exists
+      const { data: existingProfile } = await supabase
+        .from('user_profiles')
+        .select('user_id, reports')
+        .eq('user_id', reportedId)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        const { data: newProfile, error: insErr } = await supabase
+          .from('user_profiles')
+          .insert({ user_id: reportedId, reports: [reportObj] })
+          .select('user_id')
+          .single();
+        if (insErr) {
+          console.error('⚠️  Error creating user profile for reports:', insErr.message);
+          return null;
+        }
+        return newProfile;
+      } else {
+        const nextReports = Array.isArray(existingProfile.reports) ? [...existingProfile.reports, reportObj] : [reportObj];
+        const { error: updErr } = await supabase
+          .from('user_profiles')
+          .update({ reports: nextReports })
+          .eq('user_id', reportedId);
+        if (updErr) {
+          console.error('⚠️  Error appending report:', updErr.message);
+          return null;
+        }
+        return existingProfile;
+      }
+    };
+
+    // Pick random pairs
+    for (let i = 0; i < reportsPerBatch; i++) {
+      const reporter = allUsers[Math.floor(Math.random() * allUsers.length)];
+      let reported = allUsers[Math.floor(Math.random() * allUsers.length)];
+      let attempts = 0;
+      while (reported.id === reporter.id && attempts < 10) {
+        reported = allUsers[Math.floor(Math.random() * allUsers.length)];
+        attempts++;
+      }
+      const pairKey = `${reporter.id}->${reported.id}`;
+      if (reported.id === reporter.id || usedPairs.has(pairKey)) continue;
+      usedPairs.add(pairKey);
+
+      const report = {
+        id: randomUUID(),
+        reported_user_id: reported.id,
+        reported_by_user_id: reporter.id,
+        reason: reasons[Math.floor(Math.random() * reasons.length)],
+        description: 'Auto-seeded report for moderation testing.',
+        status: 'pending',
+        created_at: new Date(Date.now() - Math.random() * 10 * 24 * 60 * 60 * 1000).toISOString()
+      };
+
+      const res = await upsertReport(reported.id, report);
+      if (res) created.push(report);
+    }
+
+    console.log(`✅ Seeded ${created.length} user reports`);
+    return created;
+  } catch (e) {
+    console.error('❌ Error seeding sample reports:', e);
+    return [];
+  }
+}
+
 async function getUsersByRole(role) {
   const { data, error } = await supabase
     .from('users')
     .select('id, name, email, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark')
     .eq('role', role)
-    .limit(20);
+    .not('name', 'is', null)
+    .limit(50);
   
   if (error) throw error;
   return data || [];
@@ -650,7 +809,12 @@ async function seedDonations() {
   console.log('🌱 Seeding donations with matching images...\n');
   
   try {
-    const donors = await getUsersByRole('donor');
+    let donors = await getUsersByRole('donor');
+    // Prefer specified donor first if present
+    const preferredDonor = donors.find(u => u.email && u.email.toLowerCase() === PREFERRED.donorEmail.toLowerCase());
+    if (preferredDonor) {
+      donors = [preferredDonor, ...donors.filter(d => d.id !== preferredDonor.id)];
+    }
     
     if (donors.length === 0) {
       console.log('⚠️  No donors found.');
@@ -726,7 +890,12 @@ async function seedRequests() {
   console.log('🌱 Seeding donation requests with matching images...\n');
   
   try {
-    const recipients = await getUsersByRole('recipient');
+    let recipients = await getUsersByRole('recipient');
+    // Prefer specified recipient first if present
+    const preferredRecipient = recipients.find(u => u.email && u.email.toLowerCase() === PREFERRED.recipientEmail.toLowerCase());
+    if (preferredRecipient) {
+      recipients = [preferredRecipient, ...recipients.filter(r => r.id !== preferredRecipient.id)];
+    }
     
     if (recipients.length === 0) {
       console.log('⚠️  No recipients found.');
@@ -834,7 +1003,12 @@ async function seedEvents() {
   console.log('🌱 Seeding events with matching images...\n');
   
   try {
-    const admins = await getUsersByRole('admin');
+    let admins = await getUsersByRole('admin');
+    // Prefer specified admin first if present
+    const preferredAdmin = admins.find(u => u.email && u.email.toLowerCase() === PREFERRED.adminEmail.toLowerCase());
+    if (preferredAdmin) {
+      admins = [preferredAdmin, ...admins.filter(a => a.id !== preferredAdmin.id)];
+    }
     
     if (admins.length === 0) {
       console.log('⚠️  No admin users found to create events.');
@@ -965,7 +1139,7 @@ async function seedEvents() {
 }
 
 async function seedDonationClaims(donations, recipients) {
-  console.log('🌱 Seeding donation claims...\n');
+  console.log('🌱 Seeding donation claims as JSONB in donations table...\n');
   
   try {
     if (!donations || donations.length === 0 || !recipients || recipients.length === 0) {
@@ -973,14 +1147,10 @@ async function seedDonationClaims(donations, recipients) {
       return [];
     }
     
-    const claimsToInsert = [];
-    const usedClaimIds = new Set();
-    const claimedDonations = new Set(); // Track which donations have been claimed
-    // Valid claim statuses based on actual database enum: only 'claimed' (initial status when claim is created)
-    // Other statuses like 'assigned' are set by the system when volunteers are assigned
-    const statuses = ['claimed'];
+    const claimsData = []; // Store claim objects for return
+    const claimedDonations = new Set();
     
-    // Separate donations by delivery mode to ensure variety
+    // Separate donations by delivery mode
     const donationsByMode = {
       pickup: donations.filter(d => d.delivery_mode === 'pickup'),
       volunteer: donations.filter(d => d.delivery_mode === 'volunteer'),
@@ -989,146 +1159,78 @@ async function seedDonationClaims(donations, recipients) {
     
     console.log(`   Donations by mode: pickup=${donationsByMode.pickup.length}, volunteer=${donationsByMode.volunteer.length}, direct=${donationsByMode.direct.length}`);
     
-    // Create claims ensuring we get enough claims for each delivery mode
-    // Priority: volunteer > direct > pickup (to ensure we have deliveries to seed)
-    // IMPORTANT: Create MORE volunteer claims so some remain without deliveries (available tasks)
-    // We'll create deliveries for only ~40% of volunteer claims, leaving 60% as available tasks
     const claimsByMode = {
-      volunteer: Math.min(8, donationsByMode.volunteer.length), // Create 8 volunteer claims (or all if less)
-      direct: Math.min(donationsByMode.direct.length, 6), // Create claims for ALL or up to 6 direct donations
+      volunteer: Math.min(8, donationsByMode.volunteer.length),
+      direct: Math.min(donationsByMode.direct.length, 6),
       pickup: Math.min(3, donationsByMode.pickup.length)
     };
     
     const totalClaims = claimsByMode.volunteer + claimsByMode.direct + claimsByMode.pickup;
-    console.log(`   Planning to create ${totalClaims} claims: volunteer=${claimsByMode.volunteer}, direct=${claimsByMode.direct}, pickup=${claimsByMode.pickup}`);
-    console.log(`   Note: Only ~40% of volunteer claims will have deliveries, leaving ~60% as available tasks`);
+    console.log(`   Planning to create ${totalClaims} claims as JSONB`);
     
-    // Create claims for volunteer-mode donations first (priority)
+    // Helper function to add claims to a donation
+    const addClaimsToDonation = async (donation, numClaims) => {
+      const claims = [];
+      for (let i = 0; i < numClaims; i++) {
+      let recipient = recipients[Math.floor(Math.random() * recipients.length)];
+        let attempts = 0;
+        while (recipient.id === donation.donor_id && attempts < 10) {
+        recipient = recipients[Math.floor(Math.random() * recipients.length)];
+          attempts++;
+      }
+        if (recipient.id === donation.donor_id) continue;
+      
+      const claim = {
+          id: randomUUID(),
+        recipient_id: recipient.id,
+        status: 'claimed',
+          quantity_claimed: donation.quantity || 1,
+          claimed_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
+        };
+        claims.push(claim);
+        claimsData.push({ ...claim, donation_id: donation.id, donor_id: donation.donor_id });
+    }
+    
+      if (claims.length > 0) {
+        await supabase
+          .from('donations')
+          .update({ claims: claims })
+          .eq('id', donation.id);
+      }
+      
+      return claims.length;
+    };
+    
+    // Add claims to volunteer donations
+    let totalCreated = 0;
     for (let i = 0; i < claimsByMode.volunteer; i++) {
-      const availableVolunteerDonations = donationsByMode.volunteer.filter(d => !claimedDonations.has(d.id));
-      if (availableVolunteerDonations.length === 0) break;
-      
-      const donation = availableVolunteerDonations[Math.floor(Math.random() * availableVolunteerDonations.length)];
-      let recipient = recipients[Math.floor(Math.random() * recipients.length)];
-      
-      // Make sure recipient is not the donor
-      let recipientAttempts = 0;
-      while (recipient.id === donation.donor_id && recipientAttempts < 10) {
-        recipient = recipients[Math.floor(Math.random() * recipients.length)];
-        recipientAttempts++;
-      }
-      
-      if (recipient.id === donation.donor_id) continue; // Skip if can't find different recipient
-      
+      const availableDonations = donationsByMode.volunteer.filter(d => !claimedDonations.has(d.id));
+      if (availableDonations.length === 0) break;
+      const donation = availableDonations[Math.floor(Math.random() * availableDonations.length)];
       claimedDonations.add(donation.id);
-      
-      let claimId;
-      do {
-        claimId = randomUUID();
-      } while (usedClaimIds.has(claimId));
-      usedClaimIds.add(claimId);
-      
-      const claim = {
-        id: claimId,
-        donation_id: donation.id,
-        recipient_id: recipient.id,
-        donor_id: donation.donor_id,
-        status: 'claimed',
-        quantity_claimed: donation.quantity || 1
-      };
-      
-      claimsToInsert.push(claim);
+      totalCreated += await addClaimsToDonation(donation, 1);
     }
     
-    // Create claims for direct-mode donations
+    // Add claims to direct donations
     for (let i = 0; i < claimsByMode.direct; i++) {
-      const availableDirectDonations = donationsByMode.direct.filter(d => !claimedDonations.has(d.id));
-      if (availableDirectDonations.length === 0) break;
-      
-      const donation = availableDirectDonations[Math.floor(Math.random() * availableDirectDonations.length)];
-      let recipient = recipients[Math.floor(Math.random() * recipients.length)];
-      
-      let recipientAttempts = 0;
-      while (recipient.id === donation.donor_id && recipientAttempts < 10) {
-        recipient = recipients[Math.floor(Math.random() * recipients.length)];
-        recipientAttempts++;
-      }
-      
-      if (recipient.id === donation.donor_id) continue;
-      
+      const availableDonations = donationsByMode.direct.filter(d => !claimedDonations.has(d.id));
+      if (availableDonations.length === 0) break;
+      const donation = availableDonations[Math.floor(Math.random() * availableDonations.length)];
       claimedDonations.add(donation.id);
-      
-      let claimId;
-      do {
-        claimId = randomUUID();
-      } while (usedClaimIds.has(claimId));
-      usedClaimIds.add(claimId);
-      
-      const claim = {
-        id: claimId,
-        donation_id: donation.id,
-        recipient_id: recipient.id,
-        donor_id: donation.donor_id,
-        status: 'claimed',
-        quantity_claimed: donation.quantity || 1
-      };
-      
-      claimsToInsert.push(claim);
+      totalCreated += await addClaimsToDonation(donation, 1);
     }
     
-    // Create claims for pickup-mode donations
+    // Add claims to pickup donations
     for (let i = 0; i < claimsByMode.pickup; i++) {
-      const availablePickupDonations = donationsByMode.pickup.filter(d => !claimedDonations.has(d.id));
-      if (availablePickupDonations.length === 0) break;
-      
-      const donation = availablePickupDonations[Math.floor(Math.random() * availablePickupDonations.length)];
-      let recipient = recipients[Math.floor(Math.random() * recipients.length)];
-      
-      let recipientAttempts = 0;
-      while (recipient.id === donation.donor_id && recipientAttempts < 10) {
-        recipient = recipients[Math.floor(Math.random() * recipients.length)];
-        recipientAttempts++;
-      }
-      
-      if (recipient.id === donation.donor_id) continue;
-      
+      const availableDonations = donationsByMode.pickup.filter(d => !claimedDonations.has(d.id));
+      if (availableDonations.length === 0) break;
+      const donation = availableDonations[Math.floor(Math.random() * availableDonations.length)];
       claimedDonations.add(donation.id);
-      
-      let claimId;
-      do {
-        claimId = randomUUID();
-      } while (usedClaimIds.has(claimId));
-      usedClaimIds.add(claimId);
-      
-      const claim = {
-        id: claimId,
-        donation_id: donation.id,
-        recipient_id: recipient.id,
-        donor_id: donation.donor_id,
-        status: 'claimed',
-        quantity_claimed: donation.quantity || 1
-      };
-      
-      claimsToInsert.push(claim);
+      totalCreated += await addClaimsToDonation(donation, 1);
     }
     
-    if (claimsToInsert.length === 0) {
-      console.log('⚠️  No claims to insert.');
-      return [];
-    }
-    
-    const { data, error } = await supabase
-      .from('donation_claims')
-      .insert(claimsToInsert)
-      .select();
-    
-    if (error) {
-      console.error('⚠️  Error seeding claims:', error.message);
-      return [];
-    }
-    
-    console.log(`✅ Created ${data.length} donation claims\n`);
-    return data;
+    console.log(`✅ Created ${totalCreated} donation claims as JSONB\n`);
+    return claimsData;
     
   } catch (error) {
     console.error('❌ Error seeding donation claims:', error);
@@ -1137,7 +1239,7 @@ async function seedDonationClaims(donations, recipients) {
 }
 
 async function seedEventParticipants(events, users) {
-  console.log('🌱 Seeding event participants...\n');
+  console.log('🌱 Seeding event participants as JSONB in events table...\n');
   
   try {
     if (!events || events.length === 0 || !users || users.length === 0) {
@@ -1145,9 +1247,8 @@ async function seedEventParticipants(events, users) {
       return [];
     }
     
-    const participantsToInsert = [];
-    const usedParticipantIds = new Set();
-    const participantSet = new Set(); // Track (event_id, user_id) pairs to avoid duplicates
+    const participantsData = [];
+    let totalCreated = 0;
     
       // Add participants to each event (2-5 participants per event)
       for (const event of events) {
@@ -1164,68 +1265,37 @@ async function seedEventParticipants(events, users) {
         
         const eventUsers = [...availableUsers].sort(() => 0.5 - Math.random()).slice(0, numParticipants);
       
+      const participants = [];
       for (const user of eventUsers) {
-        const key = `${event.id}-${user.id}`;
-        if (participantSet.has(key)) continue;
-        participantSet.add(key);
-        
-        // Generate unique ID
-        let participantId;
-        do {
-          participantId = randomUUID();
-        } while (usedParticipantIds.has(participantId));
-        usedParticipantIds.add(participantId);
-        
         const participant = {
-          id: participantId,
-          event_id: event.id,
+          id: randomUUID(),
           user_id: user.id,
-          attendance_status: 'pending', // pending, present, absent
-          joined_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
-          // Note: created_at is auto-generated by the database if it exists
+          role: 'participant',
+          registration_date: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString(),
+          attendance_status: 'pending',
+          attended: false,
+          created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
         };
-        
-        participantsToInsert.push(participant);
+        participants.push(participant);
+        participantsData.push({ ...participant, event_id: event.id });
       }
-    }
-    
-    if (participantsToInsert.length === 0) {
-      console.log('⚠️  No participants to insert.');
-      return [];
-    }
-    
-    const { data, error } = await supabase
-      .from('event_participants')
-      .insert(participantsToInsert)
-      .select();
-    
-    if (error) {
-      console.error('⚠️  Error seeding event participants:', error.message);
-      return [];
-    }
-    
-    // Update event participant counts
-    if (data.length > 0) {
-      const eventCounts = {};
-      data.forEach(participant => {
-        eventCounts[participant.event_id] = (eventCounts[participant.event_id] || 0) + 1;
-      });
       
-      // Update each event's current_participants count
-      for (const [eventId, count] of Object.entries(eventCounts)) {
-        try {
+      // Update event with participants JSONB array
+      if (participants.length > 0) {
           await supabase
             .from('events')
-            .update({ current_participants: count })
-            .eq('id', eventId);
-        } catch (updateError) {
-          console.error(`⚠️  Error updating participant count for event ${eventId}:`, updateError.message);
-        }
+          .update({ 
+            participants: participants,
+            current_participants: participants.length 
+          })
+          .eq('id', event.id);
+        
+        totalCreated += participants.length;
       }
     }
     
-    console.log(`✅ Created ${data.length} event participants\n`);
-    return data;
+    console.log(`✅ Created ${totalCreated} event participants as JSONB\n`);
+    return participantsData;
     
   } catch (error) {
     console.error('❌ Error seeding event participants:', error);
@@ -1893,6 +1963,7 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
         claim_id: claim.id,
         volunteer_id: volunteer.id,
         status: status,
+        // Use normalized fields defined in schema
         pickup_address: pickupAddress,
         delivery_address: deliveryAddress,
         pickup_city: pickupCity,
@@ -1914,6 +1985,8 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
         delivery.delivered_at = new Date(Date.now() - Math.random() * 2 * 24 * 60 * 60 * 1000).toISOString();
         // Note: volunteer_notes column removed - not in deliveries table schema
       }
+      // Provide a scheduled date for display if not already implied
+      // Do not set scheduled_delivery_date if the column doesn't exist in schema
       
       deliveriesToInsert.push(delivery);
       claimsWithDeliveries.add(claim.id);
@@ -1951,7 +2024,7 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
 }
 
 async function seedDirectDeliveries(claims, donations, recipients) {
-  console.log('🌱 Seeding direct deliveries...\n');
+  console.log('🌱 Seeding direct deliveries (merged into deliveries table with delivery_mode)...\n');
   
   try {
     if (!claims || claims.length === 0) {
@@ -1990,71 +2063,84 @@ async function seedDirectDeliveries(claims, donations, recipients) {
       });
     }
     
-    const directDeliveriesToInsert = [];
-    const usedDirectDeliveryIds = new Set();
-    const directDeliveryStatuses = ['coordination_needed', 'scheduled', 'out_for_delivery', 'delivered', 'cancelled'];
+    const deliveriesToInsert = [];
+    const usedDeliveryIds = new Set();
+    // Note: direct_deliveries was merged into deliveries table
+    // Valid statuses for direct deliveries: 'pending', 'assigned', 'accepted', 'picked_up', 'in_transit', 'delivered'
+    const directDeliveryStatuses = ['pending', 'assigned', 'accepted', 'picked_up', 'in_transit', 'delivered'];
     
     // Create direct deliveries for ALL direct claims (100%)
-    // This ensures all direct delivery mode claims have corresponding direct deliveries
     const numDirectDeliveries = directClaims.length;
-    
-    // Create a set to track which claims we've already processed
     const processedClaims = new Set();
     
     for (let i = 0; i < numDirectDeliveries && i < directClaims.length; i++) {
-      // Use directClaims in order to ensure we process all of them
       const claim = directClaims[i];
       
-      // Skip if this claim already has a direct delivery
-      if (processedClaims.has(claim.id) || directDeliveriesToInsert.some(d => d.claim_id === claim.id)) {
+      // Skip if this claim already processed
+      if (processedClaims.has(claim.id) || deliveriesToInsert.some(d => d.claim_id === claim.id)) {
         continue;
       }
       processedClaims.add(claim.id);
       
       const status = directDeliveryStatuses[Math.floor(Math.random() * directDeliveryStatuses.length)];
       
-      // Get recipient info for delivery address
+      // Get recipient and donation info
       const recipient = recipientsMap[claim.recipient_id];
+      const donation = donationsMap[claim.donation_id];
+      
       const deliveryAddress = recipient?.address 
         ? `${recipient.address}, ${recipient.city || ''}`.trim()
-        : claim.location || 'Recipient address';
+        : 'Recipient address TBD';
+      
+      const pickupAddress = donation?.pickup_location || 'Pickup location TBD';
       
       // Generate unique ID
-      let directDeliveryId;
+      let deliveryId;
       do {
-        directDeliveryId = randomUUID();
-      } while (usedDirectDeliveryIds.has(directDeliveryId));
-      usedDirectDeliveryIds.add(directDeliveryId);
+        deliveryId = randomUUID();
+      } while (usedDeliveryIds.has(deliveryId));
+      usedDeliveryIds.add(deliveryId);
       
-      const directDelivery = {
-        id: directDeliveryId,
+      const delivery = {
+        id: deliveryId,
         claim_id: claim.id,
+        volunteer_id: null, // Direct deliveries don't have volunteers assigned
         status: status,
+        delivery_mode: 'direct', // This is the key field that identifies it as a direct delivery
+        // Use normalized fields defined in schema
+        pickup_address: pickupAddress,
         delivery_address: deliveryAddress,
-        delivery_instructions: status === 'scheduled' || status === 'out_for_delivery' 
-          ? 'Please call when you arrive. Recipient will meet you at the gate.'
-          : status === 'coordination_needed'
-          ? ''
-          : null,
-        notes: status === 'delivered' 
-          ? 'Successfully delivered. Recipient was very happy!'
-          : status === 'cancelled'
-          ? 'Delivery cancelled by donor.'
-          : null
-        // Note: created_at and updated_at are auto-generated by the database
+        pickup_city: donation?.pickup_location?.split(',')?.pop()?.trim() || 'TBD',
+        delivery_city: recipient?.city || 'TBD'
       };
       
-      directDeliveriesToInsert.push(directDelivery);
+      // Add status-specific timestamps
+      if (['accepted', 'picked_up', 'in_transit', 'delivered'].includes(status)) {
+        delivery.accepted_at = new Date(Date.now() - Math.random() * 8 * 24 * 60 * 60 * 1000).toISOString();
+      }
+      if (['picked_up', 'in_transit', 'delivered'].includes(status)) {
+        delivery.picked_up_at = new Date(Date.now() - Math.random() * 6 * 24 * 60 * 60 * 1000).toISOString();
+      }
+      if (['in_transit', 'delivered'].includes(status)) {
+        delivery.in_transit_at = new Date(Date.now() - Math.random() * 4 * 24 * 60 * 60 * 1000).toISOString();
+      }
+      if (status === 'delivered') {
+        delivery.delivered_at = new Date(Date.now() - Math.random() * 2 * 24 * 60 * 60 * 1000).toISOString();
+      }
+      // Provide a scheduled date for display if not already implied
+      // Do not set scheduled_delivery_date if the column doesn't exist in schema
+      
+      deliveriesToInsert.push(delivery);
     }
     
-    if (directDeliveriesToInsert.length === 0) {
+    if (deliveriesToInsert.length === 0) {
       console.log('⚠️  No direct deliveries to insert.');
       return [];
     }
     
     const { data, error } = await supabase
-      .from('direct_deliveries')
-      .insert(directDeliveriesToInsert)
+      .from('deliveries')
+      .insert(deliveriesToInsert)
       .select();
     
     if (error) {
@@ -2062,7 +2148,7 @@ async function seedDirectDeliveries(claims, donations, recipients) {
       return [];
     }
     
-    console.log(`✅ Created ${data.length} direct deliveries\n`);
+    console.log(`✅ Created ${data.length} direct deliveries (in deliveries table with delivery_mode='direct')\n`);
     return data;
     
   } catch (error) {
@@ -2072,120 +2158,159 @@ async function seedDirectDeliveries(claims, donations, recipients) {
 }
 
 async function seedSettings() {
-  console.log('🌱 Seeding settings...\n');
+  console.log('🌱 Seeding system_settings...\n');
   
   try {
     // Check if settings exist
     const { data: existingSettings, error: checkError } = await supabase
-      .from('settings')
-      .select('id')
-      .eq('id', 1)
-      .maybeSingle();
+      .from('system_settings')
+      .select('*')
+      .limit(1);
     
     if (checkError && !checkError.message.includes('does not exist')) {
       console.error('⚠️  Error checking settings:', checkError.message);
       return null;
     }
     
-    if (existingSettings) {
-      console.log('✅ Settings already exist, skipping...\n');
+    if (existingSettings && existingSettings.length > 0) {
+      console.log('✅ System settings already exist, skipping...\n');
       return existingSettings;
     }
     
-    // Create default settings
-    const settings = {
-      id: 1,
-      platformName: 'HopeLink',
-      platformDescription: 'A platform connecting donors with recipients in need',
-      maintenanceMode: false,
-      registrationEnabled: true,
-      emailVerificationRequired: true,
-      supportEmail: 'support@hopelink.org',
-      maxFileUploadSize: 10,
-      auto_assign_enabled: false,
-      expiry_retention_days: 30,
+    // Create default settings as key-value pairs
+    const settingsToInsert = [
+      {
+        id: randomUUID(),
+        setting_key: 'enable_system_logs',
+        setting_value: true,
+        description: 'Enable system logging',
+        setting_type: 'boolean',
+        category: 'platform',
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
-    };
+      },
+      {
+        id: randomUUID(),
+        setting_key: 'log_retention_days',
+        setting_value: 30,
+        description: 'Number of days to retain logs',
+        setting_type: 'number',
+        category: 'platform',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: randomUUID(),
+        setting_key: 'require_id_verification',
+        setting_value: true,
+        description: 'Require ID verification for volunteers',
+        setting_type: 'boolean',
+        category: 'platform',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: randomUUID(),
+        setting_key: 'donor_signup_enabled',
+        setting_value: true,
+        description: 'Allow donor signups',
+        setting_type: 'boolean',
+        category: 'platform',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: randomUUID(),
+        setting_key: 'recipient_signup_enabled',
+        setting_value: true,
+        description: 'Allow recipient signups',
+        setting_type: 'boolean',
+        category: 'platform',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      },
+      {
+        id: randomUUID(),
+        setting_key: 'volunteer_signup_enabled',
+        setting_value: true,
+        description: 'Allow volunteer signups',
+        setting_type: 'boolean',
+        category: 'platform',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }
+    ];
     
     const { data, error } = await supabase
-      .from('settings')
-      .insert(settings)
-      .select()
-      .single();
+      .from('system_settings')
+      .insert(settingsToInsert)
+      .select();
     
     if (error) {
-      console.error('⚠️  Error seeding settings:', error.message);
+      console.error('⚠️  Error seeding system_settings:', error.message);
       return null;
     }
     
-    console.log('✅ Created default settings\n');
+    console.log(`✅ Created ${data.length} system settings\n`);
     return data;
     
   } catch (error) {
-    console.error('❌ Error seeding settings:', error);
+    console.error('❌ Error seeding system_settings:', error);
     return null;
   }
 }
 
-async function seedDeliveryConfirmations(deliveries, allUsers) {
-  console.log('🌱 Seeding delivery confirmations...\n');
+async function seedDeliveryConfirmations(donations, deliveries) {
+  console.log('🌱 Seeding delivery confirmations as JSONB in donations table...\n');
   
   try {
-    if (!deliveries || deliveries.length === 0 || !allUsers || allUsers.length === 0) {
-      console.log('⚠️  No deliveries or users available for confirmations.');
+    if (!donations || donations.length === 0 || !deliveries || deliveries.length === 0) {
+      console.log('⚠️  No donations or deliveries available for confirmations.');
       return [];
     }
     
-    // Create confirmations for all deliveries (not just delivered ones)
-    // Note: delivery_confirmations table requires delivery_id and user_id (not null)
-    const confirmationsToInsert = [];
-    const usedConfirmationIds = new Set();
+    // Get donations that have claims
+    const { data: donationsWithClaims } = await supabase
+      .from('donations')
+      .select('id, claims')
+      .not('claims', 'is', null);
     
-    // Create confirmations for ~70% of deliveries
-    const numConfirmations = Math.max(1, Math.floor(deliveries.length * 0.7));
-    const selectedDeliveries = deliveries.slice(0, numConfirmations);
+    if (!donationsWithClaims || donationsWithClaims.length === 0) {
+      console.log('⚠️  No donations with claims for confirmations.');
+      return [];
+    }
     
-    for (const delivery of selectedDeliveries) {
-      const user = allUsers[Math.floor(Math.random() * allUsers.length)];
-      if (!user) continue;
+    let totalCreated = 0;
+    
+    // Add confirmations to ~30% of donations with claims
+    const numToUpdate = Math.max(1, Math.floor(donationsWithClaims.length * 0.3));
+    const selectedDonations = donationsWithClaims.slice(0, numToUpdate);
+    
+    for (const donation of selectedDonations) {
+      const confirmations = [];
       
-      let confirmationId;
-      do {
-        confirmationId = randomUUID();
-      } while (usedConfirmationIds.has(confirmationId));
-      usedConfirmationIds.add(confirmationId);
-      
-      // Note: delivery_confirmations has a check constraint on user_role
-      // Use only valid roles: likely 'donor' or 'recipient' for confirmations
-      const userRoles = ['donor', 'recipient'];
-      
-      confirmationsToInsert.push({
-        id: confirmationId,
-        delivery_id: delivery.id,
-        user_id: user.id,
-        user_role: userRoles[Math.floor(Math.random() * userRoles.length)],
-        created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
+      // Create 1-2 confirmations per donation
+      const numConfirmations = Math.floor(Math.random() * 2) + 1;
+      for (let i = 0; i < numConfirmations; i++) {
+        const delivery = deliveries[Math.floor(Math.random() * deliveries.length)];
+        confirmations.push({
+          id: randomUUID(),
+          delivery_id: delivery?.id || randomUUID(),
+          confirmed_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
       });
     }
     
-    if (confirmationsToInsert.length === 0) {
-      console.log('⚠️  No confirmations to insert.');
-      return [];
+      if (confirmations.length > 0) {
+        await supabase
+          .from('donations')
+          .update({ confirmations: confirmations })
+          .eq('id', donation.id);
+        totalCreated += confirmations.length;
+      }
     }
     
-    const { data, error } = await supabase
-      .from('delivery_confirmations')
-      .insert(confirmationsToInsert)
-      .select();
-    
-    if (error) {
-      console.error('⚠️  Error seeding delivery confirmations:', error.message);
+    console.log(`✅ Created ${totalCreated} delivery confirmations as JSONB\n`);
       return [];
-    }
-    
-    console.log(`✅ Created ${data.length} delivery confirmations\n`);
-    return data;
     
   } catch (error) {
     console.error('❌ Error seeding delivery confirmations:', error);
@@ -2194,27 +2319,33 @@ async function seedDeliveryConfirmations(deliveries, allUsers) {
 }
 
 async function seedFeedbackRatings(donations, requests, allUsers) {
-  console.log('🌱 Seeding feedback ratings...\n');
+  console.log('🌱 Seeding feedback...\n');
   
   try {
     if (!allUsers || allUsers.length === 0) {
-      console.log('⚠️  No users available for feedback ratings.');
+      console.log('⚠️  No users available for feedback.');
       return [];
     }
     
     const feedbackToInsert = [];
     const usedFeedbackIds = new Set();
     
-    // Create feedback for all donations and requests (not just completed ones)
-    // Note: feedback_ratings table only has id and created_at columns
     const allDonations = donations || [];
     const allRequests = requests || [];
     
-    // Create feedback for ~50% of donations
-    // Note: feedback_ratings table requires transaction_id (not null)
-    const numDonationFeedback = Math.max(1, Math.floor(allDonations.length * 0.5));
+    const feedbackTexts = [
+      'Great experience! Very helpful.',
+      'Thank you so much for your generosity.',
+      'Quick and smooth process.',
+      'Appreciated the help received.',
+      'Could be better, but overall good.'
+    ];
+    
+    // Create feedback for ~30% of donations
+    const numDonationFeedback = Math.max(1, Math.floor(allDonations.length * 0.3));
     for (let i = 0; i < numDonationFeedback && i < allDonations.length; i++) {
       const donation = allDonations[i];
+      const user = allUsers[Math.floor(Math.random() * allUsers.length)];
       let feedbackId;
       do {
         feedbackId = randomUUID();
@@ -2223,15 +2354,21 @@ async function seedFeedbackRatings(donations, requests, allUsers) {
       
       feedbackToInsert.push({
         id: feedbackId,
+        user_id: user.id,
+        feedback_text: feedbackTexts[Math.floor(Math.random() * feedbackTexts.length)],
+        feedback_type: 'donation',
+        transaction_type: 'donation',
         transaction_id: donation.id,
+        rating: Math.floor(Math.random() * 2) + 4, // 4-5 stars
         created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
       });
     }
     
-    // Create feedback for ~50% of requests
-    const numRequestFeedback = Math.max(1, Math.floor(allRequests.length * 0.5));
+    // Create feedback for ~30% of requests
+    const numRequestFeedback = Math.max(1, Math.floor(allRequests.length * 0.3));
     for (let i = 0; i < numRequestFeedback && i < allRequests.length; i++) {
       const request = allRequests[i];
+      const user = allUsers[Math.floor(Math.random() * allUsers.length)];
       let feedbackId;
       do {
         feedbackId = randomUUID();
@@ -2240,31 +2377,56 @@ async function seedFeedbackRatings(donations, requests, allUsers) {
       
       feedbackToInsert.push({
         id: feedbackId,
+        user_id: user.id,
+        feedback_text: feedbackTexts[Math.floor(Math.random() * feedbackTexts.length)],
+        feedback_type: 'request',
+        transaction_type: 'request',
         transaction_id: request.id,
+        rating: Math.floor(Math.random() * 2) + 4,
+        created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
+      });
+    }
+    
+    // Create some platform feedback
+    const numPlatformFeedback = Math.min(5, allUsers.length);
+    for (let i = 0; i < numPlatformFeedback; i++) {
+      const user = allUsers[i];
+      let feedbackId;
+      do {
+        feedbackId = randomUUID();
+      } while (usedFeedbackIds.has(feedbackId));
+      usedFeedbackIds.add(feedbackId);
+      
+      feedbackToInsert.push({
+        id: feedbackId,
+        user_id: user.id,
+        feedback_text: 'Platform feedback: ' + feedbackTexts[Math.floor(Math.random() * feedbackTexts.length)],
+        feedback_type: 'platform',
+        rating: Math.floor(Math.random() * 2) + 4,
         created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
       });
     }
     
     if (feedbackToInsert.length === 0) {
-      console.log('⚠️  No feedback ratings to insert.');
+      console.log('⚠️  No feedback to insert.');
       return [];
     }
     
     const { data, error } = await supabase
-      .from('feedback_ratings')
+      .from('feedback')
       .insert(feedbackToInsert)
       .select();
     
     if (error) {
-      console.error('⚠️  Error seeding feedback ratings:', error.message);
+      console.error('⚠️  Error seeding feedback:', error.message);
       return [];
     }
     
-    console.log(`✅ Created ${data.length} feedback ratings\n`);
+    console.log(`✅ Created ${data.length} feedback entries\n`);
     return data;
     
   } catch (error) {
-    console.error('❌ Error seeding feedback ratings:', error);
+    console.error('❌ Error seeding feedback:', error);
     return [];
   }
 }
@@ -2328,288 +2490,11 @@ async function seedPerformanceMetrics(allUsers) {
   }
 }
 
-async function seedUserPreferences(allUsers) {
-  console.log('🌱 Seeding user preferences...\n');
-  
-  try {
-    if (!allUsers || allUsers.length === 0) {
-      console.log('⚠️  No users available for user preferences.');
-      return [];
-    }
-    
-    const preferencesToInsert = [];
-    const usedPreferenceIds = new Set();
-    
-    // Create preferences for ~60% of users
-    // Note: user_preferences table requires user_id (not null)
-    const numPreferences = Math.max(1, Math.floor(allUsers.length * 0.6));
-    const selectedUsers = allUsers.slice(0, numPreferences);
-    
-    for (const user of selectedUsers) {
-      let preferenceId;
-      do {
-        preferenceId = randomUUID();
-      } while (usedPreferenceIds.has(preferenceId));
-      usedPreferenceIds.add(preferenceId);
-      
-      preferencesToInsert.push({
-        id: preferenceId,
-        user_id: user.id,
-        created_at: new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString()
-      });
-    }
-    
-    if (preferencesToInsert.length === 0) {
-      console.log('⚠️  No user preferences to insert.');
-      return [];
-    }
-    
-    const { data, error } = await supabase
-      .from('user_preferences')
-      .insert(preferencesToInsert)
-      .select();
-    
-    if (error) {
-      console.error('⚠️  Error seeding user preferences:', error.message);
-      return [];
-    }
-    
-    console.log(`✅ Created ${data.length} user preferences\n`);
-    return data;
-    
-  } catch (error) {
-    console.error('❌ Error seeding user preferences:', error);
-    return [];
-  }
-}
-
-async function seedUserReports(allUsers) {
-  console.log('🌱 Seeding user reports...\n');
-  
-  try {
-    if (!allUsers || allUsers.length === 0) {
-      console.log('⚠️  No users available for user reports.');
-      return [];
-    }
-    
-    const reportsToInsert = [];
-    const usedReportIds = new Set();
-    const usedReportPairs = new Set(); // Track reporter-reported pairs to avoid duplicates
-    
-    // Create reports - ensure we have at least 3-5 reports for testing
-    // Calculate all possible non-self report pairs
-    const allPairs = [];
-    for (let i = 0; i < allUsers.length; i++) {
-      for (let j = 0; j < allUsers.length; j++) {
-        if (i !== j) {
-          allPairs.push({
-            reporter: allUsers[i],
-            reported: allUsers[j]
-          });
-        }
-      }
-    }
-    
-    // Shuffle pairs to randomize selection
-    const shuffledPairs = allPairs.sort(() => Math.random() - 0.5);
-    
-    // Create reports for 3-5 pairs (or all available pairs if less)
-    const numReports = Math.min(5, Math.max(3, shuffledPairs.length));
-    
-    let reportIndex = 0; // Track how many reports we've actually created
-    
-    for (let i = 0; i < numReports && i < shuffledPairs.length; i++) {
-      const { reporter, reported } = shuffledPairs[i];
-      
-      // Skip if we already have a report for this pair
-      const pairKey = `${reporter.id}-${reported.id}`;
-      if (usedReportPairs.has(pairKey)) continue;
-      usedReportPairs.add(pairKey);
-      
-      let reportId;
-      do {
-        reportId = randomUUID();
-      } while (usedReportIds.has(reportId));
-      usedReportIds.add(reportId);
-      
-      const reasons = ['inappropriate_behavior', 'spam', 'fraud', 'harassment', 'other'];
-      // Ensure at least 60% of reports are 'pending' so they show up in the modal by default
-      // The rest can be 'resolved' or 'dismissed'
-      const status = reportIndex < Math.floor(numReports * 0.6) 
-        ? 'pending' 
-        : ['resolved', 'dismissed'][Math.floor(Math.random() * 2)];
-      
-      reportsToInsert.push({
-        id: reportId,
-        reported_user_id: reported.id,
-        reported_by_user_id: reporter.id,
-        reason: reasons[Math.floor(Math.random() * reasons.length)],
-        description: 'User reported for inappropriate behavior.',
-        status: status,
-        created_at: new Date(Date.now() - Math.random() * 60 * 24 * 60 * 60 * 1000).toISOString(),
-        updated_at: new Date().toISOString()
-      });
-      
-      reportIndex++; // Increment after successfully adding a report
-    }
-    
-    if (reportsToInsert.length === 0) {
-      console.log('⚠️  No user reports to insert.');
-      return [];
-    }
-    
-    const { data, error } = await supabase
-      .from('user_reports')
-      .insert(reportsToInsert)
-      .select();
-    
-    if (error) {
-      console.error('⚠️  Error seeding user reports:', error.message);
-      return [];
-    }
-    
-    console.log(`✅ Created ${data.length} user reports\n`);
-    return data;
-    
-  } catch (error) {
-    console.error('❌ Error seeding user reports:', error);
-    return [];
-  }
-}
-
-async function seedUserVerifications(allUsers) {
-  console.log('🌱 Seeding user verifications...\n');
-  
-  try {
-    if (!allUsers || allUsers.length === 0) {
-      console.log('⚠️  No users available for user verifications.');
-      return [];
-    }
-    
-    const verificationsToInsert = [];
-    const usedVerificationIds = new Set();
-    
-    // Create verifications for ~40% of users
-    // Note: user_verifications table requires user_id and verification_type (not null)
-    const numVerifications = Math.max(1, Math.floor(allUsers.length * 0.4));
-    const selectedUsers = allUsers.slice(0, numVerifications);
-    
-    const verificationTypes = ['email', 'phone', 'id', 'address'];
-    
-    for (const user of selectedUsers) {
-      let verificationId;
-      do {
-        verificationId = randomUUID();
-      } while (usedVerificationIds.has(verificationId));
-      usedVerificationIds.add(verificationId);
-      
-      verificationsToInsert.push({
-        id: verificationId,
-        user_id: user.id,
-        verification_type: verificationTypes[Math.floor(Math.random() * verificationTypes.length)]
-      });
-    }
-    
-    if (verificationsToInsert.length === 0) {
-      console.log('⚠️  No user verifications to insert.');
-      return [];
-    }
-    
-    const { data, error } = await supabase
-      .from('user_verifications')
-      .insert(verificationsToInsert)
-      .select();
-    
-    if (error) {
-      console.error('⚠️  Error seeding user verifications:', error.message);
-      return [];
-    }
-    
-    console.log(`✅ Created ${data.length} user verifications\n`);
-    return data;
-    
-  } catch (error) {
-    console.error('❌ Error seeding user verifications:', error);
-    return [];
-  }
-}
-
-async function seedVolunteerRatings(deliveries, allUsers) {
-  console.log('🌱 Seeding volunteer ratings...\n');
-  
-  try {
-    if (!deliveries || deliveries.length === 0 || !allUsers || allUsers.length === 0) {
-      console.log('⚠️  No deliveries or users available for volunteer ratings.');
-      return [];
-    }
-    
-    // Create ratings for all deliveries (not just delivered ones)
-    // Note: volunteer_ratings table requires volunteer_id (not null)
-    const ratingsToInsert = [];
-    const usedRatingIds = new Set();
-    
-    // Create ratings for ~60% of deliveries
-    const numRatings = Math.max(1, Math.floor(deliveries.length * 0.6));
-    const selectedDeliveries = deliveries.slice(0, numRatings);
-    
-    for (const delivery of selectedDeliveries) {
-      const volunteer = allUsers.find(u => u.id === delivery.volunteer_id);
-      if (!volunteer) continue;
-      
-      // Find a rater who is not the volunteer
-      let rater = allUsers[Math.floor(Math.random() * allUsers.length)];
-      let attempts = 0;
-      while (rater && rater.id === volunteer.id && attempts < 10) {
-        rater = allUsers[Math.floor(Math.random() * allUsers.length)];
-        attempts++;
-      }
-      if (!rater || volunteer.id === rater.id) continue;
-      
-      let ratingId;
-      do {
-        ratingId = randomUUID();
-      } while (usedRatingIds.has(ratingId));
-      usedRatingIds.add(ratingId);
-      
-      // Determine rater type based on user role
-      const raterTypes = ['donor', 'recipient', 'admin'];
-      const raterType = raterTypes[Math.floor(Math.random() * raterTypes.length)];
-      
-      ratingsToInsert.push({
-        id: ratingId,
-        volunteer_id: volunteer.id,
-        rater_id: rater.id,
-        rater_type: raterType,
-        delivery_id: delivery.id,
-        rating: Math.floor(Math.random() * 2) + 4, // 4-5 stars
-        created_at: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000).toISOString()
-      });
-    }
-    
-    if (ratingsToInsert.length === 0) {
-      console.log('⚠️  No volunteer ratings to insert.');
-      return [];
-    }
-    
-    const { data, error } = await supabase
-      .from('volunteer_ratings')
-      .insert(ratingsToInsert)
-      .select();
-    
-    if (error) {
-      console.error('⚠️  Error seeding volunteer ratings:', error.message);
-      return [];
-    }
-    
-    console.log(`✅ Created ${data.length} volunteer ratings\n`);
-    return data;
-    
-  } catch (error) {
-    console.error('❌ Error seeding volunteer ratings:', error);
-    return [];
-  }
-}
+// Note: The following functions are no longer needed as data is now stored in user_profiles JSONB:
+// - seedUserPreferences (user_profiles.preferences)
+// - seedUserReports (user_profiles.reports)
+// - seedUserVerifications (user_profiles.id_documents)
+// - seedVolunteerRatings (consolidated into feedback table)
 
 async function seedVolunteerRequests(claims, volunteers) {
   console.log('🌱 Seeding volunteer requests...\n');
@@ -2757,6 +2642,7 @@ async function main() {
   
   try {
     await cleanupAll();
+    await normalizeUsers();
     
     // Seed core data
     const donations = await seedDonations();
@@ -2805,38 +2691,35 @@ async function main() {
     const directDeliveries = await seedDirectDeliveries(claims, donations, recipients);
     const notifications = await seedNotifications(allUsers, donations, events, claims);
     const settings = await seedSettings();
+    // Seed a small set of user reports for the admin moderation UI
+    const seededReports = await seedSampleReports(allUsers);
     
     // Seed additional tables
-    const deliveryConfirmations = await seedDeliveryConfirmations(deliveries, allUsers);
+    const deliveryConfirmations = await seedDeliveryConfirmations(donations, deliveries);
     const feedbackRatings = await seedFeedbackRatings(donations, requests, allUsers);
     const performanceMetrics = await seedPerformanceMetrics(allUsers);
-    const userPreferences = await seedUserPreferences(allUsers);
-    const userReports = await seedUserReports(allUsers);
-    const userVerifications = await seedUserVerifications(allUsers);
-    const volunteerRatings = await seedVolunteerRatings(deliveries, allUsers);
+    // Note: user_preferences, user_reports, user_verifications, volunteer_ratings are now JSONB in user_profiles
     const volunteerRequests = await seedVolunteerRequests(claims, volunteers);
     const volunteerTimeTracking = await seedVolunteerTimeTracking(deliveries, volunteers);
     
     console.log('✅ All done! Database fully seeded.\n');
     console.log('📊 Summary:');
     console.log(`  - Donations: ${donations?.length || 0} with matching images`);
+    console.log(`    • Claims added as JSONB: ${claims?.length || 0}`);
+    console.log(`    • Confirmations added as JSONB: in ${deliveryConfirmations?.length || 0} donations`);
     console.log(`  - Requests: ${requests?.length || 0} with matching images`);
     console.log(`  - Events: ${events?.length || 0} with matching images`);
-    console.log(`  - Donation Claims: ${claims?.length || 0}`);
-    console.log(`  - Event Participants: ${participants?.length || 0}`);
+    console.log(`    • Participants added as JSONB: ${participants?.length || 0}`);
     console.log(`  - Volunteer Deliveries: ${deliveries?.length || 0} (with various statuses)`);
     console.log(`  - Direct Deliveries: ${directDeliveries?.length || 0} (with various statuses)`);
     console.log(`  - Notifications: ${notifications?.length || 0}`);
-    console.log(`  - Settings: ${settings ? 'Created' : 'Skipped'}`);
-    console.log(`  - Delivery Confirmations: ${deliveryConfirmations?.length || 0}`);
-    console.log(`  - Feedback Ratings: ${feedbackRatings?.length || 0}`);
+    console.log(`  - System Settings: ${settings ? 'Created' : 'Skipped'}`);
+    console.log(`  - Feedback: ${feedbackRatings?.length || 0}`);
     console.log(`  - Performance Metrics: ${performanceMetrics?.length || 0}`);
-    console.log(`  - User Preferences: ${userPreferences?.length || 0}`);
-    console.log(`  - User Reports: ${userReports?.length || 0}`);
-    console.log(`  - User Verifications: ${userVerifications?.length || 0}`);
-    console.log(`  - Volunteer Ratings: ${volunteerRatings?.length || 0}`);
     console.log(`  - Volunteer Requests: ${volunteerRequests?.length || 0}`);
-    console.log(`  - Volunteer Time Tracking: ${volunteerTimeTracking?.length || 0}\n`);
+    console.log(`  - Volunteer Time Tracking: ${volunteerTimeTracking?.length || 0}`);
+    console.log(`  - User Reports (JSONB): ${seededReports?.length || 0}`);
+    console.log(`\n  Note: User preferences, reports, verifications now stored in user_profiles JSONB\n`);
     
   } catch (error) {
     console.error('❌ Fatal error:', error);

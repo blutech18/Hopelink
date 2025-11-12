@@ -21,6 +21,7 @@ import TermsModal from '../../components/ui/TermsModal'
 import TermsContent from '../../components/ui/TermsContent'
 import RoleSelectionModal from '../../components/ui/RoleSelectionModal'
 import { db, supabase } from '../../lib/supabase'
+import { checkRateLimit, recordAttempt, resetRateLimit, getRateLimitMessage } from '../../lib/rateLimiter'
 
 const SignupPage = () => {
   const [showPassword, setShowPassword] = useState(false)
@@ -63,6 +64,21 @@ const SignupPage = () => {
       return
     }
 
+    // Check rate limit
+    const rateLimitStatus = checkRateLimit('signup')
+    if (!rateLimitStatus.allowed) {
+      const message = getRateLimitMessage('signup')
+      error(message || 'Too many signup attempts. Please try again later.')
+      return
+    }
+
+    // Record attempt
+    if (!recordAttempt('signup')) {
+      const message = getRateLimitMessage('signup')
+      error(message || 'Too many signup attempts. Please try again later.')
+      return
+    }
+
     setIsLoading(true)
     try {
       const result = await signUp(data.email, data.password, {
@@ -78,6 +94,9 @@ const SignupPage = () => {
       // Mark that the user just signed up (to adjust first-login messaging)
       try { localStorage.setItem('justSignedUp', 'true') } catch {}
 
+      // Reset rate limit on successful signup
+      resetRateLimit('signup')
+      
       // Show verification instructions and redirect to login
       setTimeout(() => {
         success('Account created! Please check your email to verify your account.')

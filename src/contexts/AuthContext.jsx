@@ -634,7 +634,22 @@ export const AuthProvider = ({ children }) => {
         }
         // Handle invalid credentials / 400 responses more clearly
         if (error.status === 400 || msg.includes('invalid login credentials') || msg.includes('invalid_grant')) {
-          // Check if this account was created with Google OAuth
+          // Record failed attempt and surface warnings/lockout if applicable
+          try {
+            const { data: attemptInfo } = await supabase.rpc('record_failed_login', { p_email: email, p_ip: null })
+            const info = Array.isArray(attemptInfo) ? attemptInfo[0] : attemptInfo
+            if (info?.locked_until) {
+              const until = new Date(info.locked_until)
+              const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000))
+              throw new Error(`Too many failed attempts. Please try again in about ${minutes} minute(s).`)
+            }
+            if (info?.warning && info?.attempt_count >= 5) {
+              throw new Error('Multiple failed attempts detected. You may be temporarily locked if this continues.')
+            }
+          } catch (rpcErr) {
+            // Ignore RPC errors; fall back to generic message below
+          }
+          // Generic message (enumeration safe) and hint for Google OAuth
           throw new Error('Invalid email or password. If you signed up with Google, please use the "Continue with Google" button instead.')
         }
         throw error
@@ -654,6 +669,13 @@ export const AuthProvider = ({ children }) => {
           throw checkErr
         }
         // Fall through if we can't determine, continue normal flow
+      }
+      
+      // Reset failed attempts on successful authentication (best-effort)
+      try {
+        await supabase.rpc('reset_failed_logins', { p_email: email, p_ip: null })
+      } catch (resetErr) {
+        // Ignore reset errors
       }
       
       // Check if account is suspended after successful login

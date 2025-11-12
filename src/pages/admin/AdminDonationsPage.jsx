@@ -611,19 +611,19 @@ const AdminDonationsPage = () => {
                   <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Donation
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Donor
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Category
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
-                    Posted
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                    Expiration
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -644,12 +644,7 @@ const AdminDonationsPage = () => {
                         <div>
                           <div className="flex items-center gap-2">
                             <div className="text-sm font-medium text-white">{donation.title}</div>
-                            {donation.donation_destination === 'organization' && (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                              <Building className="h-3 w-3" />
-                              Direct
-                            </span>
-                            )}
+                            
                           </div>
                           <div className="text-sm text-yellow-400 truncate max-w-xs">
                             {donation.description}
@@ -661,100 +656,93 @@ const AdminDonationsPage = () => {
                         </div>
                       </td>
                       
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-center">
                         <div>
                           <div className="text-sm font-medium text-white">{donation.donor?.name || 'Unknown'}</div>
                           <div className="text-sm text-yellow-400">{donation.donor?.email || 'No email'}</div>
                         </div>
                       </td>
                       
-                      <td className="px-6 py-4">
+                      <td className="px-6 py-4 text-center">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-500/20 text-yellow-400">
                           {donation.category}
                         </span>
                       </td>
                       
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(donation.status)}`}>
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {donation.status}
-                        </span>
-                      </td>
-                      
-                      <td className="px-6 py-4">
-                        <div className="flex items-center text-sm text-yellow-400">
-                          <Calendar className="h-4 w-4 mr-1" />
-                          {new Date(donation.created_at).toLocaleDateString()}
+                      <td className="px-6 py-4 text-center">
+                        <div className="relative inline-block status-dropdown-container">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setStatusDropdownOpen(statusDropdownOpen === donation.id ? null : donation.id)
+                            }}
+                            disabled={updatingDonationId === donation.id}
+                            className={`
+                              flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all
+                              ${getStatusConfig(donation.status).color}
+                              ${updatingDonationId === donation.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                              focus:outline-none focus:ring-2 focus:ring-yellow-500/50
+                            `}
+                            title="Change Status"
+                          >
+                            {updatingDonationId === donation.id ? (
+                              <>
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                                <span>Updating...</span>
+                              </>
+                            ) : (
+                              <>
+                                {(() => {
+                                  const InlineStatusIcon = getStatusConfig(donation.status).icon
+                                  return <InlineStatusIcon className="h-3 w-3" />
+                                })()}
+                                <span className="capitalize">{donation.status}</span>
+                                <ChevronDown className={`h-3 w-3 transition-transform ${statusDropdownOpen === donation.id ? 'rotate-180' : ''}`} />
+                              </>
+                            )}
+                          </button>
+                          {statusDropdownOpen === donation.id && (
+                            <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden text-left">
+                              <div className="py-1">
+                                {['available', 'claimed', 'delivered', 'expired'].map((status) => {
+                                  if (status === donation.status) return null
+                                  const config = getStatusConfig(status)
+                                  const DropIcon = config.icon
+                                  return (
+                                    <button
+                                      key={status}
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleStatusUpdate(donation.id, status)
+                                      }}
+                                      className={`
+                                        w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
+                                        ${config.color} ${config.hoverColor}
+                                        transition-all hover:bg-navy-700/50
+                                        border-l-2 ${config.borderColor}
+                                      `}
+                                    >
+                                      <DropIcon className="h-4 w-4" />
+                                      <span>{config.label}</span>
+                                    </button>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </td>
                       
-                      <td className="px-6 py-4 text-right">
-                        <div className="flex items-center justify-end space-x-2">
-                          {/* Enhanced Status Dropdown */}
-                          <div className="relative status-dropdown-container">
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setStatusDropdownOpen(statusDropdownOpen === donation.id ? null : donation.id)
-                              }}
-                              disabled={updatingDonationId === donation.id}
-                              className={`
-                                flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
-                                ${getStatusColor(donation.status)}
-                                ${updatingDonationId === donation.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
-                                focus:outline-none focus:ring-2 focus:ring-yellow-500/50
-                              `}
-                              title="Change Status"
-                            >
-                              {updatingDonationId === donation.id ? (
-                                <>
-                                  <Loader2 className="h-3 w-3 animate-spin" />
-                                  <span>Updating...</span>
-                                </>
-                              ) : (
-                                <>
-                                  {(() => {
-                                    const StatusIcon = getStatusConfig(donation.status).icon
-                                    return <StatusIcon className="h-3 w-3" />
-                                  })()}
-                                  <span className="capitalize">{donation.status}</span>
-                                  <ChevronDown className={`h-3 w-3 transition-transform ${statusDropdownOpen === donation.id ? 'rotate-180' : ''}`} />
-                                </>
-                              )}
-                            </button>
-
-                            {/* Dropdown Menu */}
-                            {statusDropdownOpen === donation.id && (
-                              <div className="absolute right-0 mt-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden">
-                                <div className="py-1">
-                                  {['available', 'claimed', 'delivered', 'expired'].map((status) => {
-                                    if (status === donation.status) return null
-                                    const config = getStatusConfig(status)
-                                    const StatusIcon = config.icon
-                                    return (
-                                      <button
-                                        key={status}
-                                        onClick={(e) => {
-                                          e.stopPropagation()
-                                          handleStatusUpdate(donation.id, status)
-                                        }}
-                                        className={`
-                                          w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
-                                          ${config.color} ${config.hoverColor}
-                                          transition-all hover:bg-navy-700/50
-                                          border-l-2 ${config.borderColor}
-                                        `}
-                                      >
-                                        <StatusIcon className="h-4 w-4" />
-                                        <span>{config.label}</span>
-                                      </button>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-
+                      <td className="px-6 py-4 text-center">
+                        <div className="text-sm text-yellow-400">
+                          {(donation.expiry_date || donation.expiration_date)
+                            ? new Date(donation.expiry_date || donation.expiration_date).toLocaleDateString()
+                            : 'Not provided'}
+                        </div>
+                      </td>
+                      
+                      <td className="px-6 py-4 text-center">
+                        <div className="flex items-center justify-center space-x-2">
                           <button
                             onClick={() => handleViewDonation(donation)}
                             className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
@@ -796,17 +784,17 @@ const AdminDonationsPage = () => {
 
       {/* Donation Details Modal */}
       {showModal && selectedDonation && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setShowModal(false)}>
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-3 sm:p-4" onClick={() => setShowModal(false)}>
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ duration: 0.2 }}
-            className="bg-navy-900 border-2 border-yellow-500/20 shadow-2xl rounded-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+            className="bg-navy-900 border-2 border-yellow-500/30 shadow-2xl rounded-lg sm:rounded-xl max-w-3xl w-full max-h-[95vh] sm:max-h-[90vh] overflow-hidden flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between p-6 border-b-2 border-yellow-500/20 flex-shrink-0">
+            <div className="flex items-center justify-between p-4 sm:p-6 border-b-2 border-yellow-500/20 flex-shrink-0 gap-3">
               <div className="flex items-center gap-3">
                 <div className="p-2 bg-yellow-500/10 rounded-lg">
                   <Package className="h-6 w-6 text-yellow-400" />

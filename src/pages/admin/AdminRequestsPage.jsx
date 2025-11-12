@@ -19,7 +19,8 @@ import {
   ChevronDown,
   Loader2,
   Mail,
-  Phone
+  Phone,
+  Archive
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db } from '../../lib/supabase'
@@ -619,19 +620,19 @@ const AdminRequestsPage = () => {
                   <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Request
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Requester
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Urgency
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
-                    Created
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                    Expiration
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -658,34 +659,93 @@ const AdminRequestsPage = () => {
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-center">
                       <div>
                         <div className="text-sm font-medium text-white">{request.requester?.name || 'Unknown'}</div>
                         <div className="text-sm text-yellow-400">{request.requester?.email || 'No email'}</div>
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4">
+                    <td className="px-6 py-4 text-center">
                       <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getUrgencyColor(request.urgency)}`}>
                         {request.urgency}
                       </span>
                     </td>
                     
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
-                        {request.status}
-                      </span>
-                    </td>
-                    
-                    <td className="px-6 py-4">
-                      <div className="flex items-center text-sm text-yellow-400">
-                        <Calendar className="h-4 w-4 mr-1" />
-                        {new Date(request.created_at).toLocaleDateString()}
+                    <td className="px-6 py-4 text-center">
+                      <div className="relative inline-block status-dropdown-container">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            setStatusDropdownOpen(statusDropdownOpen === request.id ? null : request.id)
+                          }}
+                          disabled={updatingRequestId === request.id}
+                          className={`
+                            flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg transition-all
+                            ${getStatusConfig(request.status).color}
+                            ${updatingRequestId === request.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
+                            focus:outline-none focus:ring-2 focus:ring-yellow-500/50
+                          `}
+                          title="Change Status"
+                        >
+                          {updatingRequestId === request.id ? (
+                            <>
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                              <span>Updating...</span>
+                            </>
+                          ) : (
+                            <>
+                              {(() => {
+                                const InlineStatusIcon = getStatusConfig(request.status).icon
+                                return <InlineStatusIcon className="h-3 w-3" />
+                              })()}
+                              <span className="capitalize">{request.status}</span>
+                              <ChevronDown className={`h-3 w-3 transition-transform ${statusDropdownOpen === request.id ? 'rotate-180' : ''}`} />
+                            </>
+                          )}
+                        </button>
+                        {statusDropdownOpen === request.id && (
+                          <div className="absolute left-1/2 -translate-x-1/2 mt-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden text-left">
+                            <div className="py-1">
+                              {['open', 'fulfilled', 'cancelled', 'expired'].map((status) => {
+                                if (status === request.status) return null
+                                const config = getStatusConfig(status)
+                                const DropIcon = config.icon
+                                return (
+                                  <button
+                                    key={status}
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleStatusUpdate(request.id, status)
+                                    }}
+                                    className={`
+                                      w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
+                                      ${config.color} ${config.hoverColor}
+                                      transition-all hover:bg-navy-700/50
+                                      border-l-2 ${config.borderColor}
+                                    `}
+                                  >
+                                    <DropIcon className="h-4 w-4" />
+                                    <span>{config.label}</span>
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </td>
                     
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-3">
+                    <td className="px-6 py-4 text-center">
+                      <div className="text-sm text-yellow-400">
+                        {(request.expiry_date || request.expiration_date)
+                          ? new Date(request.expiry_date || request.expiration_date).toLocaleDateString()
+                          : 'Not provided'}
+                      </div>
+                    </td>
+                    
+                    <td className="px-6 py-4 text-center">
+                      <div className="flex items-center justify-center gap-3">
                         <button
                           onClick={() => handleViewRequest(request)}
                           className="p-2 text-yellow-400 hover:text-yellow-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
@@ -693,71 +753,13 @@ const AdminRequestsPage = () => {
                         >
                           <Eye className="h-4 w-4" />
                         </button>
-                        
-                        {/* Enhanced Status Dropdown */}
-                        <div className="relative status-dropdown-container">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation()
-                              setStatusDropdownOpen(statusDropdownOpen === request.id ? null : request.id)
-                            }}
-                            disabled={updatingRequestId === request.id}
-                            className={`
-                              flex items-center gap-2 px-3 py-1.5 text-xs font-medium rounded-lg border transition-all
-                              ${getStatusColor(request.status)}
-                              ${updatingRequestId === request.id ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:opacity-80'}
-                              focus:outline-none focus:ring-2 focus:ring-yellow-500/50
-                            `}
-                            title="Change Status"
-                          >
-                            {updatingRequestId === request.id ? (
-                              <>
-                                <Loader2 className="h-3 w-3 animate-spin" />
-                                <span>Updating...</span>
-                              </>
-                            ) : (
-                              <>
-                                {(() => {
-                                  const StatusIcon = getStatusConfig(request.status).icon
-                                  return <StatusIcon className="h-3 w-3" />
-                                })()}
-                                <span className="capitalize">{request.status}</span>
-                                <ChevronDown className={`h-3 w-3 transition-transform ${statusDropdownOpen === request.id ? 'rotate-180' : ''}`} />
-                              </>
-                            )}
-                          </button>
-
-                          {/* Dropdown Menu */}
-                          {statusDropdownOpen === request.id && (
-                            <div className="absolute right-0 mt-2 w-48 bg-navy-800 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 overflow-hidden">
-                              <div className="py-1">
-                                {['open', 'fulfilled', 'cancelled', 'expired'].map((status) => {
-                                  if (status === request.status) return null
-                                  const config = getStatusConfig(status)
-                                  const StatusIcon = config.icon
-                                  return (
-                                    <button
-                                      key={status}
-                                      onClick={(e) => {
-                                        e.stopPropagation()
-                                        handleStatusUpdate(request.id, status)
-                                      }}
-                                      className={`
-                                        w-full flex items-center gap-3 px-4 py-2.5 text-sm font-medium
-                                        ${config.color} ${config.hoverColor}
-                                        transition-all hover:bg-navy-700/50
-                                        border-l-2 ${config.borderColor}
-                                      `}
-                                    >
-                                      <StatusIcon className="h-4 w-4" />
-                                      <span>{config.label}</span>
-                                    </button>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
-                        </div>
+                        <button
+                          onClick={() => handleStatusUpdate(request.id, 'cancelled')}
+                          className="p-2 text-orange-400 hover:text-orange-300 hover:bg-navy-800 rounded-lg transition-all active:scale-95"
+                          title="Archive"
+                        >
+                          <Archive className="h-4 w-4" />
+                        </button>
                       </div>
                     </td>
                   </motion.tr>

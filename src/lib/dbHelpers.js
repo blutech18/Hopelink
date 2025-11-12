@@ -170,16 +170,14 @@ export function prepareUserUpdateData(formData) {
     updateData.address_details = addressDetails
   }
   
-  // ID verification (consolidate into JSONB)
-  const idVerification = {}
+  // ID verification fields are handled separately by updateProfile
+  // They are stored in user_id_documents table, not in users.id_verification JSONB
+  // Pass ID fields directly to updateProfile which will route them to user_id_documents
   const idFields = ['primary_id_type', 'primary_id_number', 'primary_id_expiry', 'primary_id_image_url', 'secondary_id_type', 'secondary_id_number', 'secondary_id_expiry', 'secondary_id_image_url']
   for (const field of idFields) {
     if (formData[field] !== undefined) {
-      idVerification[field] = formData[field]
+      updateData[field] = formData[field]
     }
-  }
-  if (Object.keys(idVerification).length > 0) {
-    updateData.id_verification = idVerification
   }
   
   // Organization info (consolidate into JSONB)

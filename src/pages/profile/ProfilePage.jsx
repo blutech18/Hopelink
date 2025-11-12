@@ -391,46 +391,47 @@ const ProfilePage = () => {
   }, [profile?.id, profile?.role])
 
   // Image handling functions
-  const convertToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader()
-      reader.readAsDataURL(file)
-      reader.onload = () => resolve(reader.result)
-      reader.onerror = (error) => reject(error)
-    })
-  }
-
   const handleImageSelect = async (event) => {
     const file = event.target.files[0]
     if (!file) return
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      error('Please select a valid image file')
-      return
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      error('Image size must be less than 5MB')
-      return
-    }
-
     try {
       setUploadingImage(true)
       
-      // Convert to base64
-      const base64String = await convertToBase64(file)
+      // Use storage helper for secure upload
+      const { uploadFile, validateFile } = await import('../../lib/storageHelper')
       
-      // Set preview
-      setImagePreview(base64String)
-      setProfileImage(base64String)
+      // Validate file
+      const validation = validateFile(file, 'image')
+      if (!validation.valid) {
+        error(validation.error || 'Invalid file')
+        return
+      }
+
+      // Create preview for immediate UI feedback
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setImagePreview(e.target.result)
+      }
+      reader.readAsDataURL(file)
+      
+      // Upload to Supabase Storage
+      if (!profile?.id) {
+        error('User profile not loaded. Please refresh the page.')
+        return
+      }
+      
+      const { url, path } = await uploadFile(file, profile.id, 'profile')
+      
+      // Set the URL (not base64)
+      setProfileImage(url)
       setSelectedAvatar(null) // Clear avatar selection when uploading own image
       
-      success('Image selected successfully!')
+      success('Image uploaded successfully!')
     } catch (err) {
-      console.error('Error processing image:', err)
-      error('Failed to process image. Please try again.')
+      console.error('Error uploading image:', err)
+      error(err.message || 'Failed to upload image. Please try again.')
+      setImagePreview(null)
     } finally {
       setUploadingImage(false)
     }
@@ -533,32 +534,42 @@ const ProfilePage = () => {
     const file = event.target.files[0]
     if (!file) return
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      error('Please select a valid image file')
-      return
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      error('Image size must be less than 5MB')
-      return
-    }
-
     try {
       setUploadingIdImage(true)
       
-      // Convert to base64
-      const base64String = await convertToBase64(file)
+      // Use storage helper for secure upload
+      const { uploadFile, validateFile } = await import('../../lib/storageHelper')
       
-      // Set preview and update form
-      setIdImagePreview(base64String)
-      setValue('primary_id_image_url', base64String)
+      // Validate file
+      const validation = validateFile(file, 'document')
+      if (!validation.valid) {
+        error(validation.error || 'Invalid file')
+        return
+      }
+
+      // Create preview for immediate UI feedback
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setIdImagePreview(e.target.result)
+      }
+      reader.readAsDataURL(file)
+      
+      // Upload to Supabase Storage
+      if (!profile?.id) {
+        error('User profile not loaded. Please refresh the page.')
+        return
+      }
+      
+      const { url, path } = await uploadFile(file, profile.id, 'id-documents')
+      
+      // Set the URL (not base64)
+      setValue('primary_id_image_url', url)
       
       success('ID image uploaded successfully!')
     } catch (err) {
-      console.error('Error processing ID image:', err)
-      error('Failed to process ID image. Please try again.')
+      console.error('Error uploading ID image:', err)
+      error(err.message || 'Failed to upload ID image. Please try again.')
+      setIdImagePreview(null)
     } finally {
       setUploadingIdImage(false)
     }
@@ -574,32 +585,42 @@ const ProfilePage = () => {
     const file = event.target.files[0]
     if (!file) return
 
-    // Validate file type
-    if (!file.type.startsWith('image/')) {
-      error('Please select a valid image file')
-      return
-    }
-
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      error('Image size must be less than 5MB')
-      return
-    }
-
     try {
       setUploadingSecondaryIdImage(true)
       
-      // Convert to base64
-      const base64String = await convertToBase64(file)
+      // Use storage helper for secure upload
+      const { uploadFile, validateFile } = await import('../../lib/storageHelper')
       
-      // Set preview and update form
-      setSecondaryIdImagePreview(base64String)
-      setValue('secondary_id_image_url', base64String)
+      // Validate file
+      const validation = validateFile(file, 'document')
+      if (!validation.valid) {
+        error(validation.error || 'Invalid file')
+        return
+      }
+
+      // Create preview for immediate UI feedback
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setSecondaryIdImagePreview(e.target.result)
+      }
+      reader.readAsDataURL(file)
+      
+      // Upload to Supabase Storage
+      if (!profile?.id) {
+        error('User profile not loaded. Please refresh the page.')
+        return
+      }
+      
+      const { url, path } = await uploadFile(file, profile.id, 'id-documents')
+      
+      // Set the URL (not base64)
+      setValue('secondary_id_image_url', url)
       
       success('Secondary ID image uploaded successfully!')
     } catch (err) {
-      console.error('Error processing secondary ID image:', err)
-      error('Failed to process secondary ID image. Please try again.')
+      console.error('Error uploading secondary ID image:', err)
+      error(err.message || 'Failed to upload secondary ID image. Please try again.')
+      setSecondaryIdImagePreview(null)
     } finally {
       setUploadingSecondaryIdImage(false)
     }

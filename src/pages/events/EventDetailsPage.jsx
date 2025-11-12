@@ -77,8 +77,8 @@ const EventDetailsPage = () => {
       const transformedEvent = {
         ...eventData,
         created_by: eventData.creator || { name: 'Unknown', email: '' },
-        current_participants: eventData.participants?.[0]?.count || 0,
-        donation_items: eventData.event_items || [],
+        current_participants: Array.isArray(eventData.participants) ? eventData.participants.length : 0,
+        donation_items: eventData.items || [],
         // Parse JSON fields if they exist
         requirements: eventData.requirements || [],
         what_to_bring: eventData.what_to_bring || [],
@@ -92,23 +92,10 @@ const EventDetailsPage = () => {
       
       setEvent(transformedEvent)
       
-      // Check if user is already a participant
-      if (user && supabase) {
-        try {
-          const { data: participation, error: participationError } = await supabase
-            .from('event_participants')
-            .select('id')
-            .eq('event_id', eventId)
-            .eq('user_id', user.id)
-            .maybeSingle()
-          
-          if (!participationError) {
-            setIsParticipant(!!participation)
-          }
-        } catch (participationErr) {
-          console.log('Could not check participation status:', participationErr)
-          setIsParticipant(false)
-        }
+      // Check if user is already a participant via JSONB participants
+      if (user) {
+        const parts = Array.isArray(transformedEvent.participants) ? transformedEvent.participants : []
+        setIsParticipant(parts.some(p => p.user_id === user.id))
       }
     } catch (err) {
       console.error('Error fetching event:', err)

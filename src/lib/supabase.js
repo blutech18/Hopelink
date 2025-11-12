@@ -88,10 +88,7 @@ export const db = {
           languages_spoken,
           special_skills,
           support_needs,
-          donor_profile:donor_profiles!donor_profiles_user_id_fkey(*),
-          volunteer_profile:volunteer_profiles!volunteer_profiles_user_id_fkey(*),
-          recipient_profile:recipient_profiles!recipient_profiles_user_id_fkey(*),
-          id_documents:user_id_documents!user_id_documents_user_id_fkey(*)
+          profile:user_profiles!user_profiles_user_id_fkey(*)
         `)
         .eq('id', userId)
         .maybeSingle()
@@ -103,69 +100,54 @@ export const db = {
 
       if (!user) return null
 
-      // Merge profile data into user object for backward compatibility
-      const donorProfile = Array.isArray(user.donor_profile) ? user.donor_profile[0] : user.donor_profile
-      const volunteerProfile = Array.isArray(user.volunteer_profile) ? user.volunteer_profile[0] : user.volunteer_profile
-      const recipientProfile = Array.isArray(user.recipient_profile) ? user.recipient_profile[0] : user.recipient_profile
-      const idDocuments = Array.isArray(user.id_documents) ? user.id_documents[0] : user.id_documents
+      // Merge profile data from user_profiles JSONB fields
+      const userProfile = Array.isArray(user.profile) ? user.profile[0] : user.profile
 
       const profile = {
         ...user,
-        // Flatten donor profile fields
-        ...(donorProfile ? {
-          organization_name: donorProfile.organization_name,
-          website_link: donorProfile.website_link,
-          donation_types: donorProfile.donation_types
+        // Flatten donor JSONB fields
+        ...(userProfile?.donor ? {
+          organization_name: userProfile.donor.organization_name,
+          website_link: userProfile.donor.website_link,
+          donation_types: userProfile.donor.donation_types
         } : {}),
-        // Flatten volunteer profile fields
-        ...(volunteerProfile ? {
-          has_vehicle: volunteerProfile.has_vehicle,
-          vehicle_type: volunteerProfile.vehicle_type,
-          max_delivery_distance: volunteerProfile.max_delivery_distance,
-          volunteer_experience: volunteerProfile.volunteer_experience,
-          background_check_consent: volunteerProfile.background_check_consent,
-          availability_days: volunteerProfile.availability_days,
-          availability_times: volunteerProfile.availability_times,
-          delivery_preferences: volunteerProfile.delivery_preferences,
-          has_insurance: volunteerProfile.has_insurance,
-          insurance_provider: volunteerProfile.insurance_provider,
-          insurance_policy_number: volunteerProfile.insurance_policy_number
+        // Flatten volunteer JSONB fields
+        ...(userProfile?.volunteer ? {
+          has_vehicle: userProfile.volunteer.has_vehicle,
+          vehicle_type: userProfile.volunteer.vehicle_type,
+          max_delivery_distance: userProfile.volunteer.max_delivery_distance,
+          volunteer_experience: userProfile.volunteer.volunteer_experience,
+          background_check_consent: userProfile.volunteer.background_check_consent,
+          availability_days: userProfile.volunteer.availability_days,
+          availability_times: userProfile.volunteer.availability_times,
+          delivery_preferences: userProfile.volunteer.delivery_preferences,
+          has_insurance: userProfile.volunteer.has_insurance,
+          insurance_provider: userProfile.volunteer.insurance_provider,
+          insurance_policy_number: userProfile.volunteer.insurance_policy_number
         } : {}),
-        // Flatten recipient profile fields
-        ...(recipientProfile ? {
-          household_size: recipientProfile.household_size,
-          assistance_needs: recipientProfile.assistance_needs,
-          emergency_contact_name: recipientProfile.emergency_contact_name,
-          emergency_contact_phone: recipientProfile.emergency_contact_phone
+        // Flatten recipient JSONB fields
+        ...(userProfile?.recipient ? {
+          household_size: userProfile.recipient.household_size,
+          assistance_needs: userProfile.recipient.assistance_needs,
+          emergency_contact_name: userProfile.recipient.emergency_contact_name,
+          emergency_contact_phone: userProfile.recipient.emergency_contact_phone
         } : {}),
-        // Flatten ID document fields (from user_id_documents table)
-        ...(idDocuments ? {
-          primary_id_type: idDocuments.primary_id_type,
-          primary_id_number: idDocuments.primary_id_number,
-          primary_id_image_url: idDocuments.primary_id_image_url,
-          secondary_id_type: idDocuments.secondary_id_type,
-          secondary_id_number: idDocuments.secondary_id_number,
-          secondary_id_image_url: idDocuments.secondary_id_image_url
-        } : {}),
-        // Flatten ID verification fields (from users.id_verification JSONB)
-        ...(user.id_verification ? {
-          primary_id_expiry: user.id_verification.primary_id_expiry,
-          secondary_id_expiry: user.id_verification.secondary_id_expiry,
-          // Override with id_verification data if available (more authoritative)
-          ...(user.id_verification.primary_id_type && { primary_id_type: user.id_verification.primary_id_type }),
-          ...(user.id_verification.primary_id_number && { primary_id_number: user.id_verification.primary_id_number }),
-          ...(user.id_verification.primary_id_image_url && { primary_id_image_url: user.id_verification.primary_id_image_url }),
-          ...(user.id_verification.secondary_id_type && { secondary_id_type: user.id_verification.secondary_id_type }),
-          ...(user.id_verification.secondary_id_number && { secondary_id_number: user.id_verification.secondary_id_number }),
-          ...(user.id_verification.secondary_id_image_url && { secondary_id_image_url: user.id_verification.secondary_id_image_url })
+        // Flatten ID document JSONB fields
+        ...(userProfile?.id_documents ? {
+          primary_id_type: userProfile.id_documents.primary_id_type,
+          primary_id_number: userProfile.id_documents.primary_id_number,
+          primary_id_expiry: userProfile.id_documents.primary_id_expiry,
+          primary_id_image_url: userProfile.id_documents.primary_id_image_url,
+          secondary_id_type: userProfile.id_documents.secondary_id_type,
+          secondary_id_number: userProfile.id_documents.secondary_id_number,
+          secondary_id_expiry: userProfile.id_documents.secondary_id_expiry,
+          secondary_id_image_url: userProfile.id_documents.secondary_id_image_url,
+          verification_status: userProfile.id_documents.verification_status
         } : {})
       }
 
-      // Remove nested objects
-      delete profile.donor_profile
-      delete profile.volunteer_profile
-      delete profile.recipient_profile
-      delete profile.id_documents
+      // Remove nested object
+      delete profile.profile
       
       return profile
     } catch (error) {
@@ -276,25 +258,21 @@ export const db = {
     
     if (userError) throw userError
 
-    // Create role-specific profile based on user role
+    // Create user_profiles with JSONB fields
     const role = userData.role || user.role
     
+    const userProfileData = {}
+    
+    // Build donor JSONB
     if (role === 'donor' && (organization_name || website_link || donation_types)) {
-      const { error: donorError } = await supabase
-        .from('donor_profiles')
-        .insert({
-          user_id: userId,
+      userProfileData.donor = {
           organization_name,
           website_link,
           donation_types
-        })
-      
-      if (donorError) {
-        console.error('Error creating donor profile:', donorError)
-        // Don't throw - user was created successfully
       }
     }
 
+    // Build volunteer JSONB
     if (role === 'volunteer' && (
       has_vehicle !== undefined ||
       vehicle_type ||
@@ -308,10 +286,7 @@ export const db = {
       insurance_provider ||
       insurance_policy_number
     )) {
-      const { error: volunteerError } = await supabase
-        .from('volunteer_profiles')
-        .insert({
-          user_id: userId,
+      userProfileData.volunteer = {
           has_vehicle: has_vehicle || false,
           vehicle_type,
           max_delivery_distance,
@@ -323,43 +298,28 @@ export const db = {
           has_insurance: has_insurance || false,
           insurance_provider,
           insurance_policy_number
-        })
-      
-      if (volunteerError) {
-        console.error('Error creating volunteer profile:', volunteerError)
-        // Don't throw - user was created successfully
       }
     }
 
+    // Build recipient JSONB
     if (role === 'recipient' && (
       household_size !== undefined ||
       assistance_needs ||
       emergency_contact_name ||
       emergency_contact_phone
     )) {
-      const { error: recipientError } = await supabase
-        .from('recipient_profiles')
-        .insert({
-          user_id: userId,
+      userProfileData.recipient = {
           household_size,
           assistance_needs,
           emergency_contact_name,
           emergency_contact_phone
-        })
-      
-      if (recipientError) {
-        console.error('Error creating recipient profile:', recipientError)
-        // Don't throw - user was created successfully
       }
     }
 
-    // Create ID documents if provided
+    // Build ID documents JSONB
     if (primary_id_type || primary_id_number || primary_id_image_url ||
         secondary_id_type || secondary_id_number || secondary_id_image_url) {
-      const { error: idDocError } = await supabase
-        .from('user_id_documents')
-        .insert({
-          user_id: userId,
+      userProfileData.id_documents = {
           primary_id_type,
           primary_id_number,
           primary_id_image_url,
@@ -367,10 +327,20 @@ export const db = {
           secondary_id_number,
           secondary_id_image_url,
           verification_status: 'pending'
+      }
+    }
+    
+    // Insert user_profiles if there's any profile data
+    if (Object.keys(userProfileData).length > 0) {
+      const { error: profileError } = await supabase
+        .from('user_profiles')
+        .insert({
+          user_id: userId,
+          ...userProfileData
         })
       
-      if (idDocError) {
-        console.error('Error creating ID documents:', idDocError)
+      if (profileError) {
+        console.error('Error creating user profile:', profileError)
         // Don't throw - user was created successfully
       }
     }
@@ -472,52 +442,30 @@ export const db = {
 
     const role = userData?.role
 
-    // Update donor profile
+    // Get existing profile to merge JSONB fields
+    const { data: existingProfile } = await supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    // Build updates for each JSONB field
+    const profileUpdates = {}
+    
+    // Build donor JSONB updates
     const donorUpdates = {}
     if (organization_name !== undefined) donorUpdates.organization_name = organization_name
     if (website_link !== undefined) donorUpdates.website_link = website_link
     if (donation_types !== undefined) donorUpdates.donation_types = donation_types
 
     if (role === 'donor' && Object.keys(donorUpdates).length > 0) {
-      // Check if donor profile exists
-      const { data: existingDonor } = await supabase
-        .from('donor_profiles')
-        .select('user_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (existingDonor) {
-        // Update existing profile
-        const { error: donorError } = await supabase
-          .from('donor_profiles')
-          .update({
-            ...donorUpdates,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId)
-        
-        if (donorError) {
-          console.error('Error updating donor profile:', donorError)
-          // Continue - don't throw
-        }
-      } else {
-        // Insert new profile
-        const { error: donorError } = await supabase
-          .from('donor_profiles')
-          .insert({
-            user_id: userId,
-            ...donorUpdates,
-            updated_at: new Date().toISOString()
-          })
-        
-        if (donorError) {
-          console.error('Error creating donor profile:', donorError)
-          // Continue - don't throw
-        }
+      profileUpdates.donor = {
+        ...(existingProfile?.donor || {}),
+        ...donorUpdates
       }
     }
 
-    // Update volunteer profile
+    // Build volunteer JSONB updates
     const volunteerUpdates = {}
     if (has_vehicle !== undefined) volunteerUpdates.has_vehicle = has_vehicle
     if (vehicle_type !== undefined) volunteerUpdates.vehicle_type = vehicle_type
@@ -532,45 +480,13 @@ export const db = {
     if (insurance_policy_number !== undefined) volunteerUpdates.insurance_policy_number = insurance_policy_number
 
     if (role === 'volunteer' && Object.keys(volunteerUpdates).length > 0) {
-      // Check if volunteer profile exists
-      const { data: existingVolunteer } = await supabase
-        .from('volunteer_profiles')
-        .select('user_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (existingVolunteer) {
-        // Update existing profile
-        const { error: volunteerError } = await supabase
-          .from('volunteer_profiles')
-          .update({
-            ...volunteerUpdates,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId)
-        
-        if (volunteerError) {
-          console.error('Error updating volunteer profile:', volunteerError)
-          // Continue - don't throw
-        }
-      } else {
-        // Insert new profile
-        const { error: volunteerError } = await supabase
-          .from('volunteer_profiles')
-          .insert({
-            user_id: userId,
-            ...volunteerUpdates,
-            updated_at: new Date().toISOString()
-          })
-        
-        if (volunteerError) {
-          console.error('Error creating volunteer profile:', volunteerError)
-          // Continue - don't throw
-        }
+      profileUpdates.volunteer = {
+        ...(existingProfile?.volunteer || {}),
+        ...volunteerUpdates
       }
     }
 
-    // Update recipient profile
+    // Build recipient JSONB updates
     const recipientUpdates = {}
     if (household_size !== undefined) recipientUpdates.household_size = household_size
     if (assistance_needs !== undefined) recipientUpdates.assistance_needs = assistance_needs
@@ -578,128 +494,28 @@ export const db = {
     if (emergency_contact_phone !== undefined) recipientUpdates.emergency_contact_phone = emergency_contact_phone
 
     if (role === 'recipient' && Object.keys(recipientUpdates).length > 0) {
-      // Check if recipient profile exists
-      const { data: existingRecipient } = await supabase
-        .from('recipient_profiles')
-        .select('user_id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (existingRecipient) {
-        // Update existing profile
-        const { error: recipientError } = await supabase
-          .from('recipient_profiles')
-          .update({
-            ...recipientUpdates,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId)
-        
-        if (recipientError) {
-          console.error('Error updating recipient profile:', recipientError)
-          // Continue - don't throw
-        }
-      } else {
-        // Insert new profile
-        const { error: recipientError } = await supabase
-          .from('recipient_profiles')
-          .insert({
-            user_id: userId,
-            ...recipientUpdates,
-            updated_at: new Date().toISOString()
-          })
-        
-        if (recipientError) {
-          console.error('Error creating recipient profile:', recipientError)
-          // Continue - don't throw
-        }
+      profileUpdates.recipient = {
+        ...(existingProfile?.recipient || {}),
+        ...recipientUpdates
       }
     }
 
-    // Update ID documents (excluding expiry dates which go to id_verification JSONB)
+    // Build ID documents JSONB updates
     const idDocUpdates = {}
     if (primary_id_type !== undefined) idDocUpdates.primary_id_type = primary_id_type
     if (primary_id_number !== undefined) idDocUpdates.primary_id_number = primary_id_number
+    if (primary_id_expiry !== undefined) idDocUpdates.primary_id_expiry = primary_id_expiry
     if (primary_id_image_url !== undefined) idDocUpdates.primary_id_image_url = primary_id_image_url
     if (secondary_id_type !== undefined) idDocUpdates.secondary_id_type = secondary_id_type
     if (secondary_id_number !== undefined) idDocUpdates.secondary_id_number = secondary_id_number
+    if (secondary_id_expiry !== undefined) idDocUpdates.secondary_id_expiry = secondary_id_expiry
     if (secondary_id_image_url !== undefined) idDocUpdates.secondary_id_image_url = secondary_id_image_url
-    
-    // Handle ID expiry dates - store in users.id_verification JSONB column
-    if (primary_id_expiry !== undefined || secondary_id_expiry !== undefined) {
-      // Get current id_verification data
-      const { data: currentUser } = await supabase
-        .from('users')
-        .select('id_verification')
-        .eq('id', userId)
-        .single()
-      
-      const currentIdVerification = currentUser?.id_verification || {}
-      const updatedIdVerification = { ...currentIdVerification }
-      
-      if (primary_id_expiry !== undefined) {
-        updatedIdVerification.primary_id_expiry = primary_id_expiry
-      }
-      if (secondary_id_expiry !== undefined) {
-        updatedIdVerification.secondary_id_expiry = secondary_id_expiry
-      }
-      
-      // Also include other ID fields in id_verification for consistency
-      if (primary_id_type !== undefined) updatedIdVerification.primary_id_type = primary_id_type
-      if (primary_id_number !== undefined) updatedIdVerification.primary_id_number = primary_id_number
-      if (primary_id_image_url !== undefined) updatedIdVerification.primary_id_image_url = primary_id_image_url
-      if (secondary_id_type !== undefined) updatedIdVerification.secondary_id_type = secondary_id_type
-      if (secondary_id_number !== undefined) updatedIdVerification.secondary_id_number = secondary_id_number
-      if (secondary_id_image_url !== undefined) updatedIdVerification.secondary_id_image_url = secondary_id_image_url
-      
-      // Update users table with id_verification JSONB
-      const { error: idVerifError } = await supabase
-        .from('users')
-        .update({ 
-          id_verification: updatedIdVerification,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', userId)
-      
-      if (idVerifError) {
-        console.error('Error updating id_verification:', idVerifError)
-      }
-    }
 
     if (Object.keys(idDocUpdates).length > 0) {
-      // Check if ID document record exists
-      const { data: existingIdDoc } = await supabase
-        .from('user_id_documents')
-        .select('id')
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (existingIdDoc) {
-        // Update existing record
-        const { error: idDocError } = await supabase
-          .from('user_id_documents')
-          .update({
+      profileUpdates.id_documents = {
+        ...(existingProfile?.id_documents || {}),
             ...idDocUpdates,
-            updated_at: new Date().toISOString()
-          })
-          .eq('user_id', userId)
-        
-        if (idDocError) {
-          console.error('Error updating ID documents:', idDocError)
-        }
-      } else {
-        // Create new record
-        const { error: idDocError } = await supabase
-          .from('user_id_documents')
-          .insert({
-            user_id: userId,
-            ...idDocUpdates,
-            verification_status: 'pending'
-          })
-        
-        if (idDocError) {
-          console.error('Error creating ID documents:', idDocError)
-        }
+        verification_status: existingProfile?.id_documents?.verification_status || 'pending'
       }
 
       // Notify admins when user uploads ID documents
@@ -726,6 +542,35 @@ export const db = {
         } catch (notifError) {
           console.error('Error notifying admins about ID upload:', notifError)
           // Don't throw - profile was updated successfully
+        }
+      }
+    }
+
+    // Update or insert user_profiles
+    if (Object.keys(profileUpdates).length > 0) {
+      profileUpdates.updated_at = new Date().toISOString()
+      
+      if (existingProfile) {
+        // Update existing profile
+        const { error: profileError } = await supabase
+          .from('user_profiles')
+          .update(profileUpdates)
+          .eq('user_id', userId)
+        
+        if (profileError) {
+          console.error('Error updating user profile:', profileError)
+        }
+      } else {
+        // Insert new profile
+        const { error: profileError } = await supabase
+          .from('user_profiles')
+          .insert({
+            user_id: userId,
+            ...profileUpdates
+          })
+        
+        if (profileError) {
+          console.error('Error creating user profile:', profileError)
         }
       }
     }
@@ -761,11 +606,7 @@ export const db = {
           profile_image_url,
           latitude,
           longitude,
-          donor_profile:donor_profiles(
-            organization_name,
-            website_link,
-            donation_types
-          )
+          profile:user_profiles(donor)
         )
       `)
       .order('created_at', { ascending: false })
@@ -1001,12 +842,7 @@ export const db = {
           latitude,
           longitude,
           created_at,
-          recipient_profile:recipient_profiles(
-            household_size,
-            assistance_needs,
-            emergency_contact_name,
-            emergency_contact_phone
-          )
+          profile:user_profiles(recipient)
         )
       `)
       .order('created_at', { ascending: false })
@@ -1052,12 +888,7 @@ export const db = {
           address_barangay,
           bio,
           created_at,
-          recipient_profile:recipient_profiles(
-            household_size,
-            assistance_needs,
-            emergency_contact_name,
-            emergency_contact_phone
-          )
+          profile:user_profiles(recipient)
         )
       `)
       .single()
@@ -1795,7 +1626,7 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
     const { data, error } = await supabase
-      .from('settings')
+      .from('system_settings')
       .upsert({ id: 1, auto_assign_enabled: !!enabled, updated_at: new Date().toISOString() }, { onConflict: 'id' })
       .select('*')
       .single()
@@ -1954,8 +1785,8 @@ export const db = {
         updated_at,
         created_by,
         creator:users!events_created_by_fkey(name, email),
-        event_items(id, name, category, quantity, collected_quantity),
-        participants:event_participants(count)
+        items,
+        participants
       `)
       .order('created_at', { ascending: false })
       .limit(limit)
@@ -1979,8 +1810,8 @@ export const db = {
       .select(`
         *,
         creator:users!events_created_by_fkey(name, email, phone_number),
-        event_items(*),
-        participants:event_participants(count)
+        items,
+        participants
       `)
       .eq('id', eventId)
       .single()
@@ -1999,11 +1830,12 @@ export const db = {
       throw new Error('User not authenticated')
     }
 
-    // Create the event first
+    // Create the event first (store donation items in JSONB 'items')
     const { data: event, error: eventError } = await supabase
       .from('events')
       .insert({
         ...eventData,
+        items: donationItems && donationItems.length ? donationItems : null,
         created_by: user.id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
@@ -2013,33 +1845,14 @@ export const db = {
 
     if (eventError) throw eventError
 
-    // Create event items if provided
-    if (donationItems && donationItems.length > 0) {
-      const eventItemsToInsert = donationItems.map(item => ({
-        event_id: event.id,
-        name: item.name,
-        category: item.category,
-        quantity: item.quantity,
-        description: item.description || null,
-        collected_quantity: item.collected_quantity || 0,
-        created_at: new Date().toISOString()
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('event_items')
-        .insert(eventItemsToInsert)
-
-      if (itemsError) throw itemsError
-    }
-
     // Return event with items
     const { data: fullEvent, error: fetchError } = await supabase
       .from('events')
       .select(`
         *,
         creator:users!events_created_by_fkey(name, email),
-        event_items(*),
-        participants:event_participants(count)
+        items,
+        participants
       `)
       .eq('id', event.id)
       .single()
@@ -2081,11 +1894,12 @@ export const db = {
       throw new Error('User not authenticated')
     }
 
-    // Update the event
+    // Update the event (store donation items in JSONB 'items')
     const { data: event, error: eventError } = await supabase
       .from('events')
       .update({
         ...eventData,
+        items: donationItems && donationItems.length ? donationItems : null,
         updated_at: new Date().toISOString()
       })
       .eq('id', eventId)
@@ -2094,51 +1908,14 @@ export const db = {
 
     if (eventError) throw eventError
 
-    // Get previous event items before deletion to compare for donation notifications
-    let previousItems = []
-    if (donationItems && donationItems.length > 0) {
-      const { data: prevItems } = await supabase
-        .from('event_items')
-        .select('id, name, collected_quantity')
-        .eq('event_id', eventId)
-      previousItems = prevItems || []
-    }
-
-    // Delete existing event items
-    const { error: deleteError } = await supabase
-      .from('event_items')
-      .delete()
-      .eq('event_id', eventId)
-
-    if (deleteError) throw deleteError
-
-    // Create new event items if provided
-    if (donationItems && donationItems.length > 0) {
-      const eventItemsToInsert = donationItems.map(item => ({
-        event_id: eventId,
-        name: item.name,
-        category: item.category,
-        quantity: item.quantity,
-        description: item.description || null,
-        collected_quantity: item.collected_quantity || 0,
-        created_at: new Date().toISOString()
-      }))
-
-      const { error: itemsError } = await supabase
-        .from('event_items')
-        .insert(eventItemsToInsert)
-
-      if (itemsError) throw itemsError
-    }
-
     // Return updated event with items
     const { data: fullEvent, error: fetchError } = await supabase
       .from('events')
       .select(`
         *,
         creator:users!events_created_by_fkey(name, email),
-        event_items(*),
-        participants:event_participants(count)
+        items,
+        participants
       `)
       .eq('id', eventId)
       .single()
@@ -2168,48 +1945,7 @@ export const db = {
       }, user.id)
     }
 
-    // Check if donation items were updated with increased collected_quantity
-    if (donationItems && donationItems.length > 0 && previousItems.length > 0) {
-      // Check for increased collected_quantity
-      const itemsWithIncreasedQuantity = donationItems.filter(newItem => {
-        const previousItem = previousItems.find(prev => prev.name === newItem.name)
-        if (!previousItem) return false
-        return (newItem.collected_quantity || 0) > (previousItem.collected_quantity || 0)
-      })
-
-      if (itemsWithIncreasedQuantity.length > 0) {
-        // Get user details
-        const { data: updaterData } = await supabase
-          .from('users')
-          .select('name, role')
-          .eq('id', user.id)
-          .single()
-
-        // Only notify if updater is not an admin (to avoid self-notification)
-        if (updaterData?.role !== 'admin') {
-          const totalIncrease = itemsWithIncreasedQuantity.reduce((sum, item) => {
-            const prevItem = previousItems.find(p => p.name === item.name)
-            return sum + ((item.collected_quantity || 0) - (prevItem?.collected_quantity || 0))
-          }, 0)
-
-          await this.notifyAllAdmins({
-            type: 'event_donation_received',
-            title: 'Event Donation Received',
-            message: `${updaterData?.name || 'A donor'} has donated ${totalIncrease} item(s) to "${event.name}"`,
-            data: {
-              event_id: eventId,
-              event_name: event.name,
-              donor_id: user.id,
-              donor_name: updaterData?.name || 'Unknown',
-              items_updated: itemsWithIncreasedQuantity.map(item => ({
-                name: item.name,
-                quantity: item.collected_quantity
-              }))
-            }
-          })
-        }
-      }
-    }
+    // Skipping previous per-item donation notifications logic since items are now JSONB
 
     return fullEvent
   },
@@ -2224,23 +1960,7 @@ export const db = {
       throw new Error('User not authenticated')
     }
 
-    // Delete event items first (foreign key constraint)
-    const { error: itemsError } = await supabase
-      .from('event_items')
-      .delete()
-      .eq('event_id', eventId)
-
-    if (itemsError) throw itemsError
-
-    // Delete event participants
-    const { error: participantsError } = await supabase
-      .from('event_participants')
-      .delete()
-      .eq('event_id', eventId)
-
-    if (participantsError) throw participantsError
-
-    // Delete the event
+    // Delete the event (participants/items are stored as JSONB within the event, so they'll be deleted automatically)
     const { error: eventError } = await supabase
       .from('events')
       .delete()
@@ -2270,22 +1990,10 @@ export const db = {
         throw new Error('You are banned from joining events due to excessive absences. Please contact an administrator if you believe this is an error.')
       }
 
-      // Check if user is already a participant
-      const { data: existing } = await supabase
-        .from('event_participants')
-        .select('id')
-        .eq('event_id', eventId)
-        .eq('user_id', userId)
-        .maybeSingle()
-
-      if (existing) {
-        throw new Error('You are already registered for this event')
-      }
-
-      // Get the event details to check for schedule conflicts
-      const { data: newEvent, error: eventError } = await supabase
+      // Get the event details
+      const { data: newEvent, error: eventError} = await supabase
         .from('events')
-        .select('id, name, start_date, end_date, max_participants, status')
+        .select('id, name, start_date, end_date, max_participants, status, participants')
         .eq('id', eventId)
         .single()
 
@@ -2294,47 +2002,45 @@ export const db = {
         throw new Error('Event not found')
       }
 
+      // Check if user is already a participant
+      const participants = Array.isArray(newEvent.participants) ? newEvent.participants : []
+      const existing = participants.find(p => p.user_id === userId)
+
+      if (existing) {
+        throw new Error('You are already registered for this event')
+      }
+
       // Check if event is cancelled
       if (newEvent.status === 'cancelled') {
         throw new Error('Cannot join a cancelled event')
       }
 
       // Check if event is full
-      const { data: participantCount } = await supabase
-        .from('event_participants')
-        .select('id', { count: 'exact', head: true })
-        .eq('event_id', eventId)
-
-      const currentCount = participantCount || 0
+      const currentCount = participants.length
       if (newEvent.max_participants && currentCount >= newEvent.max_participants) {
         throw new Error('Event is full')
       }
 
       // Check for schedule conflicts with other events user is registered for
-      const { data: userParticipations, error: participationError } = await supabase
-        .from('event_participants')
-        .select(`
-          event_id,
-          event:events!inner(
-            id,
-            name,
-            start_date,
-            end_date,
-            status
-          )
-        `)
-        .eq('user_id', userId)
-        .neq('event_id', eventId)
+      const { data: allEvents, error: allEventsError } = await supabase
+        .from('events')
+        .select('id, name, start_date, end_date, status, participants')
+        .neq('id', eventId)
 
-      if (participationError) throw participationError
+      if (allEventsError) throw allEventsError
+
+      // Filter to events where user is a participant
+      const userParticipations = (allEvents || []).filter(event => {
+        const parts = Array.isArray(event.participants) ? event.participants : []
+        return parts.some(p => p.user_id === userId)
+      })
 
       // Check for overlapping events
       if (userParticipations && userParticipations.length > 0) {
         const newEventStart = new Date(newEvent.start_date)
         const newEventEnd = new Date(newEvent.end_date)
 
-        for (const participation of userParticipations) {
-          const existingEvent = participation.event
+        for (const existingEvent of userParticipations) {
           
           // Skip cancelled or completed events
           if (existingEvent.status === 'cancelled' || existingEvent.status === 'completed') {
@@ -2372,16 +2078,24 @@ export const db = {
         }
       }
 
-      // Join the event
-      const { data, error } = await supabase
-        .from('event_participants')
-        .insert({
-          event_id: eventId,
+      // Join the event by adding to participants JSONB array
+      const newParticipant = {
+        id: crypto.randomUUID(),
           user_id: userId,
-          attendance_status: 'pending', // pending, present, absent
-          joined_at: new Date().toISOString()
-        })
-        .select()
+        role: 'participant',
+        registration_date: new Date().toISOString(),
+        attendance_status: 'pending',
+        attended: false,
+        created_at: new Date().toISOString()
+      }
+
+      const updatedParticipants = [...participants, newParticipant]
+
+      const { data, error } = await supabase
+        .from('events')
+        .update({ participants: updatedParticipants })
+        .eq('id', eventId)
+        .select('participants')
         .single()
 
       if (error) throw error
@@ -2614,29 +2328,42 @@ export const db = {
         }
       }
 
-      const { data, error } = await supabase
-        .from('event_participants')
-        .select(`
-          id,
-          user_id,
-          event_id,
-          attendance_status,
-          joined_at,
-          user:users!event_participants_user_id_fkey(
-            id,
-            name,
-            email,
-            phone_number,
-            role,
-            event_absence_count,
-            event_banned
-          )
-        `)
-        .eq('event_id', eventId)
-        .order('joined_at', { ascending: true })
+      // Fetch event with participants JSONB
+      const { data: event, error } = await supabase
+        .from('events')
+        .select('id, participants')
+        .eq('id', eventId)
+        .single()
 
       if (error) throw error
-      return data || []
+      if (!event || !event.participants) return []
+
+      // Extract participants from JSONB and fetch user data
+      const participants = Array.isArray(event.participants) ? event.participants : []
+      
+      // Fetch user data for all participants
+      const userIds = participants.map(p => p.user_id).filter(Boolean)
+      if (userIds.length === 0) return []
+
+      const { data: users, error: userError } = await supabase
+        .from('users')
+        .select('id, name, email, phone_number, role, event_absence_count, event_banned')
+        .in('id', userIds)
+
+      if (userError) throw userError
+
+      // Map users to participants
+      const usersMap = {}
+      users?.forEach(u => { usersMap[u.id] = u })
+
+      return participants.map(p => ({
+        id: p.id,
+        user_id: p.user_id,
+        event_id: eventId,
+        attendance_status: p.attendance_status || 'pending',
+        joined_at: p.registration_date || p.created_at,
+        user: usersMap[p.user_id] || null
+      })).filter(p => p.user)
     } catch (error) {
       console.error('Error getting event participants:', error)
       throw error
@@ -2649,18 +2376,38 @@ export const db = {
     }
 
     try {
+      // Fetch current event with participants
+      const { data: event, error: fetchError } = await supabase
+        .from('events')
+        .select('participants')
+        .eq('id', eventId)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      const participants = Array.isArray(event.participants) ? event.participants : []
+      
+      // Find and update the specific participant
+      const updatedParticipants = participants.map(p => {
+        if (p.user_id === userId) {
+          return { ...p, attendance_status: attendanceStatus }
+        }
+        return p
+      })
+
+      // Update the events table with modified participants
       const { data, error } = await supabase
-        .from('event_participants')
-        .update({
-          attendance_status: attendanceStatus // 'pending', 'present', 'absent'
-        })
-        .eq('event_id', eventId)
-        .eq('user_id', userId)
-        .select()
+        .from('events')
+        .update({ participants: updatedParticipants })
+        .eq('id', eventId)
+        .select('participants')
         .single()
 
       if (error) throw error
-      return data
+      
+      // Return the updated participant
+      const updatedParticipant = updatedParticipants.find(p => p.user_id === userId)
+      return updatedParticipant
     } catch (error) {
       console.error('Error updating attendance:', error)
       throw error
@@ -2673,13 +2420,10 @@ export const db = {
     }
 
     try {
+      // Fetch all events with participants
       const { data, error } = await supabase
-        .from('event_participants')
+        .from('events')
         .select(`
-          id,
-          attendance_status,
-          joined_at,
-          event:events!inner(
             id,
             name,
             description,
@@ -2688,21 +2432,24 @@ export const db = {
             end_date,
             status,
             target_goal,
-            image_url
-          )
+          image_url,
+          participants
         `)
-        .eq('user_id', userId)
-        .eq('attendance_status', 'present')
-        .order('joined_at', { ascending: false })
+        .order('start_date', { ascending: false })
 
       if (error) throw error
 
-      // Filter to only include completed events (end_date in the past AND status is not cancelled)
-      // Only count events that have finished AND admin has marked attendance as "present"
+      // Filter events where user participated with 'present' status
       const now = new Date()
-      const completedEvents = (data || []).filter(participation => {
-        const event = participation.event
-        if (!event) return false
+      const completedEvents = (data || []).filter(event => {
+        if (!event.participants) return false
+        
+        const participants = Array.isArray(event.participants) ? event.participants : []
+        const userParticipation = participants.find(p => p.user_id === userId)
+        
+        if (!userParticipation || userParticipation.attendance_status !== 'present') {
+          return false
+        }
         
         // Event must be finished (end_date in the past)
         const endDate = new Date(event.end_date)
@@ -2711,10 +2458,23 @@ export const db = {
         // Event must not be cancelled
         const isNotCancelled = event.status !== 'cancelled'
         
-        // Only return events that are finished and not cancelled
-        // Attendance status is already filtered to 'present' in the query
         return isFinished && isNotCancelled
-      })
+      }).map(event => ({
+        id: event.id,
+        attendance_status: 'present',
+        joined_at: event.participants.find(p => p.user_id === userId)?.registration_date,
+        event: {
+          id: event.id,
+          name: event.name,
+          description: event.description,
+          location: event.location,
+          start_date: event.start_date,
+          end_date: event.end_date,
+          status: event.status,
+          target_goal: event.target_goal,
+          image_url: event.image_url
+        }
+      }))
 
       return completedEvents
     } catch (error) {
@@ -2905,52 +2665,7 @@ export const db = {
 
     let query = supabase
       .from('deliveries')
-      .select(`
-        *,
-        volunteer:users!deliveries_volunteer_id_fkey(id, name, email, phone_number),
-        claim:donation_claims(
-          *,
-          donation:donations(
-            title, 
-            description, 
-            category, 
-            images, 
-            is_urgent, 
-            donation_destination,
-            pickup_location
-          ),
-          donor:users!donation_claims_donor_id_fkey(
-            id, 
-            name, 
-            email,
-            phone_number,
-            city,
-            province,
-            address,
-            address_street,
-            address_house,
-            address_subdivision,
-            address_barangay,
-            address_landmark,
-            zip_code
-          ),
-          recipient:users!donation_claims_recipient_id_fkey(
-            id, 
-            name, 
-            email,
-            phone_number,
-            city,
-            province,
-            address,
-            address_street,
-            address_house,
-            address_subdivision,
-            address_barangay,
-            address_landmark,
-            zip_code
-          )
-        )
-      `)
+      .select(`*`)
       .order('created_at', { ascending: false })
       .limit(limit)
 
@@ -2967,9 +2682,74 @@ export const db = {
       }
     }
 
-    const { data, error } = await query
+    const { data: deliveries, error } = await query
     if (error) throw error
-    return data
+
+    if (!deliveries || deliveries.length === 0) return []
+
+    // Collect related ids
+    const volunteerIds = Array.from(
+      new Set(
+        deliveries
+          .map(d => d.volunteer_id)
+          .filter(Boolean)
+      )
+    )
+    const claimIds = Array.from(
+      new Set(
+        deliveries
+          .map(d => d.claim_id)
+          .filter(Boolean)
+          .map(String)
+      )
+    )
+
+    // Fetch volunteers (minimal fields)
+    let volunteersMap = {}
+    if (volunteerIds.length > 0) {
+      const { data: volunteers } = await supabase
+        .from('users')
+        .select('id, name, email')
+        .in('id', volunteerIds)
+      volunteersMap = {}
+      ;(volunteers || []).forEach(v => {
+        volunteersMap[v.id] = v
+      })
+    }
+
+    // Fetch donations with claims to resolve donation titles by claim_id
+    let claimIdToDonation = {}
+    if (claimIds.length > 0) {
+      // Fetch donations where claims is not null (reasonable upper bound)
+      const { data: donationsWithClaims } = await supabase
+        .from('donations')
+        .select('id, title, claims')
+        .not('claims', 'is', null)
+        .limit(1000)
+
+      claimIdToDonation = {}
+      ;(donationsWithClaims || []).forEach(d => {
+        const claims = Array.isArray(d.claims) ? d.claims : []
+        claims.forEach(c => {
+          if (c && c.id) {
+            claimIdToDonation[String(c.id)] = { donation_id: d.id, title: d.title }
+          }
+        })
+      })
+    }
+
+    // Enrich deliveries
+    const enriched = deliveries.map(d => {
+      const donationRef = d.claim_id ? claimIdToDonation[String(d.claim_id)] : null
+      return {
+        ...d,
+        volunteer: d.volunteer_id ? volunteersMap[d.volunteer_id] || null : null,
+        donation_id: donationRef?.donation_id || d.donation_id || null,
+        donation_title: donationRef?.title || d.donation_title || null,
+      }
+    })
+
+    return enriched
   },
 
   async createDelivery(deliveryData) {
@@ -3722,20 +3502,31 @@ export const db = {
     }
 
     try {
-      // First get all reports
-      let query = supabase
-        .from('user_reports')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (status !== 'all') {
-        query = query.eq('status', status)
-      }
-
-      const { data: reports, error } = await query
+      // Reports are stored in user_profiles.reports (JSONB array)
+      const { data: profiles, error } = await supabase
+        .from('user_profiles')
+        .select('user_id, reports')
 
       if (error) throw error
-      if (!reports || reports.length === 0) return []
+      if (!profiles || profiles.length === 0) return []
+
+      // Flatten and attach holder user_id
+      let reports = []
+      profiles.forEach(p => {
+        const arr = Array.isArray(p.reports) ? p.reports : []
+        arr.forEach(r => {
+          reports.push({ ...r, holder_user_id: p.user_id })
+        })
+      })
+
+      // Filter by status if needed
+      if (status !== 'all') {
+        reports = reports.filter(r => r?.status === status)
+      }
+
+      // Sort by created_at desc
+      reports.sort((a, b) => new Date(b?.created_at || 0) - new Date(a?.created_at || 0))
+      if (reports.length === 0) return []
 
       // Fetch user details for all reports
       const userIds = new Set()
@@ -3745,10 +3536,16 @@ export const db = {
         if (report.reviewed_by) userIds.add(report.reviewed_by)
       })
 
+      // Prepare valid UUID list only (avoid 'undefined' causing 22P02)
+      const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+      const userIdList = Array.from(userIds).filter(
+        id => typeof id === 'string' && uuidRegex.test(id)
+      )
+
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select('id, name, email, role, is_verified, is_active, created_at')
-        .in('id', Array.from(userIds))
+        .in('id', userIdList.length ? userIdList : ['00000000-0000-0000-0000-000000000000'])
 
       if (usersError) throw usersError
 
@@ -3777,18 +3574,19 @@ export const db = {
     }
 
     try {
-      let query = supabase
-        .from('user_reports')
-        .select('*', { count: 'exact', head: true })
-
-      if (status !== 'all') {
-        query = query.eq('status', status)
-      }
-
-      const { count, error } = await query
+      // Reports are now stored in user_profiles.reports (JSONB array)
+      // Fetch minimal data and count in app
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('reports')
 
       if (error) throw error
-      return count || 0
+      const allReports = (data || [])
+        .flatMap(p => Array.isArray(p.reports) ? p.reports : [])
+      if (status === 'all') {
+        return allReports.length
+      }
+      return allReports.filter(r => r?.status === status).length
     } catch (error) {
       console.error('Error fetching report count:', error)
       return 0
@@ -3801,16 +3599,32 @@ export const db = {
     }
 
     try {
-      const { data, error } = await supabase
-        .from('user_reports')
-        .insert({
+      // Append to user_profiles.reports JSONB of the reported user
+      // 1) Fetch existing reports
+      const { data: profile, error: fetchErr } = await supabase
+        .from('user_profiles')
+        .select('id, reports')
+        .eq('user_id', reportData.reportedUserId)
+        .single()
+
+      if (fetchErr) throw fetchErr
+
+      const newReport = {
+        id: crypto.randomUUID ? crypto.randomUUID() : undefined,
           reported_user_id: reportData.reportedUserId,
           reported_by_user_id: reportData.reportedByUserId,
           reason: reportData.reason,
           description: reportData.description,
-          status: 'pending'
-        })
-        .select()
+        status: 'pending',
+        created_at: new Date().toISOString()
+      }
+      const updatedReports = [...(Array.isArray(profile?.reports) ? profile.reports : []), newReport]
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .update({ reports: updatedReports })
+        .eq('id', profile.id)
+        .select('reports')
         .single()
 
       if (error) throw error
@@ -3850,7 +3664,7 @@ export const db = {
         // Don't throw - report was created successfully
       }
 
-      return data
+      return newReport
     } catch (error) {
       console.error('Error creating user report:', error)
       throw error
@@ -3863,26 +3677,34 @@ export const db = {
     }
 
     try {
-      const updateData = {
+      // Update specific report inside user_profiles.reports
+      // 1) Find which profile holds this report
+      const { data: profiles, error: fetchErr } = await supabase
+        .from('user_profiles')
+        .select('id, reports')
+      if (fetchErr) throw fetchErr
+      const holder = (profiles || []).find(p => (Array.isArray(p.reports) ? p.reports : []).some(r => r?.id === reportId))
+      if (!holder) throw new Error('Report not found')
+      const reports = Array.isArray(holder.reports) ? holder.reports : []
+      const updated = reports.map(r => {
+        if (r?.id === reportId) {
+          return {
+            ...r,
         status,
         reviewed_by: reviewedBy,
+            resolution_notes: resolutionNotes || r.resolution_notes,
         reviewed_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       }
-
-      if (resolutionNotes) {
-        updateData.resolution_notes = resolutionNotes
-      }
-
-      const { data, error } = await supabase
-        .from('user_reports')
-        .update(updateData)
-        .eq('id', reportId)
-        .select()
-        .single()
-
-      if (error) throw error
-      return data
+        }
+        return r
+      })
+      const { error: updErr } = await supabase
+        .from('user_profiles')
+        .update({ reports: updated })
+        .eq('id', holder.id)
+      if (updErr) throw updErr
+      return updated.find(r => r?.id === reportId)
     } catch (error) {
       console.error('Error updating report status:', error)
       throw error
@@ -3895,7 +3717,7 @@ export const db = {
     }
     const safeDays = Math.max(0, parseInt(days || 0, 10))
     const { data, error } = await supabase
-      .from('settings')
+      .from('system_settings')
       .upsert({ id: 1, expiry_retention_days: safeDays, updated_at: new Date().toISOString() }, { onConflict: 'id' })
       .select('*')
       .single()
@@ -6146,6 +5968,23 @@ export const db = {
     }
   },
 
+  async deleteDelivery(deliveryId) {
+    if (!supabase) {
+      throw new Error('Supabase not configured')
+    }
+    try {
+      const { error } = await supabase
+        .from('deliveries')
+        .delete()
+        .eq('id', deliveryId)
+      if (error) throw error
+      return true
+    } catch (error) {
+      console.error('Error deleting delivery:', error)
+      throw error
+    }
+  },
+
   // Intelligent Matching Functions
   async findMatchesForRequest(requestId, maxResults = 10) {
     if (!supabase) {
@@ -6764,24 +6603,19 @@ export const db = {
     }
 
     try {
+      // Fetch all settings from key-value table
       const { data, error } = await supabase
-        .from('settings')
-        .select('*')
-        .eq('id', 1)
-        .maybeSingle()
+        .from('system_settings')
+        .select('setting_key, setting_value')
 
-      if (error && error.code !== 'PGRST116') {
+      if (error) {
         throw error
       }
 
-      // Return default settings if none exist (only include actually implemented settings)
-      if (!data) {
-        return {
-          // System Monitoring - Actually implemented and functional
+      // Default settings
+      const defaults = {
           enableSystemLogs: true,
           logRetentionDays: 30,
-          
-          // User Management - Actually implemented and functional
           requireIdVerification: true,
           auto_assign_enabled: false,
           expiry_retention_days: 30,
@@ -6789,19 +6623,42 @@ export const db = {
           recipient_signup_enabled: true,
           volunteer_signup_enabled: true
         }
+
+      // Return defaults if no data
+      if (!data || data.length === 0) {
+        return defaults
       }
 
-      // Map database snake_case to JavaScript camelCase
-      return {
-        enableSystemLogs: data.enable_system_logs ?? data.enableSystemLogs ?? true,
-        logRetentionDays: data.log_retention_days ?? data.logRetentionDays ?? 30,
-        requireIdVerification: data.require_id_verification ?? data.requireIdVerification ?? true,
-        auto_assign_enabled: data.auto_assign_enabled ?? false,
-        expiry_retention_days: data.expiry_retention_days ?? 30,
-        donor_signup_enabled: data.donor_signup_enabled ?? true,
-        recipient_signup_enabled: data.recipient_signup_enabled ?? true,
-        volunteer_signup_enabled: data.volunteer_signup_enabled ?? true
-      }
+      // Convert key-value rows to object
+      const settings = {}
+      data.forEach(row => {
+        const key = row.setting_key
+        let value = row.setting_value
+
+        // Extract value from JSONB (it might be wrapped)
+        if (typeof value === 'object' && value !== null) {
+          // If it's a plain JSONB value, use it directly
+          value = value
+        }
+
+        // Map setting keys to camelCase property names
+        const keyMap = {
+          'enable_system_logs': 'enableSystemLogs',
+          'log_retention_days': 'logRetentionDays',
+          'require_id_verification': 'requireIdVerification',
+          'auto_assign_enabled': 'auto_assign_enabled',
+          'expiry_retention_days': 'expiry_retention_days',
+          'donor_signup_enabled': 'donor_signup_enabled',
+          'recipient_signup_enabled': 'recipient_signup_enabled',
+          'volunteer_signup_enabled': 'volunteer_signup_enabled'
+        }
+
+        const mappedKey = keyMap[key] || key
+        settings[mappedKey] = value
+      })
+
+      // Merge with defaults
+      return { ...defaults, ...settings }
     } catch (error) {
       console.error('Error fetching settings:', error)
       throw error
@@ -6842,66 +6699,43 @@ export const db = {
     }
 
     try {
-      // Map JavaScript camelCase to database snake_case
-      const dbSettings = {
-        enable_system_logs: settings.enableSystemLogs,
-        log_retention_days: settings.logRetentionDays,
-        require_id_verification: settings.requireIdVerification,
-        auto_assign_enabled: settings.auto_assign_enabled,
-        expiry_retention_days: settings.expiry_retention_days,
-        donor_signup_enabled: settings.donor_signup_enabled,
-        recipient_signup_enabled: settings.recipient_signup_enabled,
-        volunteer_signup_enabled: settings.volunteer_signup_enabled,
-        updated_at: new Date().toISOString()
+      // Map JavaScript camelCase to database setting_key names
+      const keyMap = {
+        enableSystemLogs: 'enable_system_logs',
+        logRetentionDays: 'log_retention_days',
+        requireIdVerification: 'require_id_verification',
+        auto_assign_enabled: 'auto_assign_enabled',
+        expiry_retention_days: 'expiry_retention_days',
+        donor_signup_enabled: 'donor_signup_enabled',
+        recipient_signup_enabled: 'recipient_signup_enabled',
+        volunteer_signup_enabled: 'volunteer_signup_enabled'
       }
 
-      // Remove undefined values
-      Object.keys(dbSettings).forEach(key => {
-        if (dbSettings[key] === undefined) {
-          delete dbSettings[key]
-        }
-      })
+      // Upsert each setting as a separate row
+      for (const [jsKey, value] of Object.entries(settings)) {
+        if (value === undefined) continue
 
-      // Check if settings exist
-      const { data: existing } = await supabase
-        .from('settings')
-        .select('id')
-        .eq('id', 1)
-        .maybeSingle()
-
-      let result
-      if (existing) {
-        // Update existing settings
-        result = await supabase
-          .from('settings')
-          .update(dbSettings)
-          .eq('id', 1)
-          .select()
-          .single()
-      } else {
-        // Insert new settings
-        result = await supabase
-          .from('settings')
-          .insert({
-            id: 1,
-            ...dbSettings,
-            created_at: new Date().toISOString()
+        const settingKey = keyMap[jsKey] || jsKey
+        
+        // Upsert the setting
+        const { error } = await supabase
+          .from('system_settings')
+          .upsert({
+            setting_key: settingKey,
+            setting_value: value,
+            description: `Setting for ${settingKey}`,
+            setting_type: typeof value === 'boolean' ? 'boolean' : typeof value === 'number' ? 'number' : 'string',
+            category: 'platform',
+            updated_at: new Date().toISOString()
+          }, {
+            onConflict: 'setting_key'
           })
-          .select()
-          .single()
+
+        if (error) throw error
       }
 
-      if (result.error) throw result.error
-
-      // Map back to camelCase for consistency
-      const updatedData = result.data
-      return {
-        enableSystemLogs: updatedData.enable_system_logs ?? updatedData.enableSystemLogs ?? true,
-        logRetentionDays: updatedData.log_retention_days ?? updatedData.logRetentionDays ?? 30,
-        requireIdVerification: updatedData.require_id_verification ?? updatedData.requireIdVerification ?? true,
-        auto_assign_enabled: updatedData.auto_assign_enabled ?? false,
-        expiry_retention_days: updatedData.expiry_retention_days ?? 30
-      }
+      // Return the updated settings
+      return await this.getSettings()
     } catch (error) {
       console.error('Error updating settings:', error)
       throw error
@@ -7162,16 +6996,15 @@ export const db = {
     if (!supabase) throw new Error('Supabase not configured')
     
     try {
+      // Store platform feedback in unified feedback table
       const { data, error } = await supabase
-        .from('platform_feedback')
+        .from('feedback')
         .insert({
           user_id: feedbackData.user_id,
-          user_role: feedbackData.user_role,
+          feedback_text: feedbackData.feedback,
+          feedback_type: 'platform',
           rating: feedbackData.rating,
-          feedback: feedbackData.feedback,
-          role_specific_answers: feedbackData.role_specific_answers || {},
-          feedback_type: feedbackData.feedback_type || 'platform',
-          created_at: feedbackData.created_at
+          created_at: feedbackData.created_at || new Date().toISOString()
         })
         .select()
         .single()
@@ -7209,8 +7042,9 @@ export const db = {
     
     try {
       const { data, error } = await supabase
-        .from('platform_feedback')
+        .from('feedback')
         .select('*')
+        .eq('feedback_type', 'platform')
         .order('created_at', { ascending: false })
 
       if (error) throw error
@@ -8062,7 +7896,7 @@ export const db = {
       try {
         const startTime = Date.now()
         const { error: dbError } = await supabase
-          .from('settings')
+          .from('system_settings')
           .select('id')
           .limit(1)
         
