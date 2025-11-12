@@ -26,8 +26,57 @@ export default defineConfig({
     },
   },
   build: {
-    // Let Vite handle chunking automatically - it's smarter about React dependencies
-    // This prevents "Cannot read properties of undefined" errors for React APIs
+    rollupOptions: {
+      output: {
+        manualChunks: (id) => {
+          // Don't chunk source files
+          if (!id.includes('node_modules')) {
+            return null
+          }
+
+          // React core and ALL React-dependent libraries - MUST stay together
+          // This prevents "Cannot read properties of undefined" errors for React APIs
+          if (
+            id.includes('node_modules/react') ||
+            id.includes('node_modules/react-dom') ||
+            id.includes('node_modules/@radix-ui') ||
+            id.includes('node_modules/react-router') ||
+            id.includes('node_modules/framer-motion') ||
+            id.includes('node_modules/react-hook-form') ||
+            id.includes('node_modules/recharts') ||
+            id.includes('node_modules/lucide-react') ||
+            id.includes('node_modules/@react-google-maps') ||
+            id.includes('node_modules/@vis.gl/react-google-maps') ||
+            // Catch any package with "react" in its path (including transitive deps)
+            (id.includes('node_modules') && (
+              id.includes('/react') ||
+              id.includes('react/') ||
+              id.match(/node_modules\/[^/]*react[^/]*\//)
+            ))
+          ) {
+            return 'vendor-react'
+          }
+
+          // PDF libraries (large, can be split)
+          if (id.includes('node_modules/jspdf')) {
+            return 'vendor-pdf'
+          }
+
+          // Canvas library (large, can be split)
+          if (id.includes('node_modules/html2canvas')) {
+            return 'vendor-canvas'
+          }
+
+          // Supabase (non-React)
+          if (id.includes('node_modules/@supabase')) {
+            return 'vendor-supabase'
+          }
+
+          // Other large node_modules (non-React)
+          return 'vendor-misc'
+        },
+      },
+    },
     chunkSizeWarningLimit: 600,
     commonjsOptions: {
       include: [/node_modules/],
