@@ -221,14 +221,15 @@ const AdminFeedbackPage = () => {
           : feedbackText
         
         return [
-          feedback.user_role || 'User',
+          feedback.user_name || feedback.user?.name || 'User',
+          feedback.user_role || feedback.user?.role || '',
           feedback.rating || 0,
           truncatedFeedback,
           new Date(feedback.created_at).toLocaleDateString()
         ]
       })
       
-      const columns = ['User Role', 'Rating', 'Feedback', 'Date']
+      const columns = ['User Name', 'Role', 'Rating', 'Feedback', 'Date']
       
       let currentY = 50
       doc.setFontSize(10)
@@ -305,7 +306,8 @@ const AdminFeedbackPage = () => {
       
       return `
         <tr>
-          <td>${feedback.user_role || 'User'}</td>
+          <td>${feedback.user_name || feedback.user?.name || 'User'}</td>
+          <td>${feedback.user_role || feedback.user?.role || ''}</td>
           <td>${feedback.rating || 0}/5</td>
           <td>${truncatedFeedback}</td>
           <td>${new Date(feedback.created_at).toLocaleDateString()}</td>
@@ -362,7 +364,7 @@ const AdminFeedbackPage = () => {
               <p><strong>Total Feedback:</strong> ${filteredFeedback.length} | <strong>Average Rating:</strong> ${stats.averageRating.toFixed(1)}/5 | <strong>Donors:</strong> ${stats.donorCount} | <strong>Recipients:</strong> ${stats.recipientCount} | <strong>Volunteers:</strong> ${stats.volunteerCount} | <strong>Generated:</strong> ${genDate}</p>
             </div>
             <table>
-              <thead><tr><th>User Role</th><th>Rating</th><th>Feedback</th><th>Date</th></tr></thead>
+              <thead><tr><th>User Name</th><th>Role</th><th>Rating</th><th>Feedback</th><th>Date</th></tr></thead>
               <tbody>${tableRows}</tbody>
             </table>
           </div>
@@ -568,7 +570,11 @@ const AdminFeedbackPage = () => {
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-semibold text-white capitalize">
-                            {feedback.user_role || 'User'}
+                            {feedback.user_name || feedback.user?.name || 'User'}
+                          </span>
+                          <span className="text-xs text-gray-500">•</span>
+                          <span className="text-xs text-gray-400 capitalize">
+                            {feedback.user_role || feedback.user?.role || ''}
                           </span>
                           <span className="text-xs text-gray-500">•</span>
                           <span className="text-xs text-gray-400">

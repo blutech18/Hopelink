@@ -586,8 +586,8 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Apply limit first for better performance
-    const limit = filters.limit || 500 // Default reasonable limit
+    // Apply limit first for better performance - reduced default to 200 for faster loading
+    const limit = filters.limit || 200 // Default reasonable limit
 
     // Auto-expire donations in background (non-blocking) for better performance
     // Fire and forget - don't wait for it to complete
@@ -816,8 +816,8 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Apply limit first for better performance
-    const limit = filters.limit || 500 // Default reasonable limit
+    // Apply limit first for better performance - reduced default to 200 for faster loading
+    const limit = filters.limit || 200 // Default reasonable limit
 
     let query = supabase
       .from('donation_requests')
@@ -942,8 +942,8 @@ export const db = {
       if (dErr) throw dErr
       if (!donation || donation.status !== 'available') return []
 
-      // Load currently open requests
-      const requests = await this.getRequests({ status: 'open', limit: 1000 })
+      // Load currently open requests - limit to 200 for performance
+      const requests = await this.getRequests({ status: 'open', limit: 200 })
 
       // Score each request against this donation only (efficient path)
       const scored = await Promise.all((requests || []).map(async (request) => {
@@ -991,8 +991,8 @@ export const db = {
       if (rErr) throw rErr
       if (!request || request.status !== 'open') return []
 
-      // Load available donations
-      const donations = await this.getDonations({ status: 'available', limit: 1000 })
+      // Load available donations - limit to 200 for performance
+      const donations = await this.getDonations({ status: 'available', limit: 200 })
 
       // Use optimized matcher to find top donations for this request
       const matches = await intelligentMatcher.matchDonorsToRequest(request, donations, maxResults)
@@ -1015,7 +1015,8 @@ export const db = {
 
     try {
       const { intelligentMatcher } = await import('./matchingAlgorithm.js')
-      const requests = await this.getRequests({ status: 'open', limit: 1000 })
+      // Limit to 200 requests for performance - ranking can be done on subset
+      const requests = await this.getRequests({ status: 'open', limit: 200 })
 
       // Compute ranking score using urgency, quantity ratio, recency, and basic category priority
       const scored = (requests || []).map(req => {
@@ -1238,8 +1239,8 @@ export const db = {
       console.warn('Background auto-expire donations failed:', err)
     })
 
-    // Extract limit and other filters safely
-    const limit = filters?.limit || 1000 // Default to reasonable limit, can be overridden
+    // Extract limit and other filters safely - reduced default to 200 for performance
+    const limit = filters?.limit || 200 // Default to reasonable limit, can be overridden
     const otherFilters = filters ? { ...filters } : {}
     delete otherFilters.limit
 
@@ -1479,14 +1480,23 @@ export const db = {
         }
       })
     } else if (donation.delivery_mode === 'direct') {
-      // Create a direct delivery record for donor-to-recipient coordination
+      // Create a direct delivery record in deliveries table with delivery_mode='direct'
+      const recipient = await this.getProfile(claim.recipient_id)
+      const deliveryAddress = recipient?.address 
+        ? `${recipient.address}, ${recipient.city || ''}`.trim()
+        : 'TBD'
+      
       const { error: directDeliveryError } = await supabase
-        .from('direct_deliveries')
+        .from('deliveries')
         .insert({
           claim_id: claim.id,
-          delivery_address: 'TBD', // Will be filled during coordination
-          delivery_instructions: '',
-          status: 'coordination_needed' // Initial status for direct delivery
+          volunteer_id: null, // Direct deliveries don't have volunteers
+          delivery_mode: 'direct',
+          status: 'pending', // Use standard delivery status
+          pickup_address: donation.pickup_location || 'TBD',
+          delivery_address: deliveryAddress,
+          pickup_city: donation.pickup_location?.split(',')?.pop()?.trim() || 'TBD',
+          delivery_city: recipient?.city || 'TBD'
         })
 
       if (directDeliveryError) {
@@ -1689,20 +1699,14 @@ export const db = {
 
     const { data, error } = await supabase
       .from('donation_requests')
-      .select(`
-        *,
-        claims:donation_claims(count)
-      `)
+      .select('*')
       .eq('requester_id', userId)
       .order('created_at', { ascending: false })
 
     if (error) throw error
     
-    // Add claims count to each request
-    return data.map(request => ({
-      ...request,
-      claims_count: request.claims?.[0]?.count || 0
-    }))
+    // Return requests (claims are stored in donations table, not directly related to requests)
+    return data || []
   },
 
   async updateDonationRequest(requestId, updates) {
@@ -1765,8 +1769,8 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Apply limit for better performance
-    const limit = filters.limit || 1000 // Default reasonable limit
+    // Apply limit for better performance - reduced default to 200 for faster loading
+    const limit = filters.limit || 200 // Default reasonable limit
 
     let query = supabase
       .from('events')
@@ -2660,8 +2664,8 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Apply limit first for better performance
-    const limit = filters.limit || 500 // Default reasonable limit
+    // Apply limit first for better performance - reduced default to 200 for faster loading
+    const limit = filters.limit || 200 // Default reasonable limit
 
     let query = supabase
       .from('deliveries')
@@ -2718,34 +2722,119 @@ export const db = {
     }
 
     // Fetch donations with claims to resolve donation titles by claim_id
+    // Fetch donations that contain the specific claim_ids we need
     let claimIdToDonation = {}
+    let claimIdToClaimData = {}
+    const recipientIds = new Set()
+    const donorIds = new Set()
+    
     if (claimIds.length > 0) {
-      // Fetch donations where claims is not null (reasonable upper bound)
+      // Create a Set for faster lookup
+      const claimIdsSet = new Set(claimIds.map(id => String(id)))
+      
+      // Fetch donations where claims is not null - we need to check all donations that might contain our claim_ids
+      // Use a reasonable limit but prioritize finding the claims we need
       const { data: donationsWithClaims } = await supabase
         .from('donations')
-        .select('id, title, claims')
+        .select('id, title, description, category, quantity, condition, images, is_urgent, donation_destination, delivery_mode, pickup_location, donor_id, claims')
         .not('claims', 'is', null)
-        .limit(1000)
+        .order('created_at', { ascending: false })
+        .limit(500) // Increased limit to ensure we find all relevant donations
 
-      claimIdToDonation = {}
-      ;(donationsWithClaims || []).forEach(d => {
-        const claims = Array.isArray(d.claims) ? d.claims : []
-        claims.forEach(c => {
-          if (c && c.id) {
-            claimIdToDonation[String(c.id)] = { donation_id: d.id, title: d.title }
-          }
+      if (donationsWithClaims) {
+        donationsWithClaims.forEach(donation => {
+          const claims = Array.isArray(donation.claims) ? donation.claims : []
+          claims.forEach(claim => {
+            if (claim && claim.id) {
+              const claimIdStr = String(claim.id)
+              if (claimIdsSet.has(claimIdStr)) {
+                claimIdToDonation[claimIdStr] = {
+                  donation_id: donation.id,
+                  title: donation.title,
+                  description: donation.description,
+                  category: donation.category,
+                  quantity: donation.quantity,
+                  condition: donation.condition,
+                  images: donation.images,
+                  is_urgent: donation.is_urgent,
+                  donation_destination: donation.donation_destination,
+                  delivery_mode: donation.delivery_mode,
+                  pickup_location: donation.pickup_location,
+                  donor_id: donation.donor_id
+                }
+                claimIdToClaimData[claimIdStr] = claim
+                if (claim.recipient_id) recipientIds.add(claim.recipient_id)
+                if (donation.donor_id) donorIds.add(donation.donor_id)
+              }
+            }
+          })
         })
-      })
+      }
     }
 
-    // Enrich deliveries
+    // Fetch recipients
+    let recipientsMap = new Map()
+    if (recipientIds.size > 0) {
+      const recipientIdsArray = Array.from(recipientIds)
+      let recipientsQuery = supabase
+        .from('users')
+        .select('id, name, email, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude')
+      
+      if (recipientIdsArray.length === 1) {
+        recipientsQuery = recipientsQuery.eq('id', recipientIdsArray[0])
+      } else {
+        recipientsQuery = recipientsQuery.in('id', recipientIdsArray)
+      }
+      
+      const { data: recipients, error: recipientsError } = await recipientsQuery
+      if (!recipientsError && recipients) {
+        recipients.forEach(r => recipientsMap.set(r.id, r))
+      }
+    }
+
+    // Fetch donors
+    let donorsMap = new Map()
+    if (donorIds.size > 0) {
+      const donorIdsArray = Array.from(donorIds)
+      let donorsQuery = supabase
+        .from('users')
+        .select('id, name, email, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude, profile_image_url')
+      
+      if (donorIdsArray.length === 1) {
+        donorsQuery = donorsQuery.eq('id', donorIdsArray[0])
+      } else {
+        donorsQuery = donorsQuery.in('id', donorIdsArray)
+      }
+      
+      const { data: donors, error: donorsError } = await donorsQuery
+      if (!donorsError && donors) {
+        donors.forEach(d => donorsMap.set(d.id, d))
+      }
+    }
+
+    // Enrich deliveries with proper claim and donation structure
     const enriched = deliveries.map(d => {
-      const donationRef = d.claim_id ? claimIdToDonation[String(d.claim_id)] : null
+      const claimId = d.claim_id ? String(d.claim_id) : null
+      const donationData = claimId ? claimIdToDonation[claimId] : null
+      const claimData = claimId ? claimIdToClaimData[claimId] : null
+      const recipient = claimData?.recipient_id ? recipientsMap.get(claimData.recipient_id) : null
+      const donor = donationData?.donor_id ? donorsMap.get(donationData.donor_id) : null
+
       return {
         ...d,
         volunteer: d.volunteer_id ? volunteersMap[d.volunteer_id] || null : null,
-        donation_id: donationRef?.donation_id || d.donation_id || null,
-        donation_title: donationRef?.title || d.donation_title || null,
+        claim: claimData ? {
+          ...claimData,
+          donor: donor, // Add donor at claim level for easy access
+          recipient: recipient,
+          donation: donationData ? {
+            ...donationData,
+            donor: donor // Also keep donor in donation for consistency
+          } : null
+        } : null,
+        // Keep backward compatibility
+        donation_id: donationData?.donation_id || d.donation_id || null,
+        donation_title: donationData?.title || d.donation_title || null,
       }
     })
 
@@ -2828,87 +2917,112 @@ export const db = {
     }
 
     try {
-      // Get claimed donations with volunteer delivery mode that don't have assigned volunteers yet
-      const { data: claimedDonations, error: claimedError } = await supabase
-        .from('donation_claims')
-        .select(`
-          *,
-          donation:donations(
-            *,
-            donor:users!donations_donor_id_fkey(
-              id, 
-              name, 
-              email,
-              phone_number, 
-              city, 
-              province,
-              address,
-              address_barangay,
-              address_house,
-              address_street,
-              address_subdivision,
-              address_landmark,
-              latitude,
-              longitude
-            )
-          ),
-          recipient:users!donation_claims_recipient_id_fkey(
-            id, 
-            name, 
-            phone_number, 
-            city, 
-            province,
-            address,
-            address_barangay,
-            address_house,
-            address_street,
-            address_subdivision,
-            address_landmark,
-            latitude,
-            longitude
-          ),
-          delivery:deliveries(id, volunteer_id, status)
-        `)
-        .eq('donation.delivery_mode', 'volunteer')
-        .eq('status', 'claimed')
-        .order('claimed_at', { ascending: false })
-
-      if (claimedError) throw claimedError
-
-      // Filter out donations that already have volunteer assignments and ensure only volunteer delivery mode
-      const availableForDelivery = (claimedDonations || []).filter(claim => 
-        claim.donation && 
-        claim.donation.delivery_mode === 'volunteer' &&
-        (!claim.delivery || claim.delivery.length === 0 || 
-        claim.delivery.every(d => !d.volunteer_id))
-      )
-
-      // Get open donation requests with volunteer delivery mode that don't have claims yet
-      const { data: requests, error: requestsError } = await supabase
-        .from('donation_requests')
-        .select(`
-          *,
-          requester:users!donation_requests_requester_id_fkey(
-            id, 
-            name, 
-            phone_number, 
-            city, 
-            province,
-            address,
-            address_barangay,
-            address_house,
-            address_street,
-            address_subdivision,
-            address_landmark,
-            latitude,
-            longitude
-          )
-        `)
-        .eq('status', 'open')
+      // Fetch donations with volunteer delivery mode that have claims - limit to 100 for performance
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('*')
         .eq('delivery_mode', 'volunteer')
+        .not('claims', 'is', null)
         .order('created_at', { ascending: false })
+        .limit(100)
 
-      if (requestsError) throw requestsError
+      if (donationsError) throw donationsError
+
+      // Extract claims with status 'claimed' from JSONB array
+      const availableClaims = []
+      const donationMap = new Map()
+      
+      if (donations && donations.length > 0) {
+        donations.forEach(donation => {
+          donationMap.set(donation.id, donation)
+          
+          if (Array.isArray(donation.claims)) {
+            donation.claims.forEach(claim => {
+              if (claim.status === 'claimed') {
+                availableClaims.push({
+                  ...claim,
+                  donation: donation
+                })
+              }
+            })
+          }
+        })
+      }
+
+      // Get all claim IDs to check for existing deliveries
+      const claimIds = availableClaims.map(c => c.id).filter(Boolean)
+      let deliveriesMap = new Map()
+      
+      if (claimIds.length > 0) {
+        let deliveriesQuery = supabase
+          .from('deliveries')
+          .select('id, claim_id, volunteer_id, status')
+        
+        if (claimIds.length === 1) {
+          deliveriesQuery = deliveriesQuery.eq('claim_id', claimIds[0])
+        } else {
+          deliveriesQuery = deliveriesQuery.in('claim_id', claimIds)
+        }
+        
+        const { data: deliveries, error: deliveriesError } = await deliveriesQuery
+        
+        if (!deliveriesError && deliveries) {
+          deliveries.forEach(delivery => {
+            if (!deliveriesMap.has(delivery.claim_id)) {
+              deliveriesMap.set(delivery.claim_id, [])
+            }
+            deliveriesMap.get(delivery.claim_id).push(delivery)
+          })
+        }
+      }
+
+      // Filter out claims that already have volunteer assignments
+      const availableForDelivery = availableClaims.filter(claim => {
+        const deliveries = deliveriesMap.get(claim.id) || []
+        return deliveries.length === 0 || deliveries.every(d => !d.volunteer_id)
+      })
+
+      // Get unique donor and recipient IDs
+      const donorIds = [...new Set(availableForDelivery.map(c => c.donation?.donor_id).filter(Boolean))]
+      const recipientIds = [...new Set(availableForDelivery.map(c => c.recipient_id).filter(Boolean))]
+
+      // Fetch donors
+      let donorsMap = new Map()
+      if (donorIds.length > 0) {
+        let donorsQuery = supabase
+          .from('users')
+          .select('id, name, email, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude')
+        
+        if (donorIds.length === 1) {
+          donorsQuery = donorsQuery.eq('id', donorIds[0])
+        } else {
+          donorsQuery = donorsQuery.in('id', donorIds)
+        }
+        
+        const { data: donors, error: donorsError } = await donorsQuery
+        if (!donorsError && donors) {
+          donors.forEach(d => donorsMap.set(d.id, d))
+        }
+      }
+
+      // Fetch recipients
+      let recipientsMap = new Map()
+      if (recipientIds.length > 0) {
+        let recipientsQuery = supabase
+          .from('users')
+          .select('id, name, phone_number, city, province, address, address_barangay, address_house, address_street, address_subdivision, address_landmark, latitude, longitude')
+        
+        if (recipientIds.length === 1) {
+          recipientsQuery = recipientsQuery.eq('id', recipientIds[0])
+        } else {
+          recipientsQuery = recipientsQuery.in('id', recipientIds)
+        }
+        
+        const { data: recipients, error: recipientsError } = await recipientsQuery
+        if (!recipientsError && recipients) {
+          recipients.forEach(r => recipientsMap.set(r.id, r))
+        }
+      }
 
       // Helper function to format address from user profile
       const formatAddressFromUser = (user) => {
@@ -2963,11 +3077,15 @@ export const db = {
       const deliveryTasks = availableForDelivery
         .filter(claim => claim.donation && claim.donation.title) // Filter out claims with null donations
         .map(claim => {
+          // Get donor and recipient from maps
+          const donor = claim.donation?.donor_id ? donorsMap.get(claim.donation.donor_id) : null
+          const recipient = claim.recipient_id ? recipientsMap.get(claim.recipient_id) : null
+          
           // Format pickup location from donor (use donation.pickup_location if available, otherwise format from donor)
-          const pickupLocation = claim.donation.pickup_location || formatAddressFromUser(claim.donation.donor) || 'Address TBD';
+          const pickupLocation = claim.donation.pickup_location || formatAddressFromUser(donor) || 'Address TBD';
           
           // Format delivery location from recipient
-          const deliveryLocation = formatAddressFromUser(claim.recipient) || claim.recipient?.city || 'Address TBD';
+          const deliveryLocation = formatAddressFromUser(recipient) || recipient?.city || 'Address TBD';
           
           return {
             id: `claim-${claim.id}`,
@@ -2978,8 +3096,8 @@ export const db = {
             urgency: claim.donation.is_urgent ? 'high' : 'medium',
             pickupLocation: pickupLocation,
             deliveryLocation: deliveryLocation,
-            donor: claim.donation.donor,
-            recipient: claim.recipient,
+            donor: donor,
+            recipient: recipient,
             originalId: claim.id,
             claimId: claim.id,
             createdAt: claim.claimed_at,
@@ -3084,26 +3202,30 @@ export const db = {
 
     if (deliveryError) throw deliveryError
 
-    // Get volunteer ratings
+    // Get volunteer ratings from feedback table (volunteer ratings are stored in feedback table)
     const { data: ratings, error: ratingError } = await supabase
-      .from('volunteer_ratings')
+      .from('feedback')
       .select('rating')
-      .eq('volunteer_id', volunteerId)
+      .eq('user_id', volunteerId)
+      .eq('feedback_type', 'volunteer')
 
-    if (ratingError) throw ratingError
+    if (ratingError) {
+      // If error, just log it and continue with empty ratings
+      console.warn('Error fetching volunteer ratings from feedback table:', ratingError)
+    }
 
     const totalDeliveries = deliveries.length
     const completedDeliveries = deliveries.filter(d => d.status === 'delivered').length
     const activeDeliveries = deliveries.filter(d => !['delivered', 'cancelled'].includes(d.status)).length
-    const averageRating = ratings.length > 0 ? 
-      ratings.reduce((sum, r) => sum + r.rating, 0) / ratings.length : 0
+    const averageRating = ratings && ratings.length > 0 ? 
+      ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length : 0
 
     return {
       totalDeliveries,
       completedDeliveries,
       activeDeliveries,
       averageRating: Number(averageRating.toFixed(1)),
-      totalRatings: ratings.length
+      totalRatings: ratings?.length || 0
     }
   },
 
@@ -3112,9 +3234,20 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
+    // Convert volunteer_ratings format to feedback table format
+    const feedbackData = {
+      user_id: ratingData.volunteer_id,
+      rating: ratingData.rating,
+      feedback_type: 'volunteer',
+      transaction_type: 'delivery',
+      transaction_id: ratingData.delivery_id || ratingData.transaction_id,
+      feedback_text: ratingData.comment || ratingData.feedback_text || null,
+      created_at: new Date().toISOString()
+    }
+
     const { data, error } = await supabase
-      .from('volunteer_ratings')
-      .insert(ratingData)
+      .from('feedback')
+      .insert(feedbackData)
       .select()
       .single()
     
@@ -3127,23 +3260,28 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    const { data, error } = await supabase
-      .from('volunteer_ratings')
-      .select(`
-        *,
-        delivery:deliveries(
-          claim:donation_claims(
-            donation:donations(title),
-            recipient:users!donation_claims_recipient_id_fkey(name)
-          )
-        ),
-        rater:users!volunteer_ratings_rated_by_fkey(name)
-      `)
-      .eq('volunteer_id', volunteerId)
+    // Get ratings from feedback table
+    const { data: feedback, error: feedbackError } = await supabase
+      .from('feedback')
+      .select('*')
+      .eq('user_id', volunteerId)
+      .eq('feedback_type', 'volunteer')
       .order('created_at', { ascending: false })
 
-    if (error) throw error
-    return data
+    if (feedbackError) throw feedbackError
+
+    // Transform feedback data to match expected volunteer_ratings format
+    const ratings = (feedback || []).map(f => ({
+      id: f.id,
+      volunteer_id: f.user_id,
+      rating: f.rating,
+      comment: f.feedback_text,
+      delivery_id: f.transaction_id,
+      created_at: f.created_at,
+      rater: null // Rater info not stored in feedback table structure
+    }))
+
+    return ratings
   },
 
   // Notifications
@@ -4572,8 +4710,8 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Apply limit first for better performance
-    const limit = filters.limit || 500 // Default reasonable limit
+    // Apply limit first for better performance - reduced default to 200 for faster loading
+    const limit = filters.limit || 200 // Default reasonable limit
 
     let query = supabase
       .from('users')
@@ -4797,28 +4935,15 @@ export const db = {
     }
 
     try {
-      // Fetch volunteer deliveries and direct deliveries
-      const [volunteerDeliveriesResult, directDeliveriesResult] = await Promise.all([
-        supabase
+      // Fetch all deliveries (volunteer and direct are now in the same table)
+      const { data: allDeliveries, error: deliveriesError } = await supabase
         .from('deliveries')
         .select('status')
-          .limit(2000),
-        supabase
-          .from('direct_deliveries')
-          .select('status')
-          .limit(2000)
-      ])
+        .limit(2000)
 
-      if (volunteerDeliveriesResult.error) {
-        console.error('Error fetching volunteer deliveries for count:', volunteerDeliveriesResult.error)
+      if (deliveriesError) {
+        console.error('Error fetching deliveries for count:', deliveriesError)
       }
-      if (directDeliveriesResult.error) {
-        console.error('Error fetching direct deliveries for count:', directDeliveriesResult.error)
-      }
-
-      const deliveries = volunteerDeliveriesResult.data || []
-      const directDeliveries = directDeliveriesResult.data || []
-      const allDeliveries = [...deliveries, ...directDeliveries]
 
       if (allDeliveries.length === 0) {
         return {
@@ -4884,10 +5009,12 @@ export const db = {
 
     try {
       // Fetch events with status, start_date, and end_date to calculate status if not set
+      // Limit to recent 500 events for performance
       const { data: events, error } = await supabase
         .from('events')
         .select('status, start_date, end_date')
-        .limit(1000) // Events are typically fewer, limit to 1000
+        .order('created_at', { ascending: false })
+        .limit(500)
 
       if (error) {
         console.error('Error fetching events for count:', error)
@@ -5509,21 +5636,53 @@ export const db = {
     }
 
     try {
-      // Get direct delivery details with claim information
+      // Get direct delivery from deliveries table with delivery_mode='direct'
       const { data: directDelivery, error: directDeliveryError } = await supabase
-        .from('direct_deliveries')
-        .select(`
-          *,
-          claim:donation_claims(
-            *,
-            donation:donations(id, title, donor_id),
-            recipient:users!donation_claims_recipient_id_fkey(id, name)
-          )
-        `)
+        .from('deliveries')
+        .select('*')
         .eq('claim_id', claimId)
+        .eq('delivery_mode', 'direct')
         .single()
 
       if (directDeliveryError) throw directDeliveryError
+
+      // Fetch donation with claim to get claim and donation info
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, title, donor_id, claims')
+        .not('claims', 'is', null)
+        .limit(500)
+
+      if (donationsError) throw donationsError
+
+      // Find the claim in the donations' claims JSONB array
+      let claimData = null
+      let donationData = null
+      if (donations) {
+        for (const donation of donations) {
+          if (Array.isArray(donation.claims)) {
+            const claim = donation.claims.find(c => c && c.id === claimId)
+            if (claim) {
+              claimData = claim
+              donationData = donation
+              break
+            }
+          }
+        }
+      }
+
+      // Fetch recipient if we have claim data
+      let recipient = null
+      if (claimData?.recipient_id) {
+        const { data: recipientData, error: recipientError } = await supabase
+          .from('users')
+          .select('id, name')
+          .eq('id', claimData.recipient_id)
+          .single()
+        if (!recipientError && recipientData) {
+          recipient = recipientData
+        }
+      }
 
       // Update the direct delivery record
       const updateData = { 
@@ -5532,43 +5691,45 @@ export const db = {
       }
 
       if (deliveryAddress) updateData.delivery_address = deliveryAddress
-      if (instructions) updateData.delivery_instructions = instructions
-      if (notes) updateData.notes = notes
+      if (notes) updateData.volunteer_notes = notes // Use volunteer_notes field if available
 
       const { error: updateError } = await supabase
-        .from('direct_deliveries')
+        .from('deliveries')
         .update(updateData)
         .eq('claim_id', claimId)
+        .eq('delivery_mode', 'direct')
 
       if (updateError) throw updateError
 
       // Handle status-specific logic and notifications
       let notificationTitle, notificationMessage
+      const donationTitle = donationData?.title || 'the donation'
 
       switch (status) {
         case 'scheduled':
           notificationTitle = 'Direct Delivery Scheduled'
-          notificationMessage = `Direct delivery has been scheduled for "${directDelivery.claim.donation.title}". Delivery details have been confirmed.`
+          notificationMessage = `Direct delivery has been scheduled for "${donationTitle}". Delivery details have been confirmed.`
           break
-        case 'out_for_delivery':
+        case 'accepted':
+        case 'picked_up':
+        case 'in_transit':
           notificationTitle = 'Out for Delivery'
-          notificationMessage = `The donor is on their way to deliver "${directDelivery.claim.donation.title}"!`
+          notificationMessage = `The donor is on their way to deliver "${donationTitle}"!`
           break
         case 'delivered':
           notificationTitle = 'Direct Delivery Completed'
-          notificationMessage = `The donation "${directDelivery.claim.donation.title}" has been delivered!`
+          notificationMessage = `The donation "${donationTitle}" has been delivered!`
           
-          // Update donation claim status to delivered
-          await supabase
-            .from('donation_claims')
-            .update({ status: 'delivered' })
-            .eq('id', directDelivery.claim.id)
-
-          // Update donation status to delivered
-          await supabase
-            .from('donations')
-            .update({ status: 'delivered' })
-            .eq('id', directDelivery.claim.donation.id)
+          // Update claim status in donations table JSONB
+          if (donationData && claimData) {
+            const updatedClaims = donationData.claims.map(c => 
+              c.id === claimId ? { ...c, status: 'delivered' } : c
+            )
+            await supabase
+              .from('donations')
+              .update({ claims: updatedClaims })
+              .eq('id', donationData.id)
+          }
 
           // Create completion confirmation requests for both parties
           await this.createDirectDeliveryCompletionRequest(claimId, userId)
@@ -5576,18 +5737,18 @@ export const db = {
           
         case 'cancelled':
           notificationTitle = 'Direct Delivery Cancelled'
-          notificationMessage = `The direct delivery for "${directDelivery.claim.donation.title}" has been cancelled.`
+          notificationMessage = `The direct delivery for "${donationTitle}" has been cancelled.`
           
-          // Reset donation and claim status back to available
-          await supabase
-            .from('donation_claims')
-            .update({ status: 'cancelled' })
-            .eq('id', directDelivery.claim.id)
-
-          await supabase
-            .from('donations')
-            .update({ status: 'available' })
-            .eq('id', directDelivery.claim.donation.id)
+          // Update claim status in donations table JSONB
+          if (donationData && claimData) {
+            const updatedClaims = donationData.claims.map(c => 
+              c.id === claimId ? { ...c, status: 'cancelled' } : c
+            )
+            await supabase
+              .from('donations')
+              .update({ claims: updatedClaims })
+              .eq('id', donationData.id)
+          }
           break
           
         default:
@@ -5596,10 +5757,10 @@ export const db = {
       }
 
       // Send notifications to both parties (except for delivered status which is handled above)
-      if (status !== 'delivered') {
+      if (status !== 'delivered' && recipient) {
         // Notify recipient
         await this.createNotification({
-          user_id: directDelivery.claim.recipient.id,
+          user_id: recipient.id,
           type: 'direct_delivery_update',
           title: notificationTitle,
           message: notificationMessage,
@@ -5612,18 +5773,20 @@ export const db = {
         })
 
         // Notify donor
-        await this.createNotification({
-          user_id: directDelivery.claim.donation.donor_id,
-          type: 'direct_delivery_update',
-          title: notificationTitle,
-          message: notificationMessage,
-          data: {
-            claim_id: claimId,
-            status: status,
-            delivery_address: deliveryAddress,
-            instructions: instructions
-          }
-        })
+        if (donationData?.donor_id) {
+          await this.createNotification({
+            user_id: donationData.donor_id,
+            type: 'direct_delivery_update',
+            title: notificationTitle,
+            message: notificationMessage,
+            data: {
+              claim_id: claimId,
+              status: status,
+              delivery_address: deliveryAddress,
+              instructions: instructions
+            }
+          })
+        }
       }
 
       return { success: true, message: 'Direct delivery status updated successfully!' }
@@ -5639,49 +5802,79 @@ export const db = {
     }
 
     try {
-      // Get direct delivery details
-      const { data: directDelivery, error: directDeliveryError } = await supabase
-        .from('direct_deliveries')
-        .select(`
-          *,
-          claim:donation_claims(
-            *,
-            donation:donations(id, title, donor_id),
-            recipient:users!donation_claims_recipient_id_fkey(id, name)
-          )
-        `)
-        .eq('claim_id', claimId)
-        .single()
+      // Fetch donation with claim to get claim and donation info
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, title, donor_id, claims')
+        .not('claims', 'is', null)
+        .limit(500)
 
-      if (directDeliveryError) throw directDeliveryError
+      if (donationsError) throw donationsError
+
+      // Find the claim in the donations' claims JSONB array
+      let claimData = null
+      let donationData = null
+      if (donations) {
+        for (const donation of donations) {
+          if (Array.isArray(donation.claims)) {
+            const claim = donation.claims.find(c => c && c.id === claimId)
+            if (claim) {
+              claimData = claim
+              donationData = donation
+              break
+            }
+          }
+        }
+      }
+
+      if (!claimData || !donationData) {
+        throw new Error('Claim or donation not found')
+      }
+
+      // Fetch recipient
+      let recipient = null
+      if (claimData.recipient_id) {
+        const { data: recipientData, error: recipientError } = await supabase
+          .from('users')
+          .select('id, name')
+          .eq('id', claimData.recipient_id)
+          .single()
+        if (!recipientError && recipientData) {
+          recipient = recipientData
+        }
+      }
 
       // Create completion confirmation request for recipient
-      await this.createNotification({
-        user_id: directDelivery.claim.recipient.id,
-        type: 'direct_delivery_completed',
-        title: 'Direct Delivery Completed - Please Confirm',
-        message: `The donor has marked "${directDelivery.claim.donation.title}" as delivered. Please confirm receipt to complete the transaction.`,
-        data: {
-          claim_id: claimId,
-          donor_id: directDelivery.claim.donation.donor_id,
-          role: 'recipient',
-          action_required: 'confirm_direct_delivery'
-        }
-      })
+      if (recipient) {
+        await this.createNotification({
+          user_id: recipient.id,
+          type: 'direct_delivery_completed',
+          title: 'Direct Delivery Completed - Please Confirm',
+          message: `The donor has marked "${donationData.title}" as delivered. Please confirm receipt to complete the transaction.`,
+          data: {
+            claim_id: claimId,
+            donor_id: donationData.donor_id,
+            role: 'recipient',
+            action_required: 'confirm_direct_delivery'
+          }
+        })
+      }
 
       // Create completion confirmation request for donor
-      await this.createNotification({
-        user_id: directDelivery.claim.donation.donor_id,
-        type: 'direct_delivery_completed',
-        title: 'Direct Delivery Completed - Please Confirm',
-        message: `You have marked "${directDelivery.claim.donation.title}" as delivered. Please confirm delivery completion.`,
-        data: {
-          claim_id: claimId,
-          recipient_id: directDelivery.claim.recipient.id,
-          role: 'donor',
-          action_required: 'confirm_direct_delivery'
-        }
-      })
+      if (donationData.donor_id) {
+        await this.createNotification({
+          user_id: donationData.donor_id,
+          type: 'direct_delivery_completed',
+          title: 'Direct Delivery Completed - Please Confirm',
+          message: `You have marked "${donationData.title}" as delivered. Please confirm delivery completion.`,
+          data: {
+            claim_id: claimId,
+            recipient_id: claimData.recipient_id,
+            role: 'donor',
+            action_required: 'confirm_direct_delivery'
+          }
+        })
+      }
 
       return { success: true }
     } catch (error) {
@@ -5696,24 +5889,60 @@ export const db = {
     }
 
     try {
-      // Get direct delivery details
+      // Get direct delivery from deliveries table
       const { data: directDelivery, error: directDeliveryError } = await supabase
-        .from('direct_deliveries')
-        .select(`
-          *,
-          claim:donation_claims(
-            *,
-            donation:donations(id, title, donor_id),
-            recipient:users!donation_claims_recipient_id_fkey(id, name)
-          )
-        `)
+        .from('deliveries')
+        .select('*')
         .eq('claim_id', claimId)
+        .eq('delivery_mode', 'direct')
         .single()
 
       if (directDeliveryError) throw directDeliveryError
 
-      const isDonor = userId === directDelivery.claim.donation.donor_id
-      const isRecipient = userId === directDelivery.claim.recipient.id
+      // Fetch donation with claim to get claim and donation info
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, title, donor_id, claims')
+        .not('claims', 'is', null)
+        .limit(500)
+
+      if (donationsError) throw donationsError
+
+      // Find the claim in the donations' claims JSONB array
+      let claimData = null
+      let donationData = null
+      if (donations) {
+        for (const donation of donations) {
+          if (Array.isArray(donation.claims)) {
+            const claim = donation.claims.find(c => c && c.id === claimId)
+            if (claim) {
+              claimData = claim
+              donationData = donation
+              break
+            }
+          }
+        }
+      }
+
+      if (!claimData || !donationData) {
+        throw new Error('Claim or donation not found')
+      }
+
+      // Fetch recipient
+      let recipient = null
+      if (claimData.recipient_id) {
+        const { data: recipientData, error: recipientError } = await supabase
+          .from('users')
+          .select('id, name')
+          .eq('id', claimData.recipient_id)
+          .single()
+        if (!recipientError && recipientData) {
+          recipient = recipientData
+        }
+      }
+
+      const isDonor = userId === donationData.donor_id
+      const isRecipient = userId === claimData.recipient_id
 
       // Check if both parties have already confirmed
       const { data: existingNotifications } = await supabase
@@ -5737,42 +5966,46 @@ export const db = {
 
       if (bothConfirmed) {
         // Both parties have confirmed - complete the transaction
-        await supabase
-          .from('donation_claims')
-          .update({ status: 'completed' })
-          .eq('id', directDelivery.claim.id)
-
-        await supabase
-          .from('donations')
-          .update({ status: 'completed' })
-          .eq('id', directDelivery.claim.donation.id)
+        // Update claim status in donations table JSONB
+        if (donationData && claimData) {
+          const updatedClaims = donationData.claims.map(c => 
+            c.id === claimId ? { ...c, status: 'completed' } : c
+          )
+          await supabase
+            .from('donations')
+            .update({ claims: updatedClaims })
+            .eq('id', donationData.id)
+        }
 
         // Send completion notifications to both parties
-        await this.createNotification({
-          user_id: directDelivery.claim.donation.donor_id,
-          type: 'direct_delivery_completed',
-          title: 'Direct Delivery Transaction Completed!',
-          message: `The direct delivery transaction for "${directDelivery.claim.donation.title}" is now complete. Thank you for your generosity!`,
-          data: {
-            claim_id: claimId,
-            transaction_completed: true,
-            confirmed_by: userRole,
-            rating: rating,
-            feedback: feedback
-          }
-        })
+        if (donationData.donor_id) {
+          await this.createNotification({
+            user_id: donationData.donor_id,
+            type: 'direct_delivery_completed',
+            title: 'Direct Delivery Transaction Completed!',
+            message: `The direct delivery transaction for "${donationData.title}" is now complete. Thank you for your generosity!`,
+            data: {
+              claim_id: claimId,
+              transaction_completed: true,
+              confirmed_by: userRole,
+              rating: rating,
+              feedback: feedback
+            }
+          })
+        }
 
-        await this.createNotification({
-          user_id: directDelivery.claim.recipient.id,
-          type: 'direct_delivery_completed',
-          title: 'Direct Delivery Transaction Completed!',
-          message: `The direct delivery transaction for "${directDelivery.claim.donation.title}" is now complete. Thank you for being part of our community!`,
-          data: {
-            claim_id: claimId,
-            transaction_completed: true,
-            confirmed_by: userRole
-          }
-        })
+        if (recipient) {
+          await this.createNotification({
+            user_id: recipient.id,
+            type: 'direct_delivery_completed',
+            title: 'Direct Delivery Transaction Completed!',
+            message: `The direct delivery transaction for "${donationData.title}" is now complete. Thank you for being part of our community!`,
+            data: {
+              claim_id: claimId,
+              transaction_completed: true,
+              confirmed_by: userRole
+            }
+          })
       } else {
         // First confirmation - notify the other party
         const otherPartyId = isDonor ? directDelivery.claim.recipient.id : directDelivery.claim.donation.donor_id
@@ -5803,7 +6036,8 @@ export const db = {
             [`${userRole}_confirmed`]: true,
             action_required: 'confirm_direct_delivery'
           }
-        })
+          })
+        }
       }
 
       // Mark related notifications as read
@@ -7041,14 +7275,80 @@ export const db = {
     if (!supabase) throw new Error('Supabase not configured')
     
     try {
-      const { data, error } = await supabase
+      // Try with foreign key join first
+      let { data, error } = await supabase
         .from('feedback')
-        .select('*')
+        .select(`
+          *,
+          users!feedback_user_id_fkey(
+            id,
+            name,
+            email,
+            role
+          )
+        `)
         .eq('feedback_type', 'platform')
         .order('created_at', { ascending: false })
 
-      if (error) throw error
-      return data
+      // If foreign key join fails, try without specifying the foreign key name
+      if (error && error.message?.includes('foreign key')) {
+        const result = await supabase
+          .from('feedback')
+          .select(`
+            *,
+            users(
+              id,
+              name,
+              email,
+              role
+            )
+          `)
+          .eq('feedback_type', 'platform')
+          .order('created_at', { ascending: false })
+        data = result.data
+        error = result.error
+      }
+
+      // If still fails, fetch users separately
+      if (error || !data) {
+        const { data: feedbackData, error: feedbackError } = await supabase
+          .from('feedback')
+          .select('*')
+          .eq('feedback_type', 'platform')
+          .order('created_at', { ascending: false })
+
+        if (feedbackError) throw feedbackError
+
+        // Get unique user IDs
+        const userIds = [...new Set((feedbackData || []).map(f => f.user_id).filter(Boolean))]
+        
+        // Fetch users
+        const { data: usersData } = await supabase
+          .from('users')
+          .select('id, name, email, role')
+          .in('id', userIds)
+
+        // Create a map of users by ID
+        const usersMap = new Map((usersData || []).map(u => [u.id, u]))
+
+        // Combine feedback with user data
+        data = (feedbackData || []).map(feedback => ({
+          ...feedback,
+          users: usersMap.get(feedback.user_id) || null
+        }))
+      }
+
+      if (error && !data) throw error
+      
+      // Transform data to include user info at top level for easier access
+      return (data || []).map(feedback => ({
+        ...feedback,
+        feedback: feedback.feedback_text || feedback.feedback, // Map feedback_text to feedback for compatibility
+        user_name: feedback.users?.name || 'User',
+        user_email: feedback.users?.email,
+        user_role: feedback.users?.role || feedback.user_role,
+        user: feedback.users // Keep user object for backward compatibility
+      }))
     } catch (error) {
       console.error('Error getting platform feedback:', error)
       throw error
@@ -7289,7 +7589,7 @@ export const db = {
         'notifications', 
         'settings', 
         'deliveries', 
-        'direct_deliveries',
+        // 'direct_deliveries' - merged into deliveries table with delivery_mode='direct'
         'database_backups' // Include backups table metadata (but exclude sql_data to avoid recursion)
       ]
       
@@ -8117,7 +8417,7 @@ export const db = {
         'smart_matches',
         'deliveries', 
         'pickups', 
-        'direct_deliveries',
+        // 'direct_deliveries' - merged into deliveries table with delivery_mode='direct'
         'database_backups'
       ]
 

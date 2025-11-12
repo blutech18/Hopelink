@@ -317,6 +317,291 @@ async function getAllUsers() {
   return data || [];
 }
 
+function shuffleArray(array) {
+  if (!Array.isArray(array)) return [];
+  const cloned = [...array];
+  for (let i = cloned.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [cloned[i], cloned[j]] = [cloned[j], cloned[i]];
+  }
+  return cloned;
+}
+
+function logStatusBreakdown(label, items, field = 'status') {
+  if (!Array.isArray(items) || items.length === 0) return;
+  const counts = items.reduce((acc, item) => {
+    const key = item?.[field] || 'unknown';
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const breakdown = Object.entries(counts)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(' | ');
+  console.log(`    • ${label}: ${breakdown}`);
+}
+
+async function diversifyDonationStatuses(donations, claims, deliveries, directDeliveries) {
+  if (!Array.isArray(donations) || donations.length === 0) return donations;
+
+  const claimById = new Map();
+  const claimsByDonation = new Map();
+
+  (claims || []).forEach((claim) => {
+    claimById.set(claim.id, claim);
+    if (!claimsByDonation.has(claim.donation_id)) {
+      claimsByDonation.set(claim.donation_id, []);
+    }
+    claimsByDonation.get(claim.donation_id).push(claim);
+  });
+
+  const statusUpdates = new Map();
+
+  const setStatusIfUnset = (donationId, status) => {
+    if (!donationId || !status) return;
+    if (!statusUpdates.has(donationId)) {
+      statusUpdates.set(donationId, status);
+    }
+  };
+
+  const applyDeliveryStatus = (delivery, fallbackStatus = 'matched') => {
+    if (!delivery?.claim_id) return;
+    const claim = claimById.get(delivery.claim_id);
+    if (!claim?.donation_id) return;
+    const donationId = claim.donation_id;
+    switch (delivery.status) {
+      case 'delivered':
+        setStatusIfUnset(donationId, fallbackStatus === 'completed' ? 'completed' : 'delivered');
+        break;
+      case 'in_transit':
+      case 'picked_up':
+        setStatusIfUnset(donationId, 'in_transit');
+        break;
+      case 'accepted':
+      case 'assigned':
+      case 'pending':
+        setStatusIfUnset(donationId, 'matched');
+        break;
+      default:
+        break;
+    }
+  };
+
+  (deliveries || []).forEach((delivery) => applyDeliveryStatus(delivery));
+  (directDeliveries || []).forEach((delivery) => applyDeliveryStatus(delivery, 'completed'));
+
+  // Ensure donations with claims have at least claimed status
+  claimsByDonation.forEach((_claims, donationId) => {
+    setStatusIfUnset(donationId, 'claimed');
+  });
+
+  // Promote one delivered donation to completed if not already present
+  const hasCompleted = Array.from(statusUpdates.values()).some((status) => status === 'completed');
+  if (!hasCompleted) {
+    const deliveredDonationId = Array.from(statusUpdates.entries()).find(
+      ([, status]) => status === 'delivered'
+    )?.[0];
+    if (deliveredDonationId) {
+      statusUpdates.set(deliveredDonationId, 'completed');
+    }
+  }
+
+  const hasMatched = Array.from(statusUpdates.values()).some((status) => status === 'matched');
+  if (!hasMatched) {
+    const claimedDonationId = Array.from(statusUpdates.entries()).find(
+      ([, status]) => status === 'claimed'
+    )?.[0];
+    if (claimedDonationId) {
+      statusUpdates.set(claimedDonationId, 'matched');
+    }
+  }
+
+  const hasDelivered = Array.from(statusUpdates.values()).some((status) => status === 'delivered');
+  if (!hasDelivered) {
+    const deliverableDonation = Array.from(statusUpdates.entries()).find(([, status]) =>
+      ['in_transit', 'matched', 'claimed'].includes(status)
+    );
+    if (deliverableDonation) {
+      statusUpdates.set(deliverableDonation[0], 'delivered');
+    } else if (donations.length > 0) {
+      statusUpdates.set(donations[0].id, 'delivered');
+    }
+  }
+
+  // Assign statuses to donations without claims
+  const donationsWithoutClaims = donations.filter((donation) => !statusUpdates.has(donation.id));
+  const fallbackStatuses = ['available', 'available', 'cancelled', 'expired', 'available', 'available'];
+  donationsWithoutClaims.forEach((donation, index) => {
+    const status = fallbackStatuses[index % fallbackStatuses.length] || 'available';
+    if (status !== donation.status) {
+      statusUpdates.set(donation.id, status);
+    }
+  });
+
+  for (const [donationId, status] of statusUpdates.entries()) {
+    await supabase
+      .from('donations')
+      .update({
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', donationId);
+  }
+
+  const { data: refreshedDonations } = await supabase
+    .from('donations')
+    .select('id, status, delivery_mode')
+    .in('id', donations.map((donation) => donation.id));
+
+  if (refreshedDonations) {
+    const refreshedMap = new Map(refreshedDonations.map((item) => [item.id, item]));
+    donations.forEach((donation) => {
+      const update = refreshedMap.get(donation.id);
+      if (update) {
+        donation.status = update.status;
+        if (update.delivery_mode) {
+          donation.delivery_mode = update.delivery_mode;
+        }
+      }
+    });
+  }
+
+  return donations;
+}
+
+async function diversifyRequestStatuses(requests) {
+  if (!Array.isArray(requests) || requests.length === 0) return requests;
+
+  const shuffled = shuffleArray(requests);
+  const updates = [];
+
+  const total = requests.length;
+  const fulfilledCount = Math.max(1, Math.floor(total * 0.3));
+  const cancelledCount = Math.max(1, Math.floor(total * 0.2));
+  const expiredCount = Math.max(1, Math.floor(total * 0.1));
+
+  let index = 0;
+  const assignStatus = (count, status) => {
+    for (let i = 0; i < count && index < shuffled.length; i++, index++) {
+      const request = shuffled[index];
+      updates.push({ id: request.id, status });
+      request.status = status;
+    }
+  };
+
+  assignStatus(fulfilledCount, 'fulfilled');
+  assignStatus(cancelledCount, 'cancelled');
+  assignStatus(expiredCount, 'expired');
+
+  // Remaining requests stay open
+
+  for (const update of updates) {
+    await supabase
+      .from('donation_requests')
+      .update({
+        status: update.status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', update.id);
+  }
+
+  return requests;
+}
+
+async function diversifyEventStatuses(events) {
+  if (!Array.isArray(events) || events.length === 0) return events;
+  
+  const now = new Date();
+  const offsetsDays = [-26, -20, -14, -9, -4, -1, 4, 11, 16, 22];
+  const durationsHours = [6, 8, 5, 7, 4, 6, 8, 5, 7, 6];
+  const shuffled = shuffleArray(events);
+  const updates = [];
+  let hasCancelled = false;
+  let hasCompleted = false;
+  let hasActive = false;
+  let hasUpcoming = false;
+
+  shuffled.forEach((event, index) => {
+    const offsetDays = offsetsDays[index % offsetsDays.length];
+    const durationHours = durationsHours[index % durationsHours.length];
+    const start = new Date(now.getTime() + offsetDays * 24 * 60 * 60 * 1000);
+    const end = new Date(start.getTime() + durationHours * 60 * 60 * 1000);
+
+    let status;
+    if (offsetDays <= -10) {
+      status = 'completed';
+      hasCompleted = true;
+    } else if (offsetDays < 0) {
+      status = 'active';
+      hasActive = true;
+    } else if (offsetDays <= 10) {
+      status = 'upcoming';
+      hasUpcoming = true;
+    } else {
+      status = 'upcoming';
+    }
+
+    const createdOffsetDays = Math.max(3, Math.min(14, Math.abs(offsetDays)));
+    let created = new Date(start.getTime() - createdOffsetDays * 24 * 60 * 60 * 1000);
+    if (created > now) {
+      created = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+    }
+
+    updates.push({
+      id: event.id,
+      status,
+      start_date: start.toISOString(),
+      end_date: end.toISOString(),
+      created_at: created.toISOString()
+    });
+
+    event.status = status;
+    event.start_date = start.toISOString();
+    event.end_date = end.toISOString();
+    event.created_at = created.toISOString();
+  });
+
+  if (!hasCancelled && updates.length > 0) {
+    const candidate = updates.find(update => new Date(update.start_date) > now);
+    if (candidate) {
+      candidate.status = 'cancelled';
+      hasCancelled = true;
+    } else {
+      updates[updates.length - 1].status = 'cancelled';
+      hasCancelled = true;
+    }
+  }
+
+  if (!hasActive && updates.length > 1) {
+    updates[1].status = 'active';
+  }
+  if (!hasCompleted && updates.length > 2) {
+    updates[2].status = 'completed';
+  }
+  if (!hasUpcoming && updates.length > 3) {
+    updates[3].status = 'upcoming';
+  }
+
+  for (const update of updates) {
+    await supabase
+      .from('events')
+      .update({
+        status: update.status,
+        start_date: update.start_date,
+        end_date: update.end_date,
+        created_at: update.created_at,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', update.id);
+  }
+
+  console.log('   Event timeline adjustments (for dashboard visualizations):');
+  updates.forEach(update => {
+    console.log(`     • ${update.status.toUpperCase()} from ${new Date(update.start_date).toLocaleDateString()} to ${new Date(update.end_date).toLocaleDateString()}`);
+  });
+
+  return events;
+}
+
 // Donation templates with matching images
 // Categories must match: 'Food & Beverages', 'Clothing & Accessories', 'Medical Supplies', 
 // 'Educational Materials', 'Household Items', 'Electronics & Technology', 'Toys & Recreation',
@@ -1893,8 +2178,8 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
   console.log('🌱 Seeding volunteer deliveries...\n');
   
   try {
-    if (!claims || claims.length === 0 || !volunteers || volunteers.length === 0) {
-      console.log('⚠️  No claims or volunteers available for deliveries.');
+    if (!volunteers || volunteers.length === 0 || !donations || donations.length === 0) {
+      console.log('⚠️  No volunteers or donations available for deliveries.');
       return [];
     }
     
@@ -1906,11 +2191,35 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
       });
     }
     
-    // Filter claims that use volunteer delivery mode (check donation.delivery_mode)
-    const volunteerClaims = claims.filter(claim => {
-      const donation = donationsMap[claim.donation_id];
-      return donation && donation.delivery_mode === 'volunteer';
+    // Fetch all donations with claims (JSONB) to get actual claim data
+    const { data: donationsWithClaims } = await supabase
+      .from('donations')
+      .select('id, claims, delivery_mode')
+      .not('claims', 'is', null)
+      .eq('delivery_mode', 'volunteer');
+    
+    if (!donationsWithClaims || donationsWithClaims.length === 0) {
+      console.log('⚠️  No donations with volunteer delivery mode and claims available.');
+      return [];
+    }
+    
+    // Extract all claims from JSONB arrays and flatten them with donation_id
+    const allVolunteerClaims = [];
+    donationsWithClaims.forEach(donation => {
+      if (Array.isArray(donation.claims)) {
+        donation.claims.forEach(claim => {
+          if (claim && claim.id) {
+            allVolunteerClaims.push({
+              ...claim,
+              donation_id: donation.id
+            });
+          }
+        });
+      }
     });
+    
+    // Filter claims that use volunteer delivery mode (already filtered by query)
+    const volunteerClaims = allVolunteerClaims;
     
     console.log(`   Found ${volunteerClaims.length} claims with volunteer delivery mode`);
     console.log(`   Available volunteers: ${volunteers.length}`);
@@ -1930,6 +2239,7 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
     // Valid delivery statuses based on codebase: 'pending', 'assigned', 'accepted', 'picked_up', 'in_transit', 'delivered'
     // Note: 'completed' is NOT in the enum (error confirmed)
     const deliveryStatuses = ['pending', 'assigned', 'accepted', 'picked_up', 'in_transit', 'delivered'];
+  let volunteerDeliveryHasDelivered = false;
     
     // IMPORTANT: Only create deliveries for ~40% of volunteer claims
     // This leaves ~60% of claims WITHOUT deliveries, making them available tasks on the available-tasks page
@@ -2007,6 +2317,7 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
         claim_id: claim.id,
         volunteer_id: volunteer.id,
         status: status,
+        delivery_mode: 'volunteer',
         // Use normalized fields defined in schema
         pickup_address: pickupAddress,
         delivery_address: deliveryAddress,
@@ -2029,11 +2340,21 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
         delivery.delivered_at = new Date(Date.now() - Math.random() * 2 * 24 * 60 * 60 * 1000).toISOString();
         // Note: volunteer_notes column removed - not in deliveries table schema
       }
+      volunteerDeliveryHasDelivered = volunteerDeliveryHasDelivered || status === 'delivered';
       // Provide a scheduled date for display if not already implied
       // Do not set scheduled_delivery_date if the column doesn't exist in schema
       
       deliveriesToInsert.push(delivery);
       claimsWithDeliveries.add(claim.id);
+    }
+    
+    if (!volunteerDeliveryHasDelivered && deliveriesToInsert.length > 0) {
+      const delivery = deliveriesToInsert[0];
+      delivery.status = 'delivered';
+      delivery.accepted_at = delivery.accepted_at || new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+      delivery.picked_up_at = delivery.picked_up_at || new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      delivery.in_transit_at = delivery.in_transit_at || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      delivery.delivered_at = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     }
     
     if (deliveriesToInsert.length === 0) {
@@ -2112,6 +2433,7 @@ async function seedDirectDeliveries(claims, donations, recipients) {
     // Note: direct_deliveries was merged into deliveries table
     // Valid statuses for direct deliveries: 'pending', 'assigned', 'accepted', 'picked_up', 'in_transit', 'delivered'
     const directDeliveryStatuses = ['pending', 'assigned', 'accepted', 'picked_up', 'in_transit', 'delivered'];
+  let directDeliveryHasDelivered = false;
     
     // Create direct deliveries for ALL direct claims (100%)
     const numDirectDeliveries = directClaims.length;
@@ -2175,6 +2497,16 @@ async function seedDirectDeliveries(claims, donations, recipients) {
       // Do not set scheduled_delivery_date if the column doesn't exist in schema
       
       deliveriesToInsert.push(delivery);
+      directDeliveryHasDelivered = directDeliveryHasDelivered || status === 'delivered';
+    }
+    
+    if (!directDeliveryHasDelivered && deliveriesToInsert.length > 0) {
+      const delivery = deliveriesToInsert[0];
+      delivery.status = 'delivered';
+      delivery.accepted_at = delivery.accepted_at || new Date(Date.now() - 4 * 24 * 60 * 60 * 1000).toISOString();
+      delivery.picked_up_at = delivery.picked_up_at || new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+      delivery.in_transit_at = delivery.in_transit_at || new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      delivery.delivered_at = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     }
     
     if (deliveriesToInsert.length === 0) {
@@ -2745,6 +3077,10 @@ async function main() {
     // Note: user_preferences, user_reports, user_verifications, volunteer_ratings are now JSONB in user_profiles
     const volunteerRequests = await seedVolunteerRequests(claims, volunteers);
     const volunteerTimeTracking = await seedVolunteerTimeTracking(deliveries, volunteers);
+
+    await diversifyDonationStatuses(donations, claims, deliveries, directDeliveries);
+    await diversifyRequestStatuses(requests);
+    await diversifyEventStatuses(events);
     
     console.log('✅ All done! Database fully seeded.\n');
     console.log('📊 Summary:');
@@ -2764,6 +3100,14 @@ async function main() {
     console.log(`  - Volunteer Time Tracking: ${volunteerTimeTracking?.length || 0}`);
     console.log(`  - User Reports (JSONB): ${seededReports?.length || 0}`);
     console.log(`\n  Note: User preferences, reports, verifications now stored in user_profiles JSONB\n`);
+    
+    console.log('  Status breakdowns:');
+    logStatusBreakdown('Donations by status', donations);
+    logStatusBreakdown('Donations by delivery mode', donations, 'delivery_mode');
+    logStatusBreakdown('Requests by status', requests);
+    const combinedDeliveries = [...(deliveries || []), ...(directDeliveries || [])];
+    logStatusBreakdown('Deliveries by status', combinedDeliveries);
+    logStatusBreakdown('Events by status', events);
     
   } catch (error) {
     console.error('❌ Fatal error:', error);

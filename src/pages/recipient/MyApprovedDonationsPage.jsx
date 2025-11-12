@@ -63,66 +63,129 @@ const MyApprovedDonationsPage = () => {
     try {
       setLoading(true)
       
-      // Get donation claims where the user is the recipient
-      const { data: claims, error: claimsError } = await supabase
-        .from('donation_claims')
+      // Fetch donations that have claims (JSONB array) - limit to recent 200 for performance
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
         .select(`
           *,
-          donation:donations(
-            *,
-            donor:users(id, name, email, phone_number, profile_image_url)
-          ),
-          delivery:deliveries(
-            *,
-            volunteer:users!deliveries_volunteer_id_fkey(id, name, phone_number)
-          ),
-          direct_delivery:direct_deliveries(
-            *
-          ),
-          recipient:users!donation_claims_recipient_id_fkey(id, name, phone_number)
+          donor:users(id, name, email, phone_number, profile_image_url)
         `)
-        .eq('recipient_id', user.id)
-        .in('status', ['claimed', 'delivered', 'completed'])
-        .order('claimed_at', { ascending: false })
+        .not('claims', 'is', null)
+        .order('created_at', { ascending: false })
+        .limit(200)
 
-      if (claimsError) {
-        console.error('Claims query error:', claimsError)
-        throw claimsError
+      if (donationsError) {
+        console.error('Donations query error:', donationsError)
+        throw donationsError
       }
 
-      // Enhance claims with donor email if missing
-      if (claims && claims.length > 0) {
-        const claimsWithDonorInfo = await Promise.all(
-          claims.map(async (claim) => {
-            if (claim.donation?.donor_id && (!claim.donation.donor?.email)) {
-              try {
-                // Fetch donor info separately if email is missing
-                const { data: donorData } = await supabase
-                  .from('users')
-                  .select('id, name, email, phone_number, profile_image_url')
-                  .eq('id', claim.donation.donor_id)
-                  .single()
-                
-                if (donorData) {
-                  return {
-                    ...claim,
-                    donation: {
-                      ...claim.donation,
-                      donor: donorData
-                    }
-                  }
-                }
-              } catch (err) {
-                console.warn('Could not fetch donor info for claim:', claim.id, err)
+      // Extract claims where recipient_id matches current user and status is valid
+      const validStatuses = ['claimed', 'delivered', 'completed']
+      const userClaims = []
+      const claimIdToDonationMap = new Map()
+
+      if (donations && donations.length > 0) {
+        donations.forEach(donation => {
+          if (Array.isArray(donation.claims)) {
+            donation.claims.forEach(claim => {
+              if (claim.recipient_id === user.id && validStatuses.includes(claim.status)) {
+                // Store the donation with the claim
+                userClaims.push({
+                  ...claim,
+                  donation: donation
+                })
+                claimIdToDonationMap.set(claim.id, donation.id)
               }
-            }
-            return claim
-          })
-        )
-        setApprovedDonations(claimsWithDonorInfo)
-      } else {
-        setApprovedDonations(claims || [])
+            })
+          }
+        })
       }
+
+      // Sort by claimed_at descending
+      userClaims.sort((a, b) => {
+        const dateA = a.claimed_at ? new Date(a.claimed_at) : new Date(0)
+        const dateB = b.claimed_at ? new Date(b.claimed_at) : new Date(0)
+        return dateB - dateA
+      })
+
+      // Fetch deliveries for volunteer-mode claims
+      const claimIds = userClaims.map(c => c.id).filter(Boolean)
+      let deliveriesMap = new Map()
+
+      if (claimIds.length > 0) {
+        // Fetch deliveries that match these claim IDs
+        let deliveriesQuery = supabase
+          .from('deliveries')
+          .select('*')
+        
+        // Use .eq() for single ID, .in() for multiple IDs
+        if (claimIds.length === 1) {
+          deliveriesQuery = deliveriesQuery.eq('claim_id', claimIds[0])
+        } else {
+          deliveriesQuery = deliveriesQuery.in('claim_id', claimIds)
+        }
+        
+        const { data: deliveries, error: deliveriesError } = await deliveriesQuery
+
+        if (!deliveriesError && deliveries) {
+          // Get unique volunteer IDs
+          const volunteerIds = [...new Set(deliveries.map(d => d.volunteer_id).filter(Boolean))]
+          
+          // Fetch volunteers separately
+          let volunteersMap = new Map()
+          if (volunteerIds.length > 0) {
+            let volunteersQuery = supabase
+              .from('users')
+              .select('id, name, phone_number')
+            
+            // Use .eq() for single ID, .in() for multiple IDs
+            if (volunteerIds.length === 1) {
+              volunteersQuery = volunteersQuery.eq('id', volunteerIds[0])
+            } else {
+              volunteersQuery = volunteersQuery.in('id', volunteerIds)
+            }
+            
+            const { data: volunteers, error: volunteersError } = await volunteersQuery
+
+            if (!volunteersError && volunteers) {
+              volunteers.forEach(v => volunteersMap.set(v.id, v))
+            }
+          }
+
+          // Map deliveries to claims and attach volunteer info
+          deliveries.forEach(delivery => {
+            if (!deliveriesMap.has(delivery.claim_id)) {
+              deliveriesMap.set(delivery.claim_id, [])
+            }
+            deliveriesMap.get(delivery.claim_id).push({
+              ...delivery,
+              volunteer: delivery.volunteer_id ? volunteersMap.get(delivery.volunteer_id) || null : null
+            })
+          })
+        }
+      }
+
+      // Enrich claims with delivery and donor info
+      const enrichedClaims = userClaims.map(claim => {
+        const donation = claim.donation
+        const deliveries = deliveriesMap.get(claim.id) || []
+        
+        return {
+          ...claim,
+          donation: {
+            ...donation,
+            donor: donation.donor || null
+          },
+          delivery: deliveries,
+          recipient: {
+            id: user.id,
+            name: profile?.name || user.name,
+            phone_number: profile?.phone_number || user.phone_number
+          }
+        }
+      })
+
+      setApprovedDonations(enrichedClaims)
       
       // Clear image error states when new data is loaded
       setImageErrors(new Set())
@@ -133,7 +196,7 @@ const MyApprovedDonationsPage = () => {
     } finally {
       setLoading(false)
     }
-  }, [user?.id, error])
+  }, [user?.id, profile, error])
 
   const loadDeliveryConfirmations = useCallback(async () => {
     if (!user?.id) return

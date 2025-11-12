@@ -173,10 +173,18 @@ const PendingRequestsPage = () => {
                 } else {
                   // Use simpler query without foreign key reference to avoid errors
                   // Fetch donations first, then fetch donors separately if needed
-                  const { data: donations, error: donationsError } = await supabase
+                  let donationsQuery = supabase
                     .from('donations')
                     .select('*')
-                    .in('id', validDonationIds)
+                  
+                  // Use .eq() for single ID, .in() for multiple IDs
+                  if (validDonationIds.length === 1) {
+                    donationsQuery = donationsQuery.eq('id', validDonationIds[0])
+                  } else {
+                    donationsQuery = donationsQuery.in('id', validDonationIds)
+                  }
+                  
+                  const { data: donations, error: donationsError } = await donationsQuery
                   
                   if (donationsError) {
                     console.error('Error batch fetching donations:', donationsError)
@@ -185,22 +193,45 @@ const PendingRequestsPage = () => {
                     const donorIds = [...new Set(donations.map(d => d.donor_id).filter(Boolean))]
                     
                     if (donorIds.length > 0) {
-                      const { data: donors, error: donorsError } = await supabase
-                        .from('users')
-                        .select('id, name, email, profile_image_url, donation_types, latitude, longitude')
-                        .in('id', donorIds)
+                      // Validate donor IDs are valid UUIDs
+                      const validDonorIds = donorIds.filter(id => 
+                        typeof id === 'string' && 
+                        id.length === 36 && 
+                        id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+                      )
                       
-                      if (!donorsError && donors) {
-                        const donorsMap = new Map(donors.map(d => [d.id, d]))
-                        // Attach donor data to each donation
-                        donations.forEach(donation => {
-                          if (donorsMap.has(donation.donor_id)) {
-                            donation.donor = donorsMap.get(donation.donor_id)
+                      if (validDonorIds.length > 0) {
+                        let donorsQuery = supabase
+                          .from('users')
+                          .select('id, name, email, profile_image_url, latitude, longitude')
+                        
+                        // Use .eq() for single ID, .in() for multiple IDs
+                        if (validDonorIds.length === 1) {
+                          donorsQuery = donorsQuery.eq('id', validDonorIds[0])
+                        } else {
+                          donorsQuery = donorsQuery.in('id', validDonorIds)
+                        }
+                        
+                        const { data: donors, error: donorsError } = await donorsQuery
+                        
+                        if (!donorsError && donors) {
+                          const donorsMap = new Map(donors.map(d => [d.id, d]))
+                          // Attach donor data to each donation
+                          donations.forEach(donation => {
+                            if (donorsMap.has(donation.donor_id)) {
+                              donation.donor = donorsMap.get(donation.donor_id)
+                            }
+                            donationsMap.set(donation.id, donation)
+                          })
+                        } else {
+                          if (donorsError) {
+                            console.error('Error fetching donors:', donorsError)
                           }
-                          donationsMap.set(donation.id, donation)
-                        })
+                          // Even if donor fetch fails, still add donations without donor data
+                          donations.forEach(d => donationsMap.set(d.id, d))
+                        }
                       } else {
-                        // Even if donor fetch fails, still add donations without donor data
+                        // No valid donor IDs, just add donations
                         donations.forEach(d => donationsMap.set(d.id, d))
                       }
                     } else {
@@ -217,38 +248,56 @@ const PendingRequestsPage = () => {
             // Batch fetch requester profiles in parallel batches to avoid overwhelming the database
             const requesterProfilesMap = new Map()
             if (requesterIds.length > 0) {
-              const batchSize = 5
-              for (let i = 0; i < requesterIds.length; i += batchSize) {
-                const batch = requesterIds.slice(i, i + batchSize)
-                await Promise.all(
-                  batch.map(async (requesterId) => {
-                    try {
-                      const profile = await db.getProfile(requesterId)
-                      if (profile) requesterProfilesMap.set(requesterId, profile)
-                    } catch (err) {
-                      console.warn(`Could not fetch profile for requester ${requesterId}:`, err)
-                    }
-                  })
-                )
+              // Validate requester IDs are valid UUIDs
+              const validRequesterIds = requesterIds.filter(id => 
+                typeof id === 'string' && 
+                id.length === 36 && 
+                id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+              )
+              
+              if (validRequesterIds.length > 0) {
+                const batchSize = 5
+                for (let i = 0; i < validRequesterIds.length; i += batchSize) {
+                  const batch = validRequesterIds.slice(i, i + batchSize)
+                  await Promise.all(
+                    batch.map(async (requesterId) => {
+                      try {
+                        const profile = await db.getProfile(requesterId)
+                        if (profile) requesterProfilesMap.set(requesterId, profile)
+                      } catch (err) {
+                        console.warn(`Could not fetch profile for requester ${requesterId}:`, err)
+                      }
+                    })
+                  )
+                }
               }
             }
             
             // Batch fetch volunteer profiles in parallel batches
             const volunteerProfilesMap = new Map()
             if (volunteerIds.length > 0) {
-              const batchSize = 5
-              for (let i = 0; i < volunteerIds.length; i += batchSize) {
-                const batch = volunteerIds.slice(i, i + batchSize)
-                await Promise.all(
-                  batch.map(async (volunteerId) => {
-                    try {
-                      const profile = await db.getProfile(volunteerId)
-                      if (profile) volunteerProfilesMap.set(volunteerId, profile)
-                    } catch (err) {
-                      console.warn(`Could not fetch profile for volunteer ${volunteerId}:`, err)
-                    }
-                  })
-                )
+              // Validate volunteer IDs are valid UUIDs
+              const validVolunteerIds = volunteerIds.filter(id => 
+                typeof id === 'string' && 
+                id.length === 36 && 
+                id.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i)
+              )
+              
+              if (validVolunteerIds.length > 0) {
+                const batchSize = 5
+                for (let i = 0; i < validVolunteerIds.length; i += batchSize) {
+                  const batch = validVolunteerIds.slice(i, i + batchSize)
+                  await Promise.all(
+                    batch.map(async (volunteerId) => {
+                      try {
+                        const profile = await db.getProfile(volunteerId)
+                        if (profile) volunteerProfilesMap.set(volunteerId, profile)
+                      } catch (err) {
+                        console.warn(`Could not fetch profile for volunteer ${volunteerId}:`, err)
+                      }
+                    })
+                  )
+                }
               }
             }
             

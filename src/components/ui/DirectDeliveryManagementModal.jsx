@@ -54,9 +54,10 @@ const DirectDeliveryManagementModal = ({
     try {
       setLoading(true)
       const { data, error: fetchError } = await db.supabase
-        .from('direct_deliveries')
+        .from('deliveries')
         .select('*')
         .eq('claim_id', donation.id)
+        .eq('delivery_mode', 'direct')
         .single()
 
       if (fetchError && fetchError.code !== 'PGRST116') { // Not found error

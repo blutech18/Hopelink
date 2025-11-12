@@ -114,7 +114,7 @@ const DashboardPage = () => {
         setCompletedEvents(events || [])
       } else if (isRecipient) {
         const [requests, notifications] = await Promise.all([
-          db.getRequests({ requester_id: profile.id }),
+          db.getRequests({ requester_id: profile.id, limit: 100 }),
           db.getUserNotifications(profile.id, 50).catch(() => [])
         ])
         
@@ -130,15 +130,31 @@ const DashboardPage = () => {
         const totalProcessed = totalRequests - closedRequests
         const fulfillmentRate = totalProcessed > 0 ? Math.round((fulfilledRequests / totalProcessed) * 100) : 0
         
-        // Get approved donations count
+        // Get approved donations count from JSONB claims in donations table
         let approvedDonationsCount = 0
         try {
-          const { data: claims } = await supabase
-            .from('donation_claims')
-            .select('id')
-            .eq('recipient_id', profile.id)
-            .in('status', ['claimed', 'delivered', 'completed'])
-          approvedDonationsCount = claims?.length || 0
+          // Fetch donations that have claims with this recipient - limit to 500 for performance
+          const { data: donations, error: donationsError } = await supabase
+            .from('donations')
+            .select('id, claims')
+            .not('claims', 'is', null)
+            .order('created_at', { ascending: false })
+            .limit(500)
+          
+          if (!donationsError && donations) {
+            // Count claims where recipient_id matches and status is in the allowed list
+            const validStatuses = ['claimed', 'delivered', 'completed']
+            donations.forEach(donation => {
+              if (Array.isArray(donation.claims)) {
+                donation.claims.forEach(claim => {
+                  if (claim.recipient_id === profile.id && 
+                      validStatuses.includes(claim.status)) {
+                    approvedDonationsCount++
+                  }
+                })
+              }
+            })
+          }
         } catch (err) {
           console.error('Error loading approved donations count:', err)
         }
