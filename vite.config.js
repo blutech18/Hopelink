@@ -29,32 +29,45 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // React core libraries - bundle with React-dependent libraries to ensure single React instance
+          // Don't chunk source files
+          if (!id.includes('node_modules')) {
+            return null
+          }
+
+          // React core libraries
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
             return 'vendor-react'
           }
-          // Bundle ALL React-dependent libraries with React to ensure they share the same React instance
-          // This prevents "Cannot read properties of undefined" errors for React APIs
-          if (
-            id.includes('node_modules/@radix-ui') ||
-            id.includes('node_modules/react-router-dom') ||
-            id.includes('node_modules/framer-motion') ||
-            id.includes('node_modules/react-hook-form') ||
-            id.includes('node_modules/recharts') ||
-            id.includes('node_modules/lucide-react') ||
-            id.includes('node_modules/@react-google-maps') ||
-            id.includes('node_modules/@vis.gl/react-google-maps')
-          ) {
+
+          // Catch ALL React-related packages (including transitive dependencies)
+          // Check for any package with "react" in its path to ensure React APIs are available
+          // This catches packages like "react-*", "@*/react-*", and transitive deps
+          const reactPatterns = [
+            '/react-',
+            'react-',
+            '/react/',
+            'react/',
+            '@radix-ui',
+            'framer-motion',
+            'recharts',
+            'lucide-react',
+            '@react-google-maps',
+            '@vis.gl/react-google-maps',
+            'react-router',
+            'react-hook-form'
+          ]
+          
+          if (reactPatterns.some(pattern => id.includes(pattern))) {
             return 'vendor-react' // Bundle with React to avoid React API access issues
           }
+
           // Supabase (non-React)
-          if (id.includes('node_modules/@supabase')) {
+          if (id.includes('@supabase')) {
             return 'vendor-supabase'
           }
+
           // Other large node_modules (non-React)
-          if (id.includes('node_modules')) {
-            return 'vendor-misc'
-          }
+          return 'vendor-misc'
         },
       },
     },
