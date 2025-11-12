@@ -29,37 +29,41 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // React core libraries
+          // React core libraries - bundle with React-dependent libraries to ensure single React instance
           if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
             return 'vendor-react'
           }
-          // Router
-          if (id.includes('node_modules/react-router-dom')) {
-            return 'vendor-router'
+          // Bundle React-dependent UI libraries with React to ensure they share the same React instance
+          if (id.includes('node_modules/@radix-ui')) {
+            return 'vendor-react' // Bundle with React to avoid forwardRef issues
           }
-          // Framer Motion (animations)
+          // Router - also React-dependent, bundle with React
+          if (id.includes('node_modules/react-router-dom')) {
+            return 'vendor-react' // Bundle with React to ensure single React instance
+          }
+          // Framer Motion (animations) - also React-dependent
           if (id.includes('node_modules/framer-motion')) {
-            return 'vendor-motion'
+            return 'vendor-react' // Bundle with React to avoid forwardRef issues
           }
           // Lucide icons
           if (id.includes('node_modules/lucide-react')) {
             return 'vendor-icons'
           }
-          // Radix UI components
-          if (id.includes('node_modules/@radix-ui')) {
-            return 'vendor-ui'
-          }
           // Supabase
           if (id.includes('node_modules/@supabase')) {
             return 'vendor-supabase'
           }
-          // React Hook Form
+          // React Hook Form - React-dependent
           if (id.includes('node_modules/react-hook-form')) {
-            return 'vendor-forms'
+            return 'vendor-react' // Bundle with React to avoid forwardRef issues
           }
           // Google Maps
-          if (id.includes('node_modules/@react-google-maps')) {
+          if (id.includes('node_modules/@react-google-maps') || id.includes('node_modules/@vis.gl/react-google-maps')) {
             return 'vendor-maps'
+          }
+          // Recharts - React-dependent
+          if (id.includes('node_modules/recharts')) {
+            return 'vendor-react' // Bundle with React to avoid forwardRef issues
           }
           // Other large node_modules
           if (id.includes('node_modules')) {
@@ -69,5 +73,13 @@ export default defineConfig({
       },
     },
     chunkSizeWarningLimit: 600,
+    commonjsOptions: {
+      include: [/node_modules/],
+      transformMixedEsModules: true,
+    },
+  },
+  optimizeDeps: {
+    include: ['react', 'react-dom', 'react/jsx-runtime'],
+    force: true,
   },
 })
