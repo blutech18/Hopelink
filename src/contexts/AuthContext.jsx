@@ -99,22 +99,89 @@ export const AuthProvider = ({ children }) => {
           if (!mounted) return
           
           console.log('Auth state changed:', event, session?.user?.email)
-          setSession(session)
-          setUser(session?.user ?? null)
           
           // Clear existing interval if user logs out
           if (!session?.user && accountStatusCheckInterval) {
             clearInterval(accountStatusCheckInterval)
             accountStatusCheckInterval = null
+            setSession(null)
+            setUser(null)
+            setProfile(null)
+            return
           }
           
           if (session?.user) {
             // Skip profile loading if we're handling Google callback
             if (isHandlingGoogleCallback) {
               console.log('Skipping profile loading during Google callback')
+              setSession(session)
+              setUser(session.user)
               setLoading(false)
               return
             }
+            
+            // CRITICAL: Check account suspension BEFORE setting session/user/profile
+            // This prevents suspended users from accessing the app
+            let accountIsSuspended = false
+            try {
+              const userProfile = await db.getProfile(session.user.id)
+              console.log('🔍 Auth listener checking account status for:', session.user.id, 'is_active:', userProfile?.is_active, 'type:', typeof userProfile?.is_active)
+              if (userProfile) {
+                // Check explicitly for false (suspended) - also check for string "false" or 0
+                const isSuspended = userProfile.is_active === false || userProfile.is_active === 'false' || userProfile.is_active === 0
+                if (isSuspended) {
+                  accountIsSuspended = true
+                  console.error('🚨 Suspended account detected in auth state listener - blocking access')
+                } else if (userProfile.is_active === null || userProfile.is_active === undefined) {
+                  console.log('⚠️ is_active is null/undefined in auth listener, treating as active')
+                }
+              }
+            } catch (suspendCheckErr) {
+              // If we can't check, try direct query
+              try {
+                const { data: userData, error: userError } = await supabase
+                  .from('users')
+                  .select('id, is_active')
+                  .eq('id', session.user.id)
+                  .single()
+                
+                console.log('🔍 Auth listener direct query for:', session.user.id, 'is_active:', userData?.is_active, 'type:', typeof userData?.is_active, 'error:', userError)
+                if (!userError && userData) {
+                  // Check explicitly for false (suspended) - also check for string "false" or 0
+                  const isSuspended = userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0
+                  if (isSuspended) {
+                    accountIsSuspended = true
+                    console.error('🚨 Suspended account detected via direct query in auth listener - blocking access')
+                  } else if (userData.is_active === null || userData.is_active === undefined) {
+                    console.log('⚠️ is_active is null/undefined in direct query (auth listener), treating as active')
+                  }
+                }
+              } catch (directErr) {
+                console.warn('Could not verify account status in auth listener:', directErr)
+                // If we can't verify, don't set session/user - this is a security measure
+                // The user will need to log in again and the signIn function will check
+                setLoading(false)
+                return
+              }
+            }
+            
+            // If account is suspended, sign out and don't set any state
+            if (accountIsSuspended) {
+              await supabase.auth.signOut()
+              setProfile(null)
+              setUser(null)
+              setSession(null)
+              setLoading(false)
+              // Dispatch custom event for login page to show suspension banner
+              window.dispatchEvent(new CustomEvent('account_suspended', { 
+                detail: { message: 'Your account has been suspended. Please contact the administrator for assistance.' }
+              }))
+              return
+            }
+            
+            // Only set session/user if account is NOT suspended
+            setSession(session)
+            setUser(session.user)
             
             try {
               await loadUserProfile(session.user.id)
@@ -140,7 +207,8 @@ export const AuthProvider = ({ children }) => {
                   }
                   
                   const userProfile = await db.getProfile(currentSession.user.id)
-                  if (userProfile && userProfile.is_active === false) {
+                  const isSuspended = userProfile && (userProfile.is_active === false || userProfile.is_active === 'false' || userProfile.is_active === 0)
+                  if (isSuspended) {
                     // Account was suspended - sign out immediately
                     console.error('🚨 Account status check: Account is suspended - signing out')
                     clearInterval(accountStatusCheckInterval)
@@ -223,10 +291,44 @@ export const AuthProvider = ({ children }) => {
       return
     }
 
-    // Check cache first
+    // Check cache first, but always verify is_active status from database
+    // This ensures suspended accounts are detected even if profile is cached
     const cachedProfile = profileCacheRef.current.get(userId)
     if (cachedProfile) {
-      console.log('📋 Using cached profile for user:', userId)
+      console.log('📋 Found cached profile for user:', userId)
+      // Always verify is_active status from database to catch suspensions
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, is_active')
+          .eq('id', userId)
+          .single()
+        
+        if (!userError && userData) {
+          // If account is suspended, don't use cached profile - sign out immediately
+          const isSuspended = userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0
+          if (isSuspended) {
+            console.error('🚨 Suspended account detected via cache verification - signing out')
+            profileCacheRef.current.delete(userId)
+            await supabase.auth.signOut()
+            setProfile(null)
+            setUser(null)
+            setSession(null)
+            setLoading(false)
+            throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+          }
+          // Update cached profile with latest is_active status
+          cachedProfile.is_active = userData.is_active
+        }
+      } catch (verifyErr) {
+        if (verifyErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+          throw verifyErr
+        }
+        // If verification fails, log but continue with cached profile
+        console.warn('Could not verify account status for cached profile:', verifyErr)
+      }
+      
+      console.log('✅ Using cached profile for user:', userId)
       setProfile(cachedProfile)
       setLoading(false)
       return
@@ -343,7 +445,10 @@ export const AuthProvider = ({ children }) => {
         }
         
         // Check if user account is suspended
-        if (userProfile.is_active === false) {
+        // Also check for string "false" or 0 in case it's stored differently
+        console.log('🔍 loadUserProfile checking account status for:', userId, 'is_active:', userProfile.is_active, 'type:', typeof userProfile.is_active)
+        const isSuspended = userProfile.is_active === false || userProfile.is_active === 'false' || userProfile.is_active === 0
+        if (isSuspended) {
           console.error('🚨 Account is suspended - signing out user')
           authDebug.logProfileLoading(userId, 'ACCOUNT_SUSPENDED')
           // Clear cache
@@ -719,6 +824,31 @@ export const AuthProvider = ({ children }) => {
       // Set signing in flag for smooth transition
       setIsSigningIn(true)
       
+      // CRITICAL: Check if account is suspended BEFORE attempting authentication
+      // This prevents wasted auth attempts and provides immediate feedback
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, email, is_active')
+          .eq('email', email.toLowerCase())
+          .maybeSingle()
+        
+        if (!userError && userData) {
+          const isSuspended = userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0
+          if (isSuspended) {
+            console.error('🚨 Suspended account detected before authentication - blocking login')
+            setIsSigningIn(false)
+            throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+          }
+        }
+      } catch (preCheckErr) {
+        if (preCheckErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+          throw preCheckErr
+        }
+        // If pre-check fails, log but continue with authentication attempt
+        console.warn('Pre-authentication suspension check failed:', preCheckErr)
+      }
+      
       // Note: Failed login attempts will show as 400 errors in browser Network tab
       // This is normal browser behavior for HTTP requests and cannot be suppressed
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -733,21 +863,30 @@ export const AuthProvider = ({ children }) => {
         }
         // Handle invalid credentials / 400 responses more clearly
         if (error.status === 400 || msg.includes('invalid login credentials') || msg.includes('invalid_grant')) {
-          // Record failed attempt and surface warnings/lockout if applicable
+          // After auth failure, check again if account is suspended (in case it was suspended between attempts)
           try {
-            const { data: attemptInfo } = await supabase.rpc('record_failed_login', { p_email: email, p_ip: null })
-            const info = Array.isArray(attemptInfo) ? attemptInfo[0] : attemptInfo
-            if (info?.locked_until) {
-              const until = new Date(info.locked_until)
-              const minutes = Math.max(1, Math.ceil((until.getTime() - Date.now()) / 60000))
-              throw new Error(`Too many failed attempts. Please try again in about ${minutes} minute(s).`)
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('id, email, is_active')
+              .eq('email', email.toLowerCase())
+              .maybeSingle()
+            
+            if (!userError && userData) {
+              const isSuspended = userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0
+              if (isSuspended) {
+                console.error('🚨 Suspended account detected after auth failure - blocking login')
+                throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+              }
             }
-            if (info?.warning && info?.attempt_count >= 5) {
-              throw new Error('Multiple failed attempts detected. You may be temporarily locked if this continues.')
+          } catch (postCheckErr) {
+            if (postCheckErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+              throw postCheckErr
             }
-          } catch (rpcErr) {
-            // Ignore RPC errors; fall back to generic message below
+            // If post-check fails, continue with generic error
           }
+          
+          // Note: record_failed_login RPC function doesn't exist, so we track attempts client-side
+          // The LoginPage component handles the warning display based on localStorage
           // Generic message (enumeration safe) and hint for Google OAuth
           throw new Error('Invalid email or password. If you signed up with Google, please use the "Continue with Google" button instead.')
         }
@@ -770,32 +909,89 @@ export const AuthProvider = ({ children }) => {
         // Fall through if we can't determine, continue normal flow
       }
       
+      // CRITICAL: Check if account is suspended IMMEDIATELY after authentication
+      // This must happen BEFORE any state updates or navigation
+      // We MUST block login if account is suspended
+      if (data?.user?.id) {
+        let accountIsSuspended = false
+        let suspensionError = null
+        
+        // First, try to get profile via getProfile
+        try {
+          const userProfile = await db.getProfile(data.user.id)
+          
+          // If profile exists and is suspended, block login immediately
+          // Check explicitly for false (not null or undefined)
+          // Also check for null/undefined and treat as active (default)
+          console.log('🔍 Checking account status for user:', data.user.id, 'is_active:', userProfile?.is_active, 'type:', typeof userProfile?.is_active)
+          if (userProfile) {
+            // Check if is_active is explicitly false (suspended)
+            // Also check for string "false" in case it's stored as string
+            const isSuspended = userProfile.is_active === false || userProfile.is_active === 'false' || userProfile.is_active === 0
+            if (isSuspended) {
+              console.error('🚨 Suspended account detected during login - blocking access')
+              accountIsSuspended = true
+              suspensionError = new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+            } else if (userProfile.is_active === null || userProfile.is_active === undefined) {
+              // If is_active is null/undefined, treat as active (default behavior)
+              console.log('⚠️ is_active is null/undefined for user, treating as active')
+            }
+          }
+        } catch (profileErr) {
+          // If error is about suspension, use it
+          if (profileErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+            accountIsSuspended = true
+            suspensionError = profileErr
+          } else {
+            // Profile check failed - try direct query as fallback
+            console.warn('Profile check failed, trying direct users table query:', profileErr)
+            
+            try {
+              // Direct query to users table to check is_active status
+              const { data: userData, error: userError } = await supabase
+                .from('users')
+                .select('id, is_active')
+                .eq('id', data.user.id)
+                .single()
+              
+              if (!userError && userData) {
+                // We got user data - check if suspended
+                // Check explicitly for false (not null or undefined)
+                console.log('🔍 Direct query result for user:', data.user.id, 'is_active:', userData.is_active, 'type:', typeof userData.is_active)
+                // Check for false, string "false", or 0
+                const isSuspended = userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0
+                if (isSuspended) {
+                  console.error('🚨 Suspended account detected via direct query - blocking access')
+                  accountIsSuspended = true
+                  suspensionError = new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+                } else if (userData.is_active === null || userData.is_active === undefined) {
+                  console.log('⚠️ is_active is null/undefined in direct query, treating as active')
+                }
+              } else if (userError && userError.code !== 'PGRST116') {
+                // If it's not a "not found" error, log it
+                console.error('Failed to verify account status from users table:', userError)
+              }
+            } catch (directCheckErr) {
+              // If direct check also fails, log it
+              console.warn('Direct account status check failed:', directCheckErr)
+              // Don't block login if we can't verify - auth state listener will check
+            }
+          }
+        }
+        
+        // If account is suspended, sign out and block login
+        if (accountIsSuspended && suspensionError) {
+          await supabase.auth.signOut()
+          setIsSigningIn(false)
+          throw suspensionError
+        }
+      }
+      
       // Reset failed attempts on successful authentication (best-effort)
       try {
         await supabase.rpc('reset_failed_logins', { p_email: email, p_ip: null })
       } catch (resetErr) {
         // Ignore reset errors
-      }
-      
-      // Check if account is suspended after successful login
-      // The profile will be loaded by the auth state change listener, but we check here for immediate feedback
-      try {
-        if (data?.user?.id) {
-          const userProfile = await db.getProfile(data.user.id)
-          if (userProfile && userProfile.is_active === false) {
-            // Account is suspended - sign out immediately
-            await supabase.auth.signOut()
-            setIsSigningIn(false)
-            throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
-          }
-        }
-      } catch (suspendCheckErr) {
-        // If error is about suspension, throw it
-        if (suspendCheckErr?.message?.includes('ACCOUNT_SUSPENDED')) {
-          throw suspendCheckErr
-        }
-        // If it's a network error or profile not found yet, continue - the loadUserProfile will handle it
-        console.warn('Could not check account status immediately:', suspendCheckErr)
       }
       
       // Keep signing in flag active for smooth transition
@@ -919,7 +1115,8 @@ export const AuthProvider = ({ children }) => {
           
           // Check if account is suspended BEFORE processing the callback
           // This prevents the "No session found" error that occurs when loadUserProfile signs out the user
-          if (existingProfile && existingProfile.is_active === false) {
+          const isSuspended = existingProfile && (existingProfile.is_active === false || existingProfile.is_active === 'false' || existingProfile.is_active === 0)
+          if (isSuspended) {
             // Sign out and clear state
             await supabase.auth.signOut()
             setProfile(null)
@@ -1027,7 +1224,8 @@ export const AuthProvider = ({ children }) => {
             console.log('✅ Successfully created new profile for Google signup:', newProfile)
             
             // Check if account is suspended (shouldn't happen for new accounts, but check anyway)
-            if (newProfile.is_active === false) {
+            const isSuspended = newProfile.is_active === false || newProfile.is_active === 'false' || newProfile.is_active === 0
+            if (isSuspended) {
               await supabase.auth.signOut()
               localStorage.removeItem('pendingGoogleSignupRole')
               throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
@@ -1052,7 +1250,8 @@ export const AuthProvider = ({ children }) => {
             }
             
             // Check if account is suspended
-            if (existingProfile.is_active === false) {
+            const isSuspended = existingProfile.is_active === false || existingProfile.is_active === 'false' || existingProfile.is_active === 0
+            if (isSuspended) {
               // Note: loadUserProfile already dispatched the toast notification during initialization
               // Don't dispatch again to avoid duplicate notifications
               // Sign out and clear state

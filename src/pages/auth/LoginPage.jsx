@@ -1,10 +1,11 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
-import { Eye, EyeOff, Heart, LogIn } from 'lucide-react'
+import { Eye, EyeOff, Heart, LogIn, AlertTriangle, Shield } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { supabase, db } from '../../lib/supabase'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import CaptchaModal from '../../components/security/CaptchaModal'
 
@@ -14,21 +15,53 @@ const LoginPage = () => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false)
   const [captchaOpen, setCaptchaOpen] = useState(false)
   const [captchaEmail, setCaptchaEmail] = useState('')
+  const [failedAttempts, setFailedAttempts] = useState(0)
+  const [suspensionError, setSuspensionError] = useState(null)
   const { signIn: emailSignIn, signInWithGoogle, isSigningIn } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
   const location = useLocation()
 
   const from = location.state?.from?.pathname || '/dashboard'
+
+  // Load failed attempts from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem('failed_login_attempts')
+      const attempts = stored ? parseInt(stored, 10) : 0
+      setFailedAttempts(attempts)
+    } catch (e) {
+      // Ignore localStorage errors
+    }
+  }, [])
   
   // Check for error message from callback page
   React.useEffect(() => {
     if (location.state?.error) {
-      error(location.state.error)
+      const errorMsg = location.state.error
+      // Check if it's a suspension error
+      if (errorMsg.includes('suspended') || errorMsg.includes('Suspended')) {
+        setSuspensionError(errorMsg)
+      } else {
+        error(errorMsg)
+      }
       // Clear the error from location state
       window.history.replaceState({}, document.title)
     }
   }, [location.state, error])
+
+  // Listen for account suspension events from auth state listener
+  useEffect(() => {
+    const handleSuspension = (event) => {
+      if (event.detail?.message) {
+        setSuspensionError(event.detail.message)
+        error(event.detail.message, 'Account Suspended')
+      }
+    }
+    
+    window.addEventListener('account_suspended', handleSuspension)
+    return () => window.removeEventListener('account_suspended', handleSuspension)
+  }, [error])
 
   const {
     register,
@@ -38,31 +71,119 @@ const LoginPage = () => {
 
   const onSubmit = async (data) => {
     setIsLoading(true)
+    // Clear any previous suspension error
+    setSuspensionError(null)
+    
     try {
       if (typeof emailSignIn !== 'function') {
         throw new Error('Email sign-in is temporarily unavailable. Please try again later.')
       }
+      
+      // Attempt to sign in - this will throw if account is suspended
       await emailSignIn(data.email, data.password)
       
-      // Wait for auth state to update before navigating
-      setTimeout(() => {
-        let suppressWelcome = false
-        try {
-          if (localStorage.getItem('justSignedUp') === 'true') {
-            suppressWelcome = true
-            localStorage.removeItem('justSignedUp')
+      // If we reach here, login was successful and account is NOT suspended
+      // Reset failed attempts on successful login
+      try {
+        localStorage.removeItem('failed_login_attempts')
+        setFailedAttempts(0)
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+      
+      // Double-check that account is not suspended before navigating
+      // This is a safety check in case the auth state listener hasn't run yet
+      try {
+        const { data: { user: currentUser } } = await supabase.auth.getUser()
+        if (currentUser?.id) {
+          // Try getProfile first
+          try {
+            const userProfile = await db.getProfile(currentUser.id)
+            console.log('🔍 LoginPage final check - getProfile result:', 'is_active:', userProfile?.is_active, 'type:', typeof userProfile?.is_active)
+            // Check for false, string "false", or 0
+            const isSuspended = userProfile && (userProfile.is_active === false || userProfile.is_active === 'false' || userProfile.is_active === 0)
+            if (isSuspended) {
+              // Account is suspended - sign out and throw error
+              console.error('🚨 Suspended account detected in LoginPage final check - blocking navigation')
+              await supabase.auth.signOut()
+              throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+            }
+          } catch (profileErr) {
+            // If getProfile fails, try direct query
+            if (profileErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+              throw profileErr
+            }
+            try {
+              const { data: userData, error: userError } = await supabase
+                .from('users')
+                .select('id, is_active')
+                .eq('id', currentUser.id)
+                .single()
+              
+              console.log('🔍 LoginPage final check - direct query result:', 'is_active:', userData?.is_active, 'type:', typeof userData?.is_active, 'error:', userError)
+              // Check for false, string "false", or 0
+              const isSuspended = !userError && userData && (userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0)
+              if (isSuspended) {
+                // Account is suspended - sign out and throw error
+                console.error('🚨 Suspended account detected in LoginPage direct query - blocking navigation')
+                await supabase.auth.signOut()
+                throw new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
+              }
+            } catch (directErr) {
+              if (directErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+                throw directErr
+              }
+              console.warn('LoginPage final check - both getProfile and direct query failed:', directErr)
+            }
           }
-        } catch {}
-
-        if (!suppressWelcome) {
-          success('Welcome back!')
         }
-        navigate(from, { replace: true })
-      }, 500)
+      } catch (finalCheckErr) {
+        if (finalCheckErr?.message?.includes('ACCOUNT_SUSPENDED')) {
+          throw finalCheckErr
+        }
+        // If check fails, log but continue - auth state listener will handle it
+        console.warn('Final suspension check failed:', finalCheckErr)
+      }
+      
+      // Wait a moment for auth state to update, then navigate
+      // Only navigate if we successfully completed login without suspension error
+      await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Final check: make sure we still have a valid session and no suspension error
+      const { data: { session: finalSession } } = await supabase.auth.getSession()
+      if (!finalSession?.user) {
+        // Session was cleared (likely due to suspension) - don't navigate
+        throw new Error('Session was cleared. Please try again.')
+      }
+      
+      let suppressWelcome = false
+      try {
+        if (localStorage.getItem('justSignedUp') === 'true') {
+          suppressWelcome = true
+          localStorage.removeItem('justSignedUp')
+        }
+      } catch {}
+
+      if (!suppressWelcome) {
+        success('Welcome back!')
+      }
+      navigate(from, { replace: true })
     } catch (err) {
+      // Increment failed attempts
+      const newAttempts = failedAttempts + 1
+      setFailedAttempts(newAttempts)
+      try {
+        localStorage.setItem('failed_login_attempts', newAttempts.toString())
+      } catch (e) {
+        // Ignore localStorage errors
+      }
+
       // Handle account suspension error
       if (err.message?.includes('ACCOUNT_SUSPENDED')) {
         const suspendMessage = err.message.replace('ACCOUNT_SUSPENDED: ', '')
+        // Set persistent suspension error banner
+        setSuspensionError(suspendMessage)
+        // Also show toast notification
         error(suspendMessage, 'Account Suspended')
       } else if (err.message?.toLowerCase().includes('too many failed attempts')) {
         error(err.message, 'Temporarily Locked')
@@ -76,7 +197,56 @@ const LoginPage = () => {
       } else if (err.message?.toLowerCase().includes('multiple failed attempts detected')) {
         error(err.message, 'Security Warning')
       } else {
-        error(err.message || 'Failed to sign in. Please check your credentials.')
+        // CRITICAL: Automatically suspend account after 7 failed attempts
+        if (newAttempts >= 7) {
+          try {
+            // Find user by email and suspend them
+            const { data: userData, error: userError } = await supabase
+              .from('users')
+              .select('id, email, is_active')
+              .eq('email', data.email.toLowerCase())
+              .single()
+            
+            if (!userError && userData) {
+              // Suspend the account in the database
+              const { error: suspendError } = await supabase
+                .from('users')
+                .update({ is_active: false, updated_at: new Date().toISOString() })
+                .eq('id', userData.id)
+              
+              if (!suspendError) {
+                console.error('🚨 Account automatically suspended after 7 failed login attempts:', data.email)
+                const suspendMessage = 'Your account has been automatically suspended after 7 failed login attempts. Please contact the administrator for assistance.'
+                setSuspensionError(suspendMessage)
+                error(suspendMessage, 'Account Suspended')
+                // Dispatch event to notify admin page to refresh
+                window.dispatchEvent(new CustomEvent('user_suspended', { 
+                  detail: { userId: userData.id, email: data.email }
+                }))
+                // Clear failed attempts counter
+                try {
+                  localStorage.removeItem('failed_login_attempts')
+                  setFailedAttempts(0)
+                } catch (e) {
+                  // Ignore localStorage errors
+                }
+                setIsLoading(false)
+                return
+              } else {
+                console.error('Failed to suspend account:', suspendError)
+              }
+            }
+          } catch (suspendErr) {
+            console.error('Error suspending account after 7 attempts:', suspendErr)
+          }
+          
+          // If suspension failed, still show warning
+          error('Your account has been suspended after 7 failed login attempts. Please contact support for assistance.', 'Account Suspended')
+        } else if (newAttempts >= 5) {
+          error(`Warning: ${newAttempts} failed login attempts detected. Your account will be suspended after 7 failed attempts. Please verify your credentials or use "Forgot Password" if needed.`, 'Security Warning')
+        } else {
+          error(err.message || 'Failed to sign in. Please check your credentials.')
+        }
       }
       setIsLoading(false)
     }
@@ -161,6 +331,69 @@ const LoginPage = () => {
             </div>
 
             <div className="py-6 px-6 shadow-xl rounded-2xl" style={{backgroundColor: '#001a5c'}}>
+              {/* Account Suspension Error Banner - Most Important */}
+              {suspensionError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 p-4 bg-red-900/40 border-2 border-red-500 rounded-lg"
+                >
+                  <div className="flex items-start gap-3">
+                    <Shield className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-semibold text-red-300 mb-1">Account Suspended</h3>
+                      <p className="text-xs text-red-200 mb-2">
+                        {suspensionError}
+                      </p>
+                      <button
+                        onClick={() => setSuspensionError(null)}
+                        className="text-xs text-red-300 hover:text-red-200 underline"
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {/* Security Warnings */}
+              {!suspensionError && failedAttempts >= 7 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 p-4 bg-red-900/30 border-2 border-red-600 rounded-lg"
+                >
+                  <div className="flex items-start gap-3">
+                    <Shield className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-semibold text-red-300 mb-1">Account Suspension Warning</h3>
+                      <p className="text-xs text-red-200">
+                        You have reached 7 failed login attempts. Your account may be suspended for security purposes. 
+                        Please use "Forgot Password" to reset your password or contact support for assistance.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+              {!suspensionError && failedAttempts >= 5 && failedAttempts < 7 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mb-4 p-4 bg-yellow-900/30 border-2 border-yellow-600 rounded-lg"
+                >
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1">
+                      <h3 className="text-sm font-semibold text-yellow-300 mb-1">Security Warning</h3>
+                      <p className="text-xs text-yellow-200">
+                        {failedAttempts} failed login attempt{failedAttempts > 1 ? 's' : ''} detected. 
+                        Your account will be suspended after 7 failed attempts. Please verify your credentials or use "Forgot Password" if needed.
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
               <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-white">

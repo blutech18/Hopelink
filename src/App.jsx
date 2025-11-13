@@ -69,6 +69,16 @@ const CodeOfConductPage = React.lazy(() => import('./pages/legal/CodeOfConductPa
 // Protected Route component
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user, profile, loading, isSigningOut } = useAuth()
+  const navigate = useNavigate()
+  
+  // Check if account is suspended - this is a critical security check
+  React.useEffect(() => {
+    if (profile && (profile.is_active === false || profile.is_active === 'false' || profile.is_active === 0)) {
+      console.error('🚨 Suspended account detected in ProtectedRoute - redirecting to login')
+      // The auth context should handle sign out, but we'll redirect to login as a safeguard
+      navigate('/login', { replace: true, state: { error: 'Your account has been suspended. Please contact the administrator for assistance.' } })
+    }
+  }, [profile, navigate])
   
   if (loading || isSigningOut) {
     return (
@@ -80,6 +90,12 @@ const ProtectedRoute = ({ children, allowedRoles }) => {
   
   if (!user) {
     return <Navigate to="/login" replace />
+  }
+  
+  // CRITICAL: Block access if account is suspended
+  if (profile && (profile.is_active === false || profile.is_active === 'false' || profile.is_active === 0)) {
+    console.error('🚨 Suspended account blocked in ProtectedRoute')
+    return <Navigate to="/login" replace state={{ error: 'Your account has been suspended. Please contact the administrator for assistance.' }} />
   }
   
   if (allowedRoles && profile && !allowedRoles.includes(profile.role)) {

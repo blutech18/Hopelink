@@ -1414,12 +1414,17 @@ export const db = {
     const existingClaims = Array.isArray(donation.claims) ? donation.claims : []
     const updatedClaims = [...existingClaims, newClaim]
 
+    // Determine the new status based on delivery mode
+    // For volunteer deliveries, keep status as 'available' so it appears in available-tasks
+    // The status will change to 'matched' or 'in_transit' when a volunteer is assigned
+    const newStatus = donation.delivery_mode === 'volunteer' ? 'available' : 'claimed'
+
     // Update donation with new claim in JSONB array and update status
     const { error: updateError } = await supabase
       .from('donations')
       .update({ 
         claims: updatedClaims,
-        status: 'claimed'
+        status: newStatus
       })
       .eq('id', donationId)
 
@@ -1452,38 +1457,48 @@ export const db = {
       // This ensures volunteers have full control over which tasks they accept
       // No automatic assignment based on match score - volunteers decide themselves
     } else if (donation.delivery_mode === 'pickup') {
-      // Create a pickup record for self-pickup tracking
-      const { error: pickupError } = await supabase
-        .from('pickups')
+      // Create a pickup delivery record in deliveries table with delivery_mode='pickup'
+      const recipient = await this.getProfile(claim.recipient_id)
+      const deliveryAddress = recipient?.address 
+        ? `${recipient.address}, ${recipient.city || ''}`.trim()
+        : 'TBD'
+      
+      const { error: pickupDeliveryError } = await supabase
+        .from('deliveries')
         .insert({
           claim_id: claim.id,
-          pickup_location: donation.pickup_location,
-          pickup_instructions: donation.pickup_instructions,
-          status: 'scheduled' // Initial status for self-pickup
+          volunteer_id: null, // Pickup donations don't have volunteers
+          delivery_mode: 'pickup',
+          status: 'pending', // Initial status for self-pickup
+          pickup_address: donation.pickup_location || 'TBD',
+          delivery_address: deliveryAddress,
+          pickup_city: donation.pickup_location?.split(',')?.pop()?.trim() || 'TBD',
+          delivery_city: recipient?.city || 'TBD'
         })
 
-      if (pickupError) {
-        console.error('Error creating pickup record:', pickupError)
+      if (pickupDeliveryError) {
+        console.error('Error creating pickup delivery record:', pickupDeliveryError)
         // Don't throw error here as the claim was successful
       }
 
       // Notify donor about the pickup arrangement
       await this.createNotification({
         user_id: donation.donor_id,
-        type: 'pickup_scheduled',
+        type: 'system_alert',
         title: 'Pickup Scheduled',
         message: `A recipient has claimed your donation and will arrange pickup. Please coordinate the pickup time and location.`,
         data: {
           claim_id: claim.id,
           donation_id: donationId,
-          pickup_location: donation.pickup_location
+          pickup_location: donation.pickup_location,
+          notification_type: 'pickup_scheduled'
         }
       })
 
       // Notify recipient with pickup instructions  
       await this.createNotification({
         user_id: recipientId,
-        type: 'pickup_instructions',
+        type: 'system_alert',
         title: 'Pickup Instructions',
         message: `Your donation claim has been approved! Please coordinate with the donor to arrange pickup.`,
         data: {
@@ -1491,7 +1506,8 @@ export const db = {
           donation_id: donationId,
           pickup_location: donation.pickup_location,
           pickup_instructions: donation.pickup_instructions,
-          donor_id: donation.donor_id
+          donor_id: donation.donor_id,
+          notification_type: 'pickup_instructions'
         }
       })
     } else if (donation.delivery_mode === 'direct') {
@@ -1522,26 +1538,28 @@ export const db = {
       // Notify donor about the direct delivery request
       await this.createNotification({
         user_id: donation.donor_id,
-        type: 'direct_delivery_request',
+        type: 'system_alert',
         title: 'Direct Delivery Requested',
         message: `A recipient has claimed your donation and requested direct delivery. Please coordinate the delivery details.`,
         data: {
           claim_id: claim.id,
           donation_id: donationId,
-          recipient_id: recipientId
+          recipient_id: recipientId,
+          notification_type: 'direct_delivery_request'
         }
       })
 
       // Notify recipient about coordination needed
       await this.createNotification({
         user_id: recipientId,
-        type: 'direct_delivery_coordination',
+        type: 'system_alert',
         title: 'Delivery Coordination Needed',
         message: `Your direct delivery request has been approved! Please coordinate with the donor to arrange delivery details.`,
         data: {
           claim_id: claim.id,
           donation_id: donationId,
-          donor_id: donation.donor_id
+          donor_id: donation.donor_id,
+          notification_type: 'direct_delivery_coordination'
         }
       })
     }
@@ -3329,6 +3347,30 @@ export const db = {
         .single()
       
       if (error) throw error
+      
+      // Update donation status to 'matched' when volunteer is assigned
+      // Get the donation ID from the claim
+      const { data: donations, error: donationLookupError } = await supabase
+        .from('donations')
+        .select('id, claims')
+        .not('claims', 'is', null)
+      
+      if (!donationLookupError && donations) {
+        for (const donation of donations) {
+          if (Array.isArray(donation.claims)) {
+            const claim = donation.claims.find(c => c && c.id === claimId)
+            if (claim) {
+              // Update donation status to 'matched' since volunteer is now assigned
+              await supabase
+                .from('donations')
+                .update({ status: 'matched' })
+                .eq('id', donation.id)
+              break
+            }
+          }
+        }
+      }
+      
       return data
     } else {
       // Create new delivery record
@@ -3387,6 +3429,14 @@ export const db = {
         .single()
       
       if (error) throw error
+      
+      // Update donation status to 'matched' when volunteer is assigned
+      // This ensures the donation no longer appears in available-tasks
+      await supabase
+        .from('donations')
+        .update({ status: 'matched' })
+        .eq('id', donation.id)
+      
       return data
     }
   },
@@ -3709,15 +3759,30 @@ export const db = {
     let pollInterval = null
     let retryTimeout = null
     let isSubscribed = false
+    let isActive = true // Flag to track if subscription is still active
     
     // Function to start polling (primary method since real-time isn't configured)
     const startPolling = () => {
-      if (pollInterval) return // Already polling
+      if (pollInterval || !isActive) {
+        console.log(`⚠️ Polling already active or subscription inactive for user ${userId}, skipping duplicate start`)
+        return // Already polling or subscription is inactive
+      }
       
       console.log(`🔄 Starting optimized notification polling for user ${userId} (every 5 seconds)`)
       
       // Poll function - just trigger onChange, Navbar will fetch notifications
       const pollNotifications = () => {
+        // Check if subscription is still active before processing
+        if (!isActive) {
+          console.log(`⚠️ Polling stopped for user ${userId}, skipping callback`)
+          // Clear interval if subscription is inactive
+          if (pollInterval) {
+            clearInterval(pollInterval)
+            pollInterval = null
+          }
+          return
+        }
+        
         try {
           // Trigger onChange callback - Navbar will fetch and update notifications
           onChange?.({ eventType: 'POLL', new: null })
@@ -3807,6 +3872,16 @@ export const db = {
       try { 
         console.log(`🔔 Unsubscribing from notifications for user ${userId}`)
         
+        // Mark subscription as inactive FIRST to prevent new callbacks
+        isActive = false
+        
+        // Clear polling interval to stop scheduled callbacks
+        if (pollInterval) {
+          clearInterval(pollInterval)
+          pollInterval = null
+          console.log(`🔄 Stopped polling for user ${userId}`)
+        }
+        
         // Clear timeouts
         if (retryTimeout) {
           clearTimeout(retryTimeout)
@@ -3822,15 +3897,14 @@ export const db = {
           }
           channel = null
         }
-        
-        // Clear polling interval
+      } catch (error) {
+        console.error('Error cleaning up notification subscription:', error)
+        // Ensure polling is stopped even if cleanup fails
+        isActive = false
         if (pollInterval) {
           clearInterval(pollInterval)
           pollInterval = null
-          console.log(`🔄 Stopped polling for user ${userId}`)
         }
-      } catch (error) {
-        console.error('Error cleaning up notification subscription:', error)
       }
     }
   },
@@ -4356,7 +4430,17 @@ export const db = {
           }
         }
 
+        if (!claim || !donation) {
+          throw new Error(`Claim ${requestData.claim_id} not found in any donation`)
+        }
+
         if (claim && donation) {
+          // Get donor ID - use donor relation if available, otherwise use donor_id directly
+          const donorId = donation.donor?.id || donation.donor_id
+          if (!donorId) {
+            throw new Error('Donor ID not found for donation')
+          }
+
           // Fetch recipient details
           const { data: recipient, error: recipientError } = await supabase
             .from('users')
@@ -4371,28 +4455,51 @@ export const db = {
             donation: {
               id: donation.id,
               title: donation.title,
-              donor: donation.donor
+              donor: donation.donor || { id: donorId, name: 'Unknown' }
             },
             recipient: recipient || { id: claim.recipient_id, name: 'Unknown' }
           }
 
-          // Notify donor
-          await this.createNotification({
-            user_id: claimData.donation.donor.id,
-            type: 'volunteer_request',
-            title: 'Volunteer Request',
-            message: `${requestData.volunteer_name} is requesting to deliver your donation: ${claimData.donation.title}. Please confirm if you approve this volunteer.`,
-            data: { 
-              volunteer_id: requestData.volunteer_id,
-              volunteer_name: requestData.volunteer_name,
-              volunteer_email: requestData.volunteer_email,
-              volunteer_phone: requestData.volunteer_phone,
-              claim_id: requestData.claim_id,
-              donation_id: claimData.donation.id,
-              task_type: 'approved_donation',
-              volunteer_request_id: volunteerRequest.id
-            }
+          // Notify donor - ensure notification is created with correct donor ID
+          console.log('Creating volunteer request notification for donor:', {
+            donorId,
+            volunteerId: requestData.volunteer_id,
+            volunteerName: requestData.volunteer_name,
+            claimId: requestData.claim_id,
+            donationId: donation.id,
+            volunteerRequestId: volunteerRequest.id
           })
+          
+          try {
+            const donorNotification = await this.createNotification({
+              user_id: donorId,
+              type: 'volunteer_request',
+              title: 'Volunteer Request',
+              message: `${requestData.volunteer_name} is requesting to deliver your donation: ${donation.title}. Please confirm if you approve this volunteer.`,
+              data: { 
+                volunteer_id: requestData.volunteer_id,
+                volunteer_name: requestData.volunteer_name,
+                volunteer_email: requestData.volunteer_email,
+                volunteer_phone: requestData.volunteer_phone,
+                claim_id: requestData.claim_id,
+                donation_id: donation.id,
+                task_type: 'approved_donation',
+                volunteer_request_id: volunteerRequest.id
+              }
+            })
+            
+            console.log('✅ Volunteer request notification created for donor:', {
+              notificationId: donorNotification?.id,
+              userId: donorNotification?.user_id,
+              type: donorNotification?.type,
+              readAt: donorNotification?.read_at,
+              data: donorNotification?.data
+            })
+          } catch (notifError) {
+            console.error('❌ Error creating volunteer request notification for donor:', notifError)
+            // Don't throw - we still want to continue with recipient notification
+            // But log the error so we can debug
+          }
           
           // Notify recipient
           await this.createNotification({
@@ -4830,31 +4937,67 @@ export const db = {
     }
 
     try {
-      // Get current delivery details
+      // Get current delivery details (without foreign key relationships since claims are JSONB)
       const { data: delivery, error: deliveryError } = await supabase
         .from('deliveries')
-        .select(`
-          *,
-          claim:donation_claims(
-            *,
-            donation:donations(title, donor_id),
-            recipient_id
-          )
-        `)
+        .select('*')
         .eq('id', deliveryId)
         .single()
 
       if (deliveryError) throw deliveryError
+
+      // Get claim from JSONB in donations table
+      if (!delivery.claim_id) {
+        throw new Error('Delivery does not have a claim_id')
+      }
+
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, title, donor_id, claims')
+        .not('claims', 'is', null)
+
+      if (donationsError) throw donationsError
+
+      // Find the claim in the donations' JSONB claims arrays
+      let claim = null
+      let donation = null
+      for (const d of donations || []) {
+        if (Array.isArray(d.claims)) {
+          claim = d.claims.find(c => c && c.id === delivery.claim_id)
+          if (claim) {
+            donation = d
+            break
+          }
+        }
+      }
+
+      if (!claim || !donation) {
+        throw new Error(`Claim ${delivery.claim_id} not found in any donation`)
+      }
+
+      // Structure claim object to match expected format
+      const claimData = {
+        ...claim,
+        donation_id: donation.id,
+        donation: {
+          id: donation.id,
+          title: donation.title,
+          donor_id: donation.donor_id
+        }
+      }
+
+      // Attach claim data to delivery object for consistency
+      delivery.claim = claimData
 
       // Send notification to recipient confirming their action
       await this.createNotification({
         user_id: recipientId,
         type: 'delivery_completed',
         title: 'Receipt Confirmed',
-        message: `Thank you for confirming receipt of "${delivery.claim.donation.title}". Waiting for donor confirmation to complete the transaction.`,
+        message: `Thank you for confirming receipt of "${claimData.donation.title}". Waiting for donor confirmation to complete the transaction.`,
         data: { 
           delivery_id: deliveryId,
-          claim_id: delivery.claim.id,
+          claim_id: claimData.id,
           confirmed: confirmed,
           rating: rating,
           feedback: feedback,
@@ -4865,35 +5008,19 @@ export const db = {
 
       // Notify donor that recipient has confirmed and ask for final confirmation
       await this.createNotification({
-        user_id: delivery.claim.donation.donor_id,
+        user_id: claimData.donation.donor_id,
         type: 'delivery_completed',
         title: 'Recipient Confirmed Receipt - Please Complete',
-        message: `The recipient has confirmed receiving "${delivery.claim.donation.title}". Please mark this donation as complete to finalize the transaction.`,
+        message: `The recipient has confirmed receiving "${claimData.donation.title}". Please mark this donation as complete to finalize the transaction.`,
         data: { 
           delivery_id: deliveryId,
-          claim_id: delivery.claim.id,
+          claim_id: claimData.id,
           recipient_confirmed: true,
           action_required: 'donor_final_confirmation'
         }
       })
 
-      // If no rating was provided now, send a reminder to recipient to rate the donor later
-      if (confirmed && (rating === null || rating === undefined)) {
-        try {
-          await this.createNotification({
-            user_id: recipientId,
-            type: 'rating_reminder',
-            title: 'Rate Your Donation Experience',
-            message: `Please take a moment to rate your experience with the donor for "${delivery.claim.donation.title}".`,
-            data: {
-              delivery_id: deliveryId,
-              claim_id: delivery.claim.id,
-              rated_user_id: delivery.claim.donation.donor_id,
-              role: 'recipient'
-            }
-          })
-        } catch (_) {}
-      }
+      // Rating reminders removed - rating functionality has been removed from the system
 
       // Mark recipient confirmation notifications as read
       const { data: unreadNotifications } = await supabase
@@ -5761,34 +5888,59 @@ export const db = {
     }
 
     try {
-      // Get pickup and claim details
-      const { data: pickup, error: pickupError } = await supabase
-        .from('pickups')
+      // Get pickup delivery and claim details from deliveries table
+      const { data: pickupDelivery, error: pickupError } = await supabase
+        .from('deliveries')
         .select(`
           *,
-          claim:donation_claims(
-            *,
-            donation:donations(title, donor_id),
+          claim:donation_claims!inner(
+            id,
             recipient_id,
-            donor:users!donation_claims_donor_id_fkey(id, name),
-            recipient:users!donation_claims_recipient_id_fkey(id, name)
+            donation:donations!inner(
+              id,
+              title,
+              donor_id,
+              claims
+            )
           )
         `)
         .eq('claim_id', claimId)
+        .eq('delivery_mode', 'pickup')
         .single()
 
       if (pickupError) throw pickupError
 
-      // Update pickup status
+      // Get recipient and donor info
+      const claim = pickupDelivery.claim
+      const donation = claim.donation
+      const recipientId = claim.recipient_id
+      const donorId = donation.donor_id
+
+      // Update delivery status (pickup deliveries are stored in deliveries table)
+      const updateData = {
+        status: status,
+        updated_at: new Date().toISOString()
+      }
+
+      // Add status-specific timestamps
+      if (status === 'accepted' || ['picked_up', 'in_transit', 'delivered'].includes(status)) {
+        updateData.accepted_at = new Date().toISOString()
+      }
+      if (['picked_up', 'in_transit', 'delivered'].includes(status)) {
+        updateData.picked_up_at = new Date().toISOString()
+      }
+      if (['in_transit', 'delivered'].includes(status)) {
+        updateData.in_transit_at = new Date().toISOString()
+      }
+      if (status === 'delivered') {
+        updateData.delivered_at = new Date().toISOString()
+      }
+
       const { error: updateError } = await supabase
-        .from('pickups')
-        .update({
-          status: status,
-          notes: notes,
-          updated_at: new Date().toISOString(),
-          ...(status === 'completed' && { completed_at: new Date().toISOString() })
-        })
+        .from('deliveries')
+        .update(updateData)
         .eq('claim_id', claimId)
+        .eq('delivery_mode', 'pickup')
 
       if (updateError) throw updateError
 
@@ -5796,25 +5948,30 @@ export const db = {
       let notificationTitle, notificationMessage
 
       switch (status) {
-        case 'confirmed':
+        case 'accepted':
           notificationTitle = 'Pickup Confirmed'
           notificationMessage = `Pickup has been confirmed. The recipient will collect the items soon.`
           break
-        case 'completed':
+        case 'delivered':
           notificationTitle = 'Pickup Completed'
-          notificationMessage = `The donation "${pickup.claim.donation.title}" has been successfully picked up!`
+          notificationMessage = `The donation "${donation.title}" has been successfully picked up!`
           
-          // Update donation claim status to delivered
-          await supabase
-            .from('donation_claims')
-            .update({ status: 'delivered' })
-            .eq('id', pickup.claim.id)
+          // Update claim status in donations table JSONB
+          if (donation.claims && Array.isArray(donation.claims)) {
+            const updatedClaims = donation.claims.map(c => 
+              c.id === claimId ? { ...c, status: 'delivered' } : c
+            )
+            await supabase
+              .from('donations')
+              .update({ claims: updatedClaims })
+              .eq('id', donation.id)
+          }
 
           // Update donation status to delivered
           await supabase
             .from('donations')
             .update({ status: 'delivered' })
-            .eq('id', pickup.claim.donation.id)
+            .eq('id', donation.id)
 
           // Create completion confirmation requests for both parties
           await this.createPickupCompletionRequest(claimId, userId)
@@ -5822,18 +5979,24 @@ export const db = {
           
         case 'cancelled':
           notificationTitle = 'Pickup Cancelled'
-          notificationMessage = `The pickup for "${pickup.claim.donation.title}" has been cancelled.`
+          notificationMessage = `The pickup for "${donation.title}" has been cancelled.`
           
-          // Reset donation and claim status back to available
-          await supabase
-            .from('donation_claims')
-            .update({ status: 'cancelled' })
-            .eq('id', pickup.claim.id)
+          // Update claim status in donations table JSONB
+          if (donation.claims && Array.isArray(donation.claims)) {
+            const updatedClaims = donation.claims.map(c => 
+              c.id === claimId ? { ...c, status: 'cancelled' } : c
+            )
+            await supabase
+              .from('donations')
+              .update({ claims: updatedClaims })
+              .eq('id', donation.id)
+          }
 
+          // Update donation status back to available
           await supabase
             .from('donations')
             .update({ status: 'available' })
-            .eq('id', pickup.claim.donation.id)
+            .eq('id', donation.id)
           break
           
         default:
@@ -5841,24 +6004,34 @@ export const db = {
           notificationMessage = `Pickup status updated to: ${status.replace('_', ' ')}`
       }
 
-      // Send notifications to both parties (except for completion, which is handled separately)
-      if (status !== 'completed') {
+      // Send notifications to both parties (except for delivered, which is handled separately)
+      if (status !== 'delivered') {
         // Notify donor
         await this.createNotification({
-          user_id: pickup.claim.donation.donor_id,
-          type: 'pickup_update',
+          user_id: donorId,
+          type: 'system_alert',
           title: notificationTitle,
           message: notificationMessage,
-          data: { claim_id: claimId, status: status, notes: notes }
+          data: { 
+            claim_id: claimId, 
+            status: status, 
+            notes: notes,
+            notification_type: 'pickup_update'
+          }
         })
 
         // Notify recipient
         await this.createNotification({
-          user_id: pickup.claim.recipient_id,
-          type: 'pickup_update',
+          user_id: recipientId,
+          type: 'system_alert',
           title: notificationTitle,
           message: notificationMessage,
-          data: { claim_id: claimId, status: status, notes: notes }
+          data: { 
+            claim_id: claimId, 
+            status: status, 
+            notes: notes,
+            notification_type: 'pickup_update'
+          }
         })
       }
 
@@ -5877,42 +6050,49 @@ export const db = {
     }
 
     try {
-      // Get full pickup details with user information
-      const { data: pickup, error: pickupError } = await supabase
-        .from('pickups')
+      // Get pickup delivery and claim details from deliveries table
+      const { data: pickupDelivery, error: pickupError } = await supabase
+        .from('deliveries')
         .select(`
           *,
-          claim:donation_claims(
-            *,
-            donation:donations(
-              *,
+          claim:donation_claims!inner(
+            id,
+            recipient_id,
+            donation:donations!inner(
+              id,
+              title,
+              donor_id,
               donor:users!donations_donor_id_fkey(id, name)
             ),
             recipient:users!donation_claims_recipient_id_fkey(id, name)
           )
         `)
         .eq('claim_id', claimId)
+        .eq('delivery_mode', 'pickup')
         .single()
 
       if (pickupError) throw pickupError
 
+      const claim = pickupDelivery.claim
+      const donation = claim.donation
+
       // Determine who completed the pickup
-      const isCompletedByDonor = completedByUserId === pickup.claim.donation.donor_id
-      const isCompletedByRecipient = completedByUserId === pickup.claim.recipient_id
+      const isCompletedByDonor = completedByUserId === donation.donor_id
+      const isCompletedByRecipient = completedByUserId === claim.recipient_id
       
       const completedByName = isCompletedByDonor 
-        ? pickup.claim.donation.donor.name 
+        ? donation.donor.name 
         : isCompletedByRecipient 
-          ? pickup.claim.recipient.name 
+          ? claim.recipient.name 
           : 'Someone'
 
-      const confirmationMessage = `${completedByName} has marked the pickup as completed for "${pickup.claim.donation.title}". Please confirm to finalize the transaction.`
+      const confirmationMessage = `${completedByName} has marked the pickup as completed for "${donation.title}". Please confirm to finalize the transaction.`
 
       // Notify donor for confirmation (if not the one who completed it)
       if (!isCompletedByDonor) {
         await this.createNotification({
-          user_id: pickup.claim.donation.donor_id,
-          type: 'pickup_completed',
+          user_id: donation.donor_id,
+          type: 'system_alert',
           title: 'Pickup Completed - Please Confirm',
           message: confirmationMessage,
           data: { 
@@ -5921,7 +6101,8 @@ export const db = {
             completed_by_name: completedByName,
             role: 'donor',
             action_required: 'confirm_pickup',
-            pickup_id: pickup.id
+            delivery_id: pickupDelivery.id,
+            notification_type: 'pickup_completed'
           }
         })
       }
@@ -5929,8 +6110,8 @@ export const db = {
       // Notify recipient for confirmation (if not the one who completed it)
       if (!isCompletedByRecipient) {
         await this.createNotification({
-          user_id: pickup.claim.recipient_id,
-          type: 'pickup_completed',
+          user_id: claim.recipient_id,
+          type: 'system_alert',
           title: 'Pickup Completed - Please Confirm',
           message: confirmationMessage,
           data: { 
@@ -5939,7 +6120,8 @@ export const db = {
             completed_by_name: completedByName,
             role: 'recipient',
             action_required: 'confirm_pickup',
-            pickup_id: pickup.id
+            delivery_id: pickupDelivery.id,
+            notification_type: 'pickup_completed'
           }
         })
       }
@@ -5957,75 +6139,131 @@ export const db = {
     }
 
     try {
-      // Get pickup and claim details
-      const { data: pickup, error: pickupError } = await supabase
-        .from('pickups')
-        .select(`
-          *,
-          claim:donation_claims(
-            *,
-            donation:donations(title, donor_id),
-            recipient_id
-          )
-        `)
-        .eq('claim_id', claimId)
-        .single()
+      // Get claim from JSONB in donations table first (delivery may not exist)
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, title, donor_id, delivery_mode, claims')
+        .not('claims', 'is', null)
 
-      if (pickupError) throw pickupError
+      if (donationsError) throw donationsError
+
+      // Find the claim in the donations' JSONB claims arrays
+      let claim = null
+      let donation = null
+      for (const d of donations || []) {
+        if (Array.isArray(d.claims)) {
+          claim = d.claims.find(c => c && c.id === claimId)
+          if (claim) {
+            donation = d
+            break
+          }
+        }
+      }
+
+      if (!claim || !donation) {
+        throw new Error(`Claim ${claimId} not found in any donation`)
+      }
+
+      // Verify this is a pickup donation
+      if (donation.delivery_mode !== 'pickup') {
+        throw new Error('This donation is not a pickup donation')
+      }
+
+      // Try to get pickup delivery (optional - may not exist for all pickup donations)
+      let pickupDelivery = null
+      const { data: deliveryData, error: pickupError } = await supabase
+        .from('deliveries')
+        .select('*')
+        .eq('claim_id', claimId)
+        .eq('delivery_mode', 'pickup')
+        .maybeSingle()
+
+      if (!pickupError && deliveryData) {
+        pickupDelivery = deliveryData
+      }
 
       if (confirmed) {
-        // Update claim status to completed
-        await supabase
-          .from('donation_claims')
-          .update({ status: 'completed' })
-          .eq('id', pickup.claim.id)
-
-        // Update donation status to completed
-        await supabase
-          .from('donations')
-          .update({ status: 'completed' })
-          .eq('id', pickup.claim.donation.id)
+        // Update claim status in donations table JSONB and donation status in a single update
+        // Note: claim status can be 'completed', but donation status should be 'delivered' (valid enum value)
+        if (donation.claims && Array.isArray(donation.claims)) {
+          const updatedClaims = donation.claims.map(c => 
+            c.id === claimId ? { ...c, status: 'completed' } : c
+          )
+          
+          const { error: updateError } = await supabase
+            .from('donations')
+            .update({ 
+              claims: updatedClaims,
+              status: 'delivered'
+            })
+            .eq('id', donation.id)
+          
+          if (updateError) {
+            console.error('Error updating donation:', updateError)
+            throw updateError
+          }
+        } else {
+          // If no claims array, just update status
+          const { error: updateError } = await supabase
+            .from('donations')
+            .update({ status: 'delivered' })
+            .eq('id', donation.id)
+          
+          if (updateError) {
+            console.error('Error updating donation status:', updateError)
+            throw updateError
+          }
+        }
 
         // Send completion notifications to both parties
         await this.createNotification({
-          user_id: pickup.claim.donation.donor_id,
-          type: 'pickup_completed',
+          user_id: donation.donor_id,
+          type: 'system_alert',
           title: 'Transaction Completed!',
-          message: `The pickup for "${pickup.claim.donation.title}" has been completed and confirmed by all parties. Thank you for your generosity!`,
+          message: `The pickup for "${donation.title}" has been completed and confirmed by all parties. Thank you for your generosity!`,
           data: { 
             claim_id: claimId,
             transaction_completed: true,
             confirmed_by: userId,
             rating: rating,
-            feedback: feedback
+            feedback: feedback,
+            notification_type: 'pickup_completed'
           }
         })
 
         await this.createNotification({
-          user_id: pickup.claim.recipient_id,
-          type: 'pickup_completed',
+          user_id: claim.recipient_id,
+          type: 'system_alert',
           title: 'Transaction Completed!',
-          message: `You have successfully received "${pickup.claim.donation.title}". Thank you for being part of our community!`,
+          message: `You have successfully received "${donation.title}". Thank you for being part of our community!`,
           data: { 
             claim_id: claimId,
             transaction_completed: true,
-            confirmed_by: userId
+            confirmed_by: userId,
+            notification_type: 'pickup_completed'
           }
         })
       }
 
       // Mark confirmation notifications as read
-      const { data: unreadNotifications } = await supabase
+      // Query all system_alert notifications and filter in JavaScript (JSONB queries can be tricky)
+      const { data: allNotifications, error: notificationsError } = await supabase
         .from('notifications')
         .select('id, data')
         .eq('user_id', userId)
-        .eq('type', 'pickup_completed')
+        .eq('type', 'system_alert')
         .is('read_at', null)
 
-      const targetNotifications = unreadNotifications?.filter(n => 
+      if (notificationsError) {
+        console.warn('Error fetching notifications:', notificationsError)
+      }
+
+      // Filter notifications in JavaScript for more reliable JSONB filtering
+      const targetNotifications = (allNotifications || []).filter(n => 
+        n.data?.notification_type === 'pickup_completed' &&
         n.data?.claim_id === claimId && 
         n.data?.action_required === 'confirm_pickup'
-      ) || []
+      )
 
       if (targetNotifications.length > 0) {
         await supabase
@@ -6179,14 +6417,15 @@ export const db = {
         // Notify recipient
         await this.createNotification({
           user_id: recipient.id,
-          type: 'direct_delivery_update',
+          type: 'system_alert',
           title: notificationTitle,
           message: notificationMessage,
           data: {
             claim_id: claimId,
             status: status,
             delivery_address: deliveryAddress,
-            instructions: instructions
+            instructions: instructions,
+            notification_type: 'direct_delivery_update'
           }
         })
 
@@ -6194,14 +6433,15 @@ export const db = {
         if (donationData?.donor_id) {
           await this.createNotification({
             user_id: donationData.donor_id,
-            type: 'direct_delivery_update',
+            type: 'system_alert',
             title: notificationTitle,
             message: notificationMessage,
             data: {
               claim_id: claimId,
               status: status,
               delivery_address: deliveryAddress,
-              instructions: instructions
+              instructions: instructions,
+              notification_type: 'direct_delivery_update'
             }
           })
         }
@@ -6266,14 +6506,15 @@ export const db = {
       if (recipient) {
         await this.createNotification({
           user_id: recipient.id,
-          type: 'direct_delivery_completed',
+          type: 'system_alert',
           title: 'Direct Delivery Completed - Please Confirm',
           message: `The donor has marked "${donationData.title}" as delivered. Please confirm receipt to complete the transaction.`,
           data: {
             claim_id: claimId,
             donor_id: donationData.donor_id,
             role: 'recipient',
-            action_required: 'confirm_direct_delivery'
+            action_required: 'confirm_direct_delivery',
+            notification_type: 'direct_delivery_completed'
           }
         })
       }
@@ -6282,14 +6523,15 @@ export const db = {
       if (donationData.donor_id) {
         await this.createNotification({
           user_id: donationData.donor_id,
-          type: 'direct_delivery_completed',
+          type: 'system_alert',
           title: 'Direct Delivery Completed - Please Confirm',
           message: `You have marked "${donationData.title}" as delivered. Please confirm delivery completion.`,
           data: {
             claim_id: claimId,
             recipient_id: claimData.recipient_id,
             role: 'donor',
-            action_required: 'confirm_direct_delivery'
+            action_required: 'confirm_direct_delivery',
+            notification_type: 'direct_delivery_completed'
           }
         })
       }
@@ -6366,9 +6608,10 @@ export const db = {
       const { data: existingNotifications } = await supabase
         .from('notifications')
         .select('data')
-        .eq('type', 'direct_delivery_completed')
+        .eq('type', 'system_alert')
+        .eq('data->notification_type', 'direct_delivery_completed')
         .eq('data->claim_id', claimId)
-        .eq('read_at', null)
+        .is('read_at', null)
 
       const donorConfirmed = existingNotifications?.some(n => 
         n.data?.role === 'donor' && n.data?.confirmed === true
@@ -6399,7 +6642,7 @@ export const db = {
         if (donationData.donor_id) {
           await this.createNotification({
             user_id: donationData.donor_id,
-            type: 'direct_delivery_completed',
+            type: 'system_alert',
             title: 'Direct Delivery Transaction Completed!',
             message: `The direct delivery transaction for "${donationData.title}" is now complete. Thank you for your generosity!`,
             data: {
@@ -6407,7 +6650,8 @@ export const db = {
               transaction_completed: true,
               confirmed_by: userRole,
               rating: rating,
-              feedback: feedback
+              feedback: feedback,
+              notification_type: 'direct_delivery_completed'
             }
           })
         }
@@ -6415,13 +6659,14 @@ export const db = {
         if (recipient) {
           await this.createNotification({
             user_id: recipient.id,
-            type: 'direct_delivery_completed',
+            type: 'system_alert',
             title: 'Direct Delivery Transaction Completed!',
             message: `The direct delivery transaction for "${donationData.title}" is now complete. Thank you for being part of our community!`,
             data: {
               claim_id: claimId,
               transaction_completed: true,
-            confirmed_by: userRole
+            confirmed_by: userRole,
+            notification_type: 'direct_delivery_completed'
           }
         })
       } else {
@@ -6431,7 +6676,7 @@ export const db = {
 
         await this.createNotification({
           user_id: userId,
-          type: 'direct_delivery_completed',
+          type: 'system_alert',
           title: 'Direct Delivery Confirmed',
           message: `Thank you for confirming ${isDonor ? 'delivery completion' : 'receipt'} of "${directDelivery.claim.donation.title}". Waiting for the ${otherPartyRole} to confirm.`,
           data: {
@@ -6446,13 +6691,14 @@ export const db = {
 
         await this.createNotification({
           user_id: otherPartyId,
-          type: 'direct_delivery_completed',
+          type: 'system_alert',
           title: `${userRole === 'donor' ? 'Donor' : 'Recipient'} Confirmed - Please Complete`,
           message: `The ${userRole} has confirmed the direct delivery of "${directDelivery.claim.donation.title}". Please confirm to complete the transaction.`,
           data: {
             claim_id: claimId,
             [`${userRole}_confirmed`]: true,
-            action_required: 'confirm_direct_delivery'
+            action_required: 'confirm_direct_delivery',
+            notification_type: 'direct_delivery_completed'
           }
         })
       }
@@ -6463,9 +6709,10 @@ export const db = {
         .from('notifications')
         .update({ read_at: new Date().toISOString() })
         .eq('user_id', userId)
-        .eq('type', 'direct_delivery_completed')
+        .eq('type', 'system_alert')
         .eq('data->claim_id', claimId)
         .eq('data->action_required', 'confirm_direct_delivery')
+        .eq('data->notification_type', 'direct_delivery_completed')
 
       return { 
         success: true, 

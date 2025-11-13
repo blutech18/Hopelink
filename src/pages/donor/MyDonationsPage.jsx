@@ -251,13 +251,15 @@ const MyDonationsPage = () => {
       
       // Filter pickup notifications (for self-pickup donations)
       const pickupNotifications = notifications.filter(n => 
-        (n.type === 'pickup_scheduled' || n.type === 'pickup_update') && 
+        n.type === 'system_alert' &&
+        (n.data?.notification_type === 'pickup_scheduled' || n.data?.notification_type === 'pickup_update') && 
         !n.read_at
       )
       
       // Filter pickup confirmation requests (for self-pickup completions)
       const pickupConfirmationNotifications = notifications.filter(n => 
-        n.type === 'pickup_completed' && 
+        n.type === 'system_alert' &&
+        n.data?.notification_type === 'pickup_completed' && 
         n.data?.action_required === 'confirm_pickup' &&
         n.data?.role === 'donor' &&
         !n.read_at
@@ -265,13 +267,15 @@ const MyDonationsPage = () => {
 
       // Filter direct delivery notifications
       const directDeliveryNotifications = notifications.filter(n => 
-        (n.type === 'direct_delivery_request' || n.type === 'direct_delivery_update') && 
+        n.type === 'system_alert' &&
+        (n.data?.notification_type === 'direct_delivery_request' || n.data?.notification_type === 'direct_delivery_update') && 
         !n.read_at
       )
 
       // Filter direct delivery confirmation requests
       const directDeliveryConfirmationNotifications = notifications.filter(n => 
-        n.type === 'direct_delivery_completed' && 
+        n.type === 'system_alert' &&
+        n.data?.notification_type === 'direct_delivery_completed' && 
         n.data?.action_required === 'confirm_direct_delivery' &&
         n.data?.role === 'donor' &&
         !n.read_at

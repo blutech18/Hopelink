@@ -42,6 +42,14 @@ const DashboardPage = () => {
   const [loading, setLoading] = useState(true)
   const navigate = useNavigate()
 
+  // CRITICAL: Check if account is suspended - redirect to login immediately
+  useEffect(() => {
+    if (profile && (profile.is_active === false || profile.is_active === 'false' || profile.is_active === 0)) {
+      console.error('🚨 Suspended account detected in DashboardPage - redirecting to login')
+      navigate('/login', { replace: true, state: { error: 'Your account has been suspended. Please contact the administrator for assistance.' } })
+    }
+  }, [profile, navigate])
+
   const loadDashboardData = useCallback(async () => {
     if (!profile?.id) {
       setLoading(false)

@@ -87,6 +87,7 @@ const PendingRequestsPage = () => {
   const [selectedProfile, setSelectedProfile] = useState(null)
   const [showProfileModal, setShowProfileModal] = useState(false)
   const [showProfileImageModal, setShowProfileImageModal] = useState(false)
+  const [approvedRequestIds, setApprovedRequestIds] = useState(new Set())
 
   const fetchRequests = useCallback(async () => {
     if (!user?.id) {
@@ -110,33 +111,51 @@ const PendingRequestsPage = () => {
           .is('read_at', null)
           .order('created_at', { ascending: false })
           .limit(50),
-        // Direct query for donation_request notifications
+        // Direct query for donation_request notifications (include read notifications for pickup donations)
         supabase
           .from('notifications')
           .select('*')
           .eq('user_id', user.id)
           .eq('type', 'donation_request')
-          .is('read_at', null)
           .order('created_at', { ascending: false })
           .limit(50)
       ])
       
       // Use direct queries if available, otherwise fall back to filtering all notifications
-      const donationRequestNotifications = donationRequestNotificationsQuery.data || 
-        allNotifications.filter(n => n.type === 'donation_request' && !n.read_at)
+      // Check for errors in query results
+      if (volunteerRequestNotificationsQuery.error) {
+        console.error('Error fetching volunteer request notifications:', volunteerRequestNotificationsQuery.error)
+      }
+      if (donationRequestNotificationsQuery.error) {
+        console.error('Error fetching donation request notifications:', donationRequestNotificationsQuery.error)
+      }
       
-      const volunteerRequestNotifications = volunteerRequestNotificationsQuery.data || 
-        allNotifications.filter(n => n.type === 'volunteer_request' && !n.read_at)
+      const donationRequestNotifications = (donationRequestNotificationsQuery.data && !donationRequestNotificationsQuery.error) 
+        ? donationRequestNotificationsQuery.data
+        : allNotifications.filter(n => n.type === 'donation_request')
+      
+      const volunteerRequestNotifications = (volunteerRequestNotificationsQuery.data && !volunteerRequestNotificationsQuery.error)
+        ? volunteerRequestNotificationsQuery.data
+        : allNotifications.filter(n => n.type === 'volunteer_request' && !n.read_at)
       
       // Debug logging
       console.log('📋 PendingRequestsPage - Notification counts:', {
         totalNotifications: allNotifications.length,
         donationRequests: donationRequestNotifications.length,
         volunteerRequests: volunteerRequestNotifications.length,
-        volunteerRequestQueryResult: volunteerRequestNotificationsQuery.data?.length || 0
+        volunteerRequestQueryResult: volunteerRequestNotificationsQuery.data?.length || 0,
+        volunteerRequestQueryError: volunteerRequestNotificationsQuery.error,
+        volunteerRequestNotifications: volunteerRequestNotifications.map(n => ({
+          id: n.id,
+          type: n.type,
+          user_id: n.user_id,
+          read_at: n.read_at,
+          data: n.data
+        }))
       })
       
       // Show notifications immediately for better perceived performance
+      // Note: We'll filter out claimed donations after enrichment
       setDonationRequests(donationRequestNotifications.map(r => ({ ...r, donation: null })))
       setVolunteerRequests(volunteerRequestNotifications.map(r => ({ ...r, donation: null })))
       setLoading(false) // Show page immediately, enrichment happens in background
@@ -326,58 +345,90 @@ const PendingRequestsPage = () => {
               }
             }
             
+            // Helper function to check if donation should be filtered out
+            const shouldFilterDonation = (donation) => {
+              if (!donation) return false
+              const claims = Array.isArray(donation.claims) ? donation.claims : []
+              // For pickup donations, keep them even when claimed so "Picked Up" button can be shown
+              // Only filter out non-pickup donations that are claimed
+              const hasClaims = claims.some(claim => claim.status === 'claimed')
+              return hasClaims && donation.delivery_mode !== 'pickup'
+            }
+            
             // Enrich donation requests with batch-fetched data
-            const enrichedDonationRequests = donationRequestNotifications.map(request => {
-              const donation = donationsMap.get(request.data?.donation_id) || null
-              const requesterProfile = request.data?.requester_id 
-                ? requesterProfilesMap.get(request.data.requester_id) || null
-                : null
-              
-              return {
-                ...request,
-                donation,
-                requesterProfile,
-                data: {
-                  ...request.data,
-                  requester_email: requesterProfile?.email || request.data?.requester_email,
-                  requester_phone: requesterProfile?.phone_number || request.data?.requester_phone,
-                  requester_address: requesterProfile?.address || request.data?.requester_address,
-                  requester_address_street: requesterProfile?.address_street,
-                  requester_address_barangay: requesterProfile?.address_barangay,
-                  requester_address_landmark: requesterProfile?.address_landmark,
-                  requester_city: requesterProfile?.city,
-                  requester_province: requesterProfile?.province,
-                  requester_zip_code: requesterProfile?.zip_code
+            const enrichedDonationRequests = donationRequestNotifications
+              .map(request => {
+                const donation = donationsMap.get(request.data?.donation_id) || null
+                const requesterProfile = request.data?.requester_id 
+                  ? requesterProfilesMap.get(request.data.requester_id) || null
+                  : null
+                
+                return {
+                  ...request,
+                  donation,
+                  requesterProfile,
+                  data: {
+                    ...request.data,
+                    requester_email: requesterProfile?.email || request.data?.requester_email,
+                    requester_phone: requesterProfile?.phone_number || request.data?.requester_phone,
+                    requester_address: requesterProfile?.address || request.data?.requester_address,
+                    requester_address_street: requesterProfile?.address_street,
+                    requester_address_barangay: requesterProfile?.address_barangay,
+                    requester_address_landmark: requesterProfile?.address_landmark,
+                    requester_city: requesterProfile?.city,
+                    requester_province: requesterProfile?.province,
+                    requester_zip_code: requesterProfile?.zip_code
+                  }
                 }
-              }
-            })
+              })
+              // Filter out requests where donation is already claimed (except pickup donations)
+              .filter(request => !shouldFilterDonation(request.donation))
+              // Filter out read notifications except for pickup donations that haven't been completed
+              .filter(request => {
+                // Keep unread notifications
+                if (!request.read_at) return true
+                
+                // For read notifications, only keep pickup donations that haven't been completed
+                const donation = request.donation
+                if (!donation || donation.delivery_mode !== 'pickup') return false
+                
+                // Check if pickup has been completed
+                const claims = Array.isArray(donation.claims) ? donation.claims : []
+                const hasCompletedClaim = claims.some(claim => claim.status === 'completed')
+                
+                // Keep pickup donations that haven't been completed yet
+                return !hasCompletedClaim
+              })
             
             // Enrich volunteer requests with batch-fetched data
-            const enrichedVolunteerRequests = volunteerRequestNotifications.map(request => {
-              const donation = donationsMap.get(request.data?.donation_id) || null
-              const volunteerProfile = request.data?.volunteer_id
-                ? volunteerProfilesMap.get(request.data.volunteer_id) || null
-                : null
-              
-              return {
-                ...request,
-                donation,
-                volunteerProfile,
-                data: {
-                  ...request.data,
-                  volunteer_email: volunteerProfile?.email || request.data?.volunteer_email,
-                  volunteer_phone: volunteerProfile?.phone_number || request.data?.volunteer_phone,
-                  volunteer_address_street: volunteerProfile?.address_street,
-                  volunteer_address_barangay: volunteerProfile?.address_barangay,
-                  volunteer_address_landmark: volunteerProfile?.address_landmark,
-                  volunteer_city: volunteerProfile?.city,
-                  volunteer_province: volunteerProfile?.province,
-                  volunteer_zip_code: volunteerProfile?.zip_code
+            const enrichedVolunteerRequests = volunteerRequestNotifications
+              .map(request => {
+                const donation = donationsMap.get(request.data?.donation_id) || null
+                const volunteerProfile = request.data?.volunteer_id
+                  ? volunteerProfilesMap.get(request.data.volunteer_id) || null
+                  : null
+                
+                return {
+                  ...request,
+                  donation,
+                  volunteerProfile,
+                  data: {
+                    ...request.data,
+                    volunteer_email: volunteerProfile?.email || request.data?.volunteer_email,
+                    volunteer_phone: volunteerProfile?.phone_number || request.data?.volunteer_phone,
+                    volunteer_address_street: volunteerProfile?.address_street,
+                    volunteer_address_barangay: volunteerProfile?.address_barangay,
+                    volunteer_address_landmark: volunteerProfile?.address_landmark,
+                    volunteer_city: volunteerProfile?.city,
+                    volunteer_province: volunteerProfile?.province,
+                    volunteer_zip_code: volunteerProfile?.zip_code
+                  }
                 }
-              }
-            })
+              })
+              // Don't filter out volunteer requests - they are specifically for delivering claimed donations
+              // Volunteer requests should always be shown regardless of donation claim status
             
-            // Update state with enriched data
+            // Update state with enriched data (filtered to exclude claimed donations except pickup)
             setDonationRequests(enrichedDonationRequests)
             setVolunteerRequests(enrichedVolunteerRequests)
           } catch (err) {
@@ -401,17 +452,224 @@ const PendingRequestsPage = () => {
     try {
       setProcessingRequestId(request.id)
       
-      // Create a claim record
-      await db.claimDonation(request.data.donation_id, request.data.requester_id)
+      // Check if donation is already claimed before trying to claim it
+      const donationId = request.data.donation_id
+      const recipientId = request.data.requester_id
+      
+      // First, check if the donation already has a claim from this recipient
+      const { data: donation, error: donationError } = await supabase
+        .from('donations')
+        .select('id, status, claims')
+        .eq('id', donationId)
+        .single()
+      
+      if (donationError) throw donationError
+      
+      // Check if donation is available or already claimed by this recipient
+      const existingClaims = Array.isArray(donation.claims) ? donation.claims : []
+      const alreadyClaimedByRecipient = existingClaims.some(
+        claim => claim.recipient_id === recipientId && claim.status === 'claimed'
+      )
+      
+      // Check if donation is claimed by someone else
+      const claimedByOthers = existingClaims.some(
+        claim => claim.recipient_id !== recipientId && claim.status === 'claimed'
+      )
+      
+      // If donation is already claimed by another recipient, handle gracefully
+      if (claimedByOthers && !alreadyClaimedByRecipient) {
+        // Send notification to recipient explaining the situation
+        await db.createNotification({
+          user_id: recipientId,
+          type: 'donation_declined',
+          title: 'Donation Already Claimed',
+          message: `Unfortunately, "${request.donation?.title || 'the donation'}" has already been claimed by another recipient.`,
+          data: {
+            donation_id: donationId,
+            donor_id: user.id,
+            reason: 'already_claimed'
+          }
+        })
+
+        // Mark original request as read
+        await db.markNotificationAsRead(request.id)
+
+        error('This donation has already been claimed by another recipient. The requester has been notified.')
+        await fetchRequests()
+        return
+      }
+      
+      // If donation is already claimed by this recipient, proceed with approval
+      if (alreadyClaimedByRecipient) {
+        // Donation is already claimed by this recipient, proceed with approval
+        // No need to claim again
+      } else {
+        // Donation is not claimed by this recipient yet
+        // Check if donation is available for claiming
+        // Only allow claiming if status is 'available'
+        if (donation.status !== 'available') {
+          // Mark the request as read since the donation is no longer available
+          await db.markNotificationAsRead(request.id)
+          error('This donation is no longer available. It may have been claimed by someone else or its status has changed.')
+          await fetchRequests()
+          return
+        }
+        
+        // Create a new claim
+        try {
+          await db.claimDonation(donationId, recipientId)
+        } catch (claimError) {
+          // If claiming fails, mark the request as read and refresh
+          await db.markNotificationAsRead(request.id)
+          error(claimError.message || 'Failed to claim donation. It may have been claimed by someone else.')
+          await fetchRequests()
+          return
+        }
+      }
+      
+      // Find and update the recipient's donation request to 'fulfilled' status
+      // Try multiple strategies to find or create the donation_request
+      let requestUpdated = false
+      const requestId = request.data?.request_id
+      
+      console.log('🔍 Starting donation_request update process:', {
+        notificationId: request.id,
+        requestId: requestId,
+        recipientId: recipientId,
+        donationId: donationId,
+        donationCategory: request.donation?.category,
+        deliveryMode: request.donation?.delivery_mode || request.data?.delivery_mode,
+        notificationData: request.data
+      })
+      
+      // Strategy 1: If notification has request_id, update that specific request
+      if (requestId) {
+        try {
+          const updated = await db.updateDonationRequest(requestId, { status: 'fulfilled' })
+          console.log(`✅ Strategy 1: Updated request ${requestId} to fulfilled status`, updated)
+          requestUpdated = true
+        } catch (updateError) {
+          console.error('❌ Strategy 1 failed:', updateError)
+          // Continue to try other strategies
+        }
+      } else {
+        console.log('⚠️ Strategy 1: No request_id in notification data')
+      }
+      
+      // Strategy 2: Try to find donation_request by matching category and recipient
+      // Look for any request (not just 'open') that matches, since status might be 'claimed' or other
+      if (!requestUpdated && request.donation?.category) {
+        try {
+          const deliveryMode = request.donation.delivery_mode || request.data?.delivery_mode
+          
+          console.log('🔍 Strategy 2: Searching for matching request by category and recipient')
+          
+          // Try to find by category first (more specific) - don't filter by status
+          let findQuery = supabase
+            .from('donation_requests')
+            .select('id, category, delivery_mode, status, created_at')
+            .eq('requester_id', recipientId)
+            .eq('category', request.donation.category)
+            .neq('status', 'fulfilled') // Exclude already fulfilled requests
+          
+          if (deliveryMode) {
+            findQuery = findQuery.eq('delivery_mode', deliveryMode)
+          }
+          
+          const { data: matchingRequests, error: findError } = await findQuery
+            .order('created_at', { ascending: false })
+            .limit(10)
+          
+          console.log('🔍 Strategy 2 results:', { matchingRequests, findError })
+          
+          if (!findError && matchingRequests && matchingRequests.length > 0) {
+            // Update the most recent matching request
+            const targetRequest = matchingRequests[0]
+            const updated = await db.updateDonationRequest(targetRequest.id, { status: 'fulfilled' })
+            console.log(`✅ Strategy 2: Updated request ${targetRequest.id} to fulfilled status (found by category${deliveryMode ? ` and delivery_mode` : ''})`, updated)
+            requestUpdated = true
+          } else {
+            console.log('⚠️ Strategy 2: No matching requests found')
+          }
+        } catch (updateError) {
+          console.error('❌ Strategy 2 failed:', updateError)
+        }
+      }
+      
+      // Strategy 3: Try to find ANY request for this recipient (broader search)
+      // This catches cases where category doesn't match exactly
+      if (!requestUpdated) {
+        console.log('🔍 Strategy 3: Searching for ANY non-fulfilled request for this recipient')
+        try {
+          const { data: anyRequests, error: anyRequestsError } = await supabase
+            .from('donation_requests')
+            .select('id, category, delivery_mode, status, created_at')
+            .eq('requester_id', recipientId)
+            .neq('status', 'fulfilled')
+            .order('created_at', { ascending: false })
+            .limit(5)
+          
+          console.log('🔍 Strategy 3 results:', { anyRequests, anyRequestsError })
+          
+          if (!anyRequestsError && anyRequests && anyRequests.length > 0) {
+            // Update the most recent non-fulfilled request
+            const targetRequest = anyRequests[0]
+            const updated = await db.updateDonationRequest(targetRequest.id, { status: 'fulfilled' })
+            console.log(`✅ Strategy 3: Updated request ${targetRequest.id} to fulfilled status (found any matching request)`, updated)
+            requestUpdated = true
+          } else {
+            console.log('⚠️ Strategy 3: No non-fulfilled requests found for this recipient')
+          }
+        } catch (updateError) {
+          console.error('❌ Strategy 3 failed:', updateError)
+        }
+      }
+      
+      // Strategy 4: If still no request found/updated, create one as last resort
+      // Note: createDonationRequest always sets status to 'open', so we need to update it after creation
+      if (!requestUpdated) {
+        console.log('🔍 Strategy 4: Creating new donation_request as last resort')
+        try {
+          const recipientProfile = await db.getProfile(recipientId)
+          const deliveryMode = request.donation?.delivery_mode || request.data?.delivery_mode || 'pickup'
+          
+          // Create the request (it will be created with status 'open')
+          const newRequest = await db.createDonationRequest({
+            requester_id: recipientId,
+            title: request.donation?.title || 'Donation Request',
+            description: `Request for donation: ${request.donation?.title || 'N/A'}`,
+            category: request.donation?.category || 'Other',
+            quantity_needed: 1,
+            delivery_mode: deliveryMode,
+            urgency: 'medium',
+            location: recipientProfile?.address || '',
+            created_at: new Date().toISOString()
+          })
+          
+          console.log('📝 Strategy 4: Created request with open status:', newRequest?.id)
+          
+          // Immediately update it to 'fulfilled' since it's already approved
+          if (newRequest?.id) {
+            const updated = await db.updateDonationRequest(newRequest.id, { status: 'fulfilled' })
+            console.log(`✅ Strategy 4: Updated new donation_request ${newRequest.id} to fulfilled status (last resort)`, updated)
+            requestUpdated = true
+          }
+        } catch (createError) {
+          console.error('❌ Strategy 4 failed - Could not create donation_request (last resort):', createError)
+          // Don't fail the approval if request creation fails, but log the error
+        }
+      }
+      
+      console.log('📊 Final status:', { requestUpdated, recipientId, donationId })
       
       // Create approval notification for requester
       await db.createNotification({
-        user_id: request.data.requester_id,
+        user_id: recipientId,
         type: 'donation_approved',
         title: 'Donation Request Approved',
         message: `Your request for "${request.donation?.title || 'a donation'}" has been approved!`,
         data: {
-          donation_id: request.data.donation_id,
+          donation_id: donationId,
           donor_id: user.id
         }
       })
@@ -419,8 +677,22 @@ const PendingRequestsPage = () => {
       // Mark original request as read
       await db.markNotificationAsRead(request.id)
 
+      // For pickup deliveries, keep the request in the list so "Picked Up" button can be used
+      // For other delivery modes, remove the request immediately
+      if (request.donation?.delivery_mode !== 'pickup') {
+        setDonationRequests(prev => prev.filter(r => r.id !== request.id))
+      } else {
+        // For pickup deliveries, mark as approved and refresh to show "Picked Up" button
+        setApprovedRequestIds(prev => new Set([...prev, request.id]))
+        fetchRequests()
+      }
+
       success('Request approved successfully!')
-      await fetchRequests()
+      
+      // Refresh the list in the background to ensure consistency (for non-pickup only)
+      if (request.donation?.delivery_mode !== 'pickup') {
+        fetchRequests()
+      }
     } catch (err) {
       console.error('Error approving request:', err)
       error(err.message || 'Failed to approve request')
@@ -448,8 +720,13 @@ const PendingRequestsPage = () => {
       // Mark original request as read
       await db.markNotificationAsRead(request.id)
 
+      // Immediately remove the declined request from the state for instant UI update
+      setDonationRequests(prev => prev.filter(r => r.id !== request.id))
+
       success('Request declined')
-      await fetchRequests()
+      
+      // Refresh the list in the background to ensure consistency
+      fetchRequests()
     } catch (err) {
       console.error('Error declining request:', err)
       error(err.message || 'Failed to decline request')
@@ -495,8 +772,13 @@ const PendingRequestsPage = () => {
       // Mark original request as read
       await db.markNotificationAsRead(request.id)
 
+      // Immediately remove the approved volunteer request from the state for instant UI update
+      setVolunteerRequests(prev => prev.filter(r => r.id !== request.id))
+
       success('Volunteer request approved successfully!')
-      await fetchRequests()
+      
+      // Refresh the list in the background to ensure consistency
+      fetchRequests()
     } catch (err) {
       console.error('Error approving volunteer request:', err)
       error(err.message || 'Failed to approve volunteer request')
@@ -534,11 +816,74 @@ const PendingRequestsPage = () => {
       // Mark original request as read
       await db.markNotificationAsRead(request.id)
 
+      // Immediately remove the declined volunteer request from the state for instant UI update
+      setVolunteerRequests(prev => prev.filter(r => r.id !== request.id))
+
       success('Volunteer request declined')
-      await fetchRequests()
+      
+      // Refresh the list in the background to ensure consistency
+      fetchRequests()
     } catch (err) {
       console.error('Error declining volunteer request:', err)
       error(err.message || 'Failed to decline volunteer request')
+    } finally {
+      setProcessingRequestId(null)
+    }
+  }
+
+  const handlePickupCompletion = async (request) => {
+    if (!user?.id) return
+
+    try {
+      setProcessingRequestId(request.id)
+      
+      // Find the claim ID for this pickup donation
+      let claimId = null
+      
+      // Get the donation details to find the claim
+      if (request.data?.donation_id) {
+        const { data: donation, error: donationError } = await supabase
+          .from('donations')
+          .select('id, claims, delivery_mode')
+          .eq('id', request.data.donation_id)
+          .single()
+
+        if (!donationError && donation && donation.delivery_mode === 'pickup' && Array.isArray(donation.claims)) {
+          // Find the claim for this recipient
+          const claim = donation.claims.find(
+            c => c && 
+            c.recipient_id === request.data.requester_id && 
+            c.status === 'claimed'
+          )
+          if (claim) {
+            claimId = claim.id
+          }
+        }
+      }
+
+      if (!claimId) {
+        error('Could not find the pickup claim. Please ensure the donation was properly claimed.')
+        return
+      }
+
+      // Confirm pickup completion
+      await db.confirmPickupCompletion(claimId, request.data.requester_id, true)
+      
+      // Remove the completed pickup request from the list and approved set
+      setDonationRequests(prev => prev.filter(r => r.id !== request.id))
+      setApprovedRequestIds(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(request.id)
+        return newSet
+      })
+      
+      success('Pickup completed successfully!')
+      
+      // Refresh the requests to ensure consistency
+      fetchRequests()
+    } catch (err) {
+      console.error('Error completing pickup:', err)
+      error(err.message || 'Failed to complete pickup. Please try again.')
     } finally {
       setProcessingRequestId(null)
     }
@@ -712,11 +1057,20 @@ const PendingRequestsPage = () => {
                             <Package className="h-5 w-5 text-white" />
                           </div>
                           <div>
-                            <div className="text-sm font-semibold text-white max-w-[200px] truncate">
-                              {request.donation?.title || 'N/A'}
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-semibold text-white max-w-[200px] truncate">
+                                {request.donation?.title || 'N/A'}
+                              </div>
+                              {/* Show Approved badge for pickup donations that have been approved */}
+                              {request.donation?.delivery_mode === 'pickup' && approvedRequestIds.has(request.id) && (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold bg-green-900/30 text-green-300 border border-green-500/30">
+                                  Approved
+                                </span>
+                              )}
                             </div>
                             <div className="text-xs text-gray-400">
                               {request.donation?.category || 'N/A'} • Qty: {request.donation?.quantity || 'N/A'}
+                              {request.donation?.delivery_mode === 'pickup' && ' • Self Pickup'}
                             </div>
                           </div>
                         </div>
@@ -752,36 +1106,61 @@ const PendingRequestsPage = () => {
                         </div>
                       </td>
                       <td className="px-4 sm:px-6 py-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleViewDetails(request)}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1"
+                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-all flex items-center gap-1"
                           >
-                            <Eye className="h-4 w-4" />
+                            <Eye className="h-3 w-3" />
                             View
                           </button>
-                          <button
-                            onClick={() => handleApproveRequest(request)}
-                            disabled={processingRequestId === request.id}
-                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
-                          >
-                            {processingRequestId === request.id ? (
-                              <LoadingSpinner size="sm" />
-                            ) : (
-                              <>
-                                <CheckCircle className="h-4 w-4" />
-                                Approve
-                              </>
-                            )}
-                          </button>
-                          <button
-                            onClick={() => handleDeclineRequest(request)}
-                            disabled={processingRequestId === request.id}
-                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
-                          >
-                            <XCircle className="h-4 w-4" />
-                            Decline
-                          </button>
+                          {/* Show Approve button only if not already approved (for pickup) or for non-pickup donations */}
+                          {!(request.donation?.delivery_mode === 'pickup' && approvedRequestIds.has(request.id)) && (
+                            <button
+                              onClick={() => handleApproveRequest(request)}
+                              disabled={processingRequestId === request.id}
+                              className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded transition-all flex items-center gap-1 disabled:opacity-50"
+                            >
+                              {processingRequestId === request.id ? (
+                                <LoadingSpinner size="sm" />
+                              ) : (
+                                <>
+                                  <CheckCircle className="h-3 w-3" />
+                                  Approve
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {/* Show Picked Up button only for self-pickup donations that have been approved in this session */}
+                          {request.donation?.delivery_mode === 'pickup' && 
+                           approvedRequestIds.has(request.id) && (
+                            <button
+                              onClick={() => handlePickupCompletion(request)}
+                              disabled={processingRequestId === request.id}
+                              className="px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white text-xs font-medium rounded transition-all flex items-center gap-1 disabled:opacity-50"
+                              title="Mark as picked up by recipient"
+                            >
+                              {processingRequestId === request.id ? (
+                                <LoadingSpinner size="sm" />
+                              ) : (
+                                <>
+                                  <Package className="h-3 w-3" />
+                                  Picked Up
+                                </>
+                              )}
+                            </button>
+                          )}
+                          {/* Show Decline button only if not already approved (for pickup) or for non-pickup donations */}
+                          {!(request.donation?.delivery_mode === 'pickup' && approvedRequestIds.has(request.id)) && (
+                            <button
+                              onClick={() => handleDeclineRequest(request)}
+                              disabled={processingRequestId === request.id}
+                              className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-all flex items-center gap-1 disabled:opacity-50"
+                            >
+                              <XCircle className="h-3 w-3" />
+                              Decline
+                            </button>
+                          )}
                         </div>
                       </td>
                     </motion.tr>
@@ -877,24 +1256,24 @@ const PendingRequestsPage = () => {
                         </div>
                       </td>
                       <td className="px-4 sm:px-6 py-4">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleViewDetails(request)}
-                            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1"
+                            className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded transition-all flex items-center gap-1"
                           >
-                            <Eye className="h-4 w-4" />
+                            <Eye className="h-3 w-3" />
                             View
                           </button>
                           <button
                             onClick={() => handleApproveVolunteerRequest(request)}
                             disabled={processingRequestId === request.id}
-                            className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
+                            className="px-2 py-1 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded transition-all flex items-center gap-1 disabled:opacity-50"
                           >
                             {processingRequestId === request.id ? (
                               <LoadingSpinner size="sm" />
                             ) : (
                               <>
-                                <CheckCircle className="h-4 w-4" />
+                                <CheckCircle className="h-3 w-3" />
                                 Approve
                               </>
                             )}
@@ -902,9 +1281,9 @@ const PendingRequestsPage = () => {
                           <button
                             onClick={() => handleDeclineVolunteerRequest(request)}
                             disabled={processingRequestId === request.id}
-                            className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs sm:text-sm font-medium rounded-lg transition-all flex items-center gap-1 disabled:opacity-50"
+                            className="px-2 py-1 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded transition-all flex items-center gap-1 disabled:opacity-50"
                           >
-                            <XCircle className="h-4 w-4" />
+                            <XCircle className="h-3 w-3" />
                             Decline
                           </button>
                         </div>

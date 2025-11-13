@@ -62,10 +62,27 @@ const UserManagementPage = () => {
       setSearchParams(searchParams, { replace: true })
     }
 
-    // Refresh report count every 30 seconds
+    // Refresh users and report count every 30 seconds to catch suspensions
     const interval = setInterval(() => {
+      loadUsers()
       loadReportCount()
     }, 30000)
+
+    // Refresh when page becomes visible (user switches back to tab)
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        loadUsers()
+        loadReportCount()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    // Refresh when window gains focus
+    const handleFocus = () => {
+      loadUsers()
+      loadReportCount()
+    }
+    window.addEventListener('focus', handleFocus)
 
     // Listen for report resolved events
     const handleReportResolved = () => {
@@ -73,9 +90,18 @@ const UserManagementPage = () => {
     }
     window.addEventListener('reportResolved', handleReportResolved)
 
+    // Listen for user suspension events (from automatic suspension)
+    const handleUserSuspended = () => {
+      loadUsers()
+    }
+    window.addEventListener('user_suspended', handleUserSuspended)
+
     return () => {
       clearInterval(interval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+      window.removeEventListener('focus', handleFocus)
       window.removeEventListener('reportResolved', handleReportResolved)
+      window.removeEventListener('user_suspended', handleUserSuspended)
     }
   }, [])
 
@@ -157,7 +183,7 @@ const UserManagementPage = () => {
       // Update user is_active status to false (suspended)
       const { error: updateError } = await supabase
         .from('users')
-        .update({ is_active: false })
+        .update({ is_active: false, updated_at: new Date().toISOString() })
         .eq('id', userId)
 
       if (updateError) {
@@ -166,12 +192,24 @@ const UserManagementPage = () => {
         return
       }
 
+      // If suspending the currently logged-in user, sign them out immediately
+      // This prevents them from continuing to use the app
+      const { data: { user: currentUser } } = await supabase.auth.getUser()
+      if (currentUser && currentUser.id === userId) {
+        console.log('🚨 Suspending currently logged-in user - signing out immediately')
+        await supabase.auth.signOut()
+        // Dispatch event to trigger suspension banner on login page
+        window.dispatchEvent(new CustomEvent('account_suspended', { 
+          detail: { message: 'Your account has been suspended. Please contact the administrator for assistance.' }
+        }))
+      }
+
       // Update local state for immediate feedback
       setUsers(users.map(user => 
         user.id === userId ? { ...user, is_active: false } : user
       ))
 
-      success(`User ${userName || 'has been'} suspended successfully.`)
+      success(`User ${userName || 'has been'} suspended successfully. ${currentUser && currentUser.id === userId ? 'They have been signed out immediately.' : ''}`)
       setSuspendConfirm(null)
 
       // Reload users to ensure consistency

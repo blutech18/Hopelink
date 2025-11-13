@@ -23,7 +23,8 @@ import {
   User,
   Phone,
   Upload,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Navigation
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -31,7 +32,7 @@ import { useNavigate } from 'react-router-dom'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import DeliveryConfirmationModal from '../../components/ui/DeliveryConfirmationModal'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
 
 // Edit Request Modal Component
 const EditRequestModal = ({ request, onClose, onSuccess }) => {
@@ -438,7 +439,7 @@ const MyRequestsPage = () => {
     { value: 'open', label: 'Open', color: 'text-blue-400 bg-blue-900/20' },
     { value: 'claimed', label: 'Claimed', color: 'text-yellow-400 bg-yellow-900/20' },
     { value: 'in_progress', label: 'In Progress', color: 'text-purple-400 bg-purple-900/20' },
-    { value: 'fulfilled', label: 'Fulfilled', color: 'text-green-400 bg-green-900/20' },
+    { value: 'fulfilled', label: 'Received', color: 'text-green-400 bg-green-900/20' },
     { value: 'cancelled', label: 'Cancelled', color: 'text-red-400 bg-red-900/20' },
     { value: 'expired', label: 'Expired', color: 'text-gray-400 bg-gray-900/20' }
   ]
@@ -493,6 +494,60 @@ const MyRequestsPage = () => {
     loadRequests()
   }, [loadRequests])
 
+  // Set up real-time subscription to refresh when donation_requests are updated
+  useEffect(() => {
+    if (!user?.id || !supabase) return
+
+    const requestsSubscription = supabase
+      .channel('my_requests_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'donation_requests',
+          filter: `requester_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('📋 Request change detected in MyRequestsPage:', payload)
+          // Refresh requests when any change occurs
+          loadRequests()
+        }
+      )
+      .subscribe()
+
+    // Also subscribe to notifications to refresh when approval notifications arrive
+    const notificationsSubscription = supabase
+      .channel('my_requests_notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          // Only refresh if it's a donation_approved notification
+          if (payload.new?.type === 'donation_approved' || payload.old?.type === 'donation_approved') {
+            console.log('🔔 Donation approval notification detected, refreshing requests')
+            loadRequests()
+          }
+        }
+      )
+      .subscribe()
+
+    // Cleanup subscriptions
+    return () => {
+      if (requestsSubscription) {
+        supabase.removeChannel(requestsSubscription)
+      }
+      if (notificationsSubscription) {
+        supabase.removeChannel(notificationsSubscription)
+      }
+    }
+  }, [user?.id, loadRequests])
+
   const handleViewRequest = (request) => {
     setSelectedRequest(request)
     setShowViewModal(true)
@@ -535,6 +590,107 @@ const MyRequestsPage = () => {
     // Refresh notifications and requests after confirmation
     await loadDeliveryConfirmations()
     await loadRequests()
+  }
+
+  const handleConfirmReceived = async (request) => {
+    if (!user?.id) return
+
+    try {
+      setDeletingId(request.id) // Reuse loading state
+      
+      // Find the claim associated with this fulfilled request
+      // Look for donations with claims where recipient_id matches, status is 'claimed', and delivery_mode is 'pickup'
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, title, category, claims, delivery_mode')
+        .not('claims', 'is', null)
+        .eq('delivery_mode', 'pickup')
+
+      if (donationsError) throw donationsError
+
+      // Find the claim for this recipient that matches the request category
+      let claimId = null
+      let matchedDonation = null
+      
+      for (const donation of donations || []) {
+        // First check if category matches (more specific match)
+        if (donation.category === request.category && Array.isArray(donation.claims)) {
+          const claim = donation.claims.find(
+            c => c && 
+            c.recipient_id === user.id && 
+            c.status === 'claimed'
+          )
+          if (claim) {
+            claimId = claim.id
+            matchedDonation = donation
+            break
+          }
+        }
+      }
+
+      // If no category match, try to find any pickup claim for this recipient
+      if (!claimId) {
+        for (const donation of donations || []) {
+          if (Array.isArray(donation.claims)) {
+            const claim = donation.claims.find(
+              c => c && 
+              c.recipient_id === user.id && 
+              c.status === 'claimed'
+            )
+            if (claim) {
+              claimId = claim.id
+              matchedDonation = donation
+              break
+            }
+          }
+        }
+      }
+
+      // If still no claim found, try to find via pickup deliveries
+      if (!claimId) {
+        const { data: deliveries, error: deliveriesError } = await supabase
+          .from('deliveries')
+          .select('claim_id, delivery_mode')
+          .eq('delivery_mode', 'pickup')
+
+        if (!deliveriesError && deliveries && deliveries.length > 0) {
+          const pickupClaimIds = deliveries.map(d => d.claim_id).filter(Boolean)
+          
+          for (const donation of donations || []) {
+            if (Array.isArray(donation.claims)) {
+              const claim = donation.claims.find(
+                c => c && 
+                c.recipient_id === user.id && 
+                c.status === 'claimed' &&
+                pickupClaimIds.includes(c.id)
+              )
+              if (claim) {
+                claimId = claim.id
+                matchedDonation = donation
+                break
+              }
+            }
+          }
+        }
+      }
+
+      if (!claimId) {
+        error('Could not find the donation claim. The donation may have already been completed or the claim may not exist.')
+        return
+      }
+
+      // Confirm pickup completion
+      await db.confirmPickupCompletion(claimId, user.id, true)
+      success('Received confirmation sent! Thank you for confirming.')
+      
+      // Refresh requests
+      await loadRequests()
+    } catch (err) {
+      console.error('Error confirming received:', err)
+      error(err.message || 'Failed to confirm receipt. Please try again.')
+    } finally {
+      setDeletingId(null)
+    }
   }
 
   const filteredRequests = requests.filter(request => {

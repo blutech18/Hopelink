@@ -14,7 +14,8 @@ import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { useNavigate } from 'react-router-dom'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
-import { db } from '../../lib/supabase'
+import { db, supabase } from '../../lib/supabase'
+import LoadingSpinner from '../../components/ui/LoadingSpinner'
 
 const MyApprovedRequestsPage = () => {
   const { user, profile } = useAuth()
@@ -24,6 +25,7 @@ const MyApprovedRequestsPage = () => {
   const [loading, setLoading] = useState(true)
   const [selectedRequest, setSelectedRequest] = useState(null)
   const [showViewModal, setShowViewModal] = useState(false)
+  const [confirmingReceivedId, setConfirmingReceivedId] = useState(null)
   
   // Filter states
   const [searchTerm, setSearchTerm] = useState('')
@@ -41,7 +43,154 @@ const MyApprovedRequestsPage = () => {
       const userRequests = await db.getUserDonationRequests(user.id)
       // Filter to show only fulfilled/approved requests
       const approvedRequests = (userRequests || []).filter(r => r.status === 'fulfilled')
-      setRequests(approvedRequests || [])
+      
+      // Enrich requests with claim status to determine if "Received" button should be shown
+      // For pickup requests, check if the associated claim is already completed
+      // Also enrich all fulfilled requests with donation images
+      const pickupRequests = approvedRequests.filter(r => r.delivery_mode === 'pickup')
+      
+      // Fetch all donations with claims to get images for fulfilled requests
+      const { data: allDonations, error: allDonationsError } = await supabase
+        .from('donations')
+        .select('id, title, category, claims, delivery_mode, images')
+        .not('claims', 'is', null)
+      
+      if (pickupRequests.length > 0) {
+        // Fetch all pickup donations with claims in one query
+        const allPickupDonations = allDonations?.filter(d => d.delivery_mode === 'pickup') || []
+
+        // Also fetch deliveries to help match requests to claims
+        // Note: deliveries table doesn't have recipient_id, so we get all pickup deliveries
+        // and match them via claim_id later
+        const { data: allDeliveries, error: deliveriesError } = await supabase
+          .from('deliveries')
+          .select('id, claim_id, delivery_mode')
+          .eq('delivery_mode', 'pickup')
+
+        if (!allDonationsError && allPickupDonations) {
+          // Create a map of category -> donations for faster lookup
+          const donationsByCategory = new Map()
+          allPickupDonations.forEach(donation => {
+            if (!donationsByCategory.has(donation.category)) {
+              donationsByCategory.set(donation.category, [])
+            }
+            donationsByCategory.get(donation.category).push(donation)
+          })
+
+          // Create a set of claim IDs from deliveries for faster lookup
+          const deliveryClaimIds = new Set()
+          if (!deliveriesError && allDeliveries) {
+            allDeliveries.forEach(delivery => {
+              if (delivery.claim_id) {
+                deliveryClaimIds.add(delivery.claim_id)
+              }
+            })
+          }
+
+          // Enrich pickup requests with claim status
+          approvedRequests.forEach(request => {
+            if (request.delivery_mode === 'pickup') {
+              let foundClaim = null
+              let foundDonation = null
+              
+              // Strategy 1: Try to find claim by category match first (most specific)
+              const categoryDonations = donationsByCategory.get(request.category) || []
+              
+              for (const donation of categoryDonations) {
+                if (Array.isArray(donation.claims)) {
+                  const claim = donation.claims.find(
+                    c => c && 
+                    c.recipient_id === user.id && 
+                    (c.status === 'claimed' || c.status === 'completed')
+                  )
+                  if (claim) {
+                    foundClaim = claim
+                    foundDonation = donation
+                    break
+                  }
+                }
+              }
+
+              // Strategy 2: If no category match, try to find via deliveries
+              if (!foundClaim && deliveryClaimIds.size > 0) {
+                for (const donation of allPickupDonations) {
+                  if (Array.isArray(donation.claims)) {
+                    const claim = donation.claims.find(
+                      c => c && 
+                      c.recipient_id === user.id && 
+                      (c.status === 'claimed' || c.status === 'completed') &&
+                      deliveryClaimIds.has(c.id)
+                    )
+                    if (claim) {
+                      foundClaim = claim
+                      foundDonation = donation
+                      break
+                    }
+                  }
+                }
+              }
+
+              // Strategy 3: If still no match, try any pickup claim for this recipient
+              if (!foundClaim) {
+                for (const donation of allPickupDonations) {
+                  if (Array.isArray(donation.claims)) {
+                    const claim = donation.claims.find(
+                      c => c && 
+                      c.recipient_id === user.id && 
+                      (c.status === 'claimed' || c.status === 'completed')
+                    )
+                    if (claim) {
+                      foundClaim = claim
+                      foundDonation = donation
+                      break
+                    }
+                  }
+                }
+              }
+
+              if (foundClaim) {
+                // Add claim status to request object
+                request.claimStatus = foundClaim.status
+                request.claimId = foundClaim.id
+                request.donationId = foundDonation.id
+                // Add donation image if available
+                if (foundDonation.images && Array.isArray(foundDonation.images) && foundDonation.images.length > 0) {
+                  request.donationImage = foundDonation.images[0]
+                }
+              }
+            }
+          })
+        }
+      }
+
+      // Enrich all fulfilled requests with donation images (not just pickup)
+      // Match requests to donations by category and recipient
+      if (!allDonationsError && allDonations && approvedRequests.length > 0) {
+        approvedRequests.forEach(request => {
+          // Skip if we already have a donation image from pickup matching
+          if (request.donationImage) return
+
+          // Try to find a donation that matches this request
+          for (const donation of allDonations) {
+            if (donation.category === request.category && Array.isArray(donation.claims)) {
+              const claim = donation.claims.find(
+                c => c && 
+                c.recipient_id === user.id && 
+                (c.status === 'claimed' || c.status === 'completed')
+              )
+              if (claim && donation.images && Array.isArray(donation.images) && donation.images.length > 0) {
+                request.donationImage = donation.images[0]
+                request.donationId = donation.id
+                break
+              }
+            }
+          }
+        })
+      }
+      
+      const enrichedRequests = approvedRequests
+      
+      setRequests(enrichedRequests || [])
     } catch (err) {
       console.error('Error loading approved requests:', err)
       error('Failed to load approved requests. Please try again.')
@@ -54,9 +203,233 @@ const MyApprovedRequestsPage = () => {
     loadRequests()
   }, [loadRequests])
 
+  // Set up real-time subscription to refresh when donation_requests are updated
+  useEffect(() => {
+    if (!user?.id || !supabase) return
+
+    const requestsSubscription = supabase
+      .channel('my_approved_requests_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'donation_requests',
+          filter: `requester_id=eq.${user.id}`
+        },
+        (payload) => {
+          console.log('📋 Approved request change detected:', payload)
+          // Refresh requests when any change occurs
+          loadRequests()
+        }
+      )
+      .subscribe()
+
+    // Also subscribe to notifications to refresh when approval notifications arrive
+    const notificationsSubscription = supabase
+      .channel('my_approved_requests_notifications')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: `user_id=eq.${user.id}`
+        },
+        (payload) => {
+          // Only refresh if it's a donation_approved notification
+          if (payload.new?.type === 'donation_approved' || payload.old?.type === 'donation_approved') {
+            console.log('🔔 Donation approval notification detected, refreshing approved requests')
+            loadRequests()
+          }
+        }
+      )
+      .subscribe()
+
+    // Subscribe to donations table changes to detect when claim status is updated to 'completed'
+    // This ensures the "Received" button disappears immediately after confirmation
+    const donationsSubscription = supabase
+      .channel('my_approved_requests_donations')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'donations'
+        },
+        (payload) => {
+          // Refresh if claims JSONB was updated (claim status might have changed)
+          if (payload.new?.claims || payload.old?.claims) {
+            console.log('📦 Donation claims updated, refreshing approved requests to check claim status')
+            loadRequests()
+          }
+        }
+      )
+      .subscribe()
+
+    // Cleanup subscriptions
+    return () => {
+      if (requestsSubscription) {
+        supabase.removeChannel(requestsSubscription)
+      }
+      if (notificationsSubscription) {
+        supabase.removeChannel(notificationsSubscription)
+      }
+      if (donationsSubscription) {
+        supabase.removeChannel(donationsSubscription)
+      }
+    }
+  }, [user?.id, loadRequests])
+
   const handleViewRequest = (request) => {
     setSelectedRequest(request)
     setShowViewModal(true)
+  }
+
+  const handleConfirmReceived = async (request) => {
+    if (!user?.id) return
+
+    try {
+      setConfirmingReceivedId(request.id)
+      
+      // Use claimId from request if available (from enriched request data)
+      let claimId = request.claimId
+
+      // If claimId not available, find the claim associated with this fulfilled request
+      if (!claimId) {
+        // Strategy 1: If we have donationId from enrichment, use it directly
+        if (request.donationId) {
+          const { data: donation, error: donationError } = await supabase
+            .from('donations')
+            .select('id, title, category, claims, delivery_mode')
+            .eq('id', request.donationId)
+            .single()
+
+          if (!donationError && donation && Array.isArray(donation.claims)) {
+            const claim = donation.claims.find(
+              c => c && 
+              c.recipient_id === user.id && 
+              c.status === 'claimed'
+            )
+            if (claim) {
+              claimId = claim.id
+            }
+          }
+        }
+
+        // Strategy 2: Find by category match
+        if (!claimId) {
+          const { data: donations, error: donationsError } = await supabase
+            .from('donations')
+            .select('id, title, category, claims, delivery_mode')
+            .not('claims', 'is', null)
+            .eq('delivery_mode', 'pickup')
+            .eq('category', request.category)
+
+          if (!donationsError && donations) {
+            for (const donation of donations) {
+              if (Array.isArray(donation.claims)) {
+                const claim = donation.claims.find(
+                  c => c && 
+                  c.recipient_id === user.id && 
+                  c.status === 'claimed'
+                )
+                if (claim) {
+                  claimId = claim.id
+                  break
+                }
+              }
+            }
+          }
+        }
+
+        // Strategy 3: Try to find via pickup deliveries
+        // Note: deliveries table doesn't have recipient_id, so we get all pickup deliveries
+        // and match them via claim_id later
+        if (!claimId) {
+          const { data: deliveries, error: deliveriesError } = await supabase
+            .from('deliveries')
+            .select('claim_id, delivery_mode')
+            .eq('delivery_mode', 'pickup')
+
+          if (!deliveriesError && deliveries && deliveries.length > 0) {
+            const pickupClaimIds = deliveries.map(d => d.claim_id).filter(Boolean)
+            
+            const { data: donations, error: donationsError } = await supabase
+              .from('donations')
+              .select('id, title, category, claims, delivery_mode')
+              .not('claims', 'is', null)
+              .eq('delivery_mode', 'pickup')
+
+            if (!donationsError && donations) {
+              for (const donation of donations) {
+                if (Array.isArray(donation.claims)) {
+                  const claim = donation.claims.find(
+                    c => c && 
+                    c.recipient_id === user.id && 
+                    c.status === 'claimed' &&
+                    pickupClaimIds.includes(c.id)
+                  )
+                  if (claim) {
+                    claimId = claim.id
+                    break
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // Strategy 4: Try to find any pickup claim for this recipient (last resort)
+        if (!claimId) {
+          const { data: donations, error: donationsError } = await supabase
+            .from('donations')
+            .select('id, title, category, claims, delivery_mode')
+            .not('claims', 'is', null)
+            .eq('delivery_mode', 'pickup')
+
+          if (!donationsError && donations) {
+            for (const donation of donations) {
+              if (Array.isArray(donation.claims)) {
+                const claim = donation.claims.find(
+                  c => c && 
+                  c.recipient_id === user.id && 
+                  c.status === 'claimed'
+                )
+                if (claim) {
+                  claimId = claim.id
+                  break
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (!claimId) {
+        console.error('Could not find claim for request:', {
+          requestId: request.id,
+          requestCategory: request.category,
+          requestDeliveryMode: request.delivery_mode,
+          enrichedClaimId: request.claimId,
+          enrichedDonationId: request.donationId
+        })
+        error('Could not find the donation claim. The donation may have already been completed or the claim may not exist.')
+        return
+      }
+
+      // Confirm pickup completion
+      await db.confirmPickupCompletion(claimId, user.id, true)
+      success('Received confirmation sent! Thank you for confirming.')
+      
+      // Refresh requests
+      await loadRequests()
+    } catch (err) {
+      console.error('Error confirming received:', err)
+      error(err.message || 'Failed to confirm receipt. Please try again.')
+    } finally {
+      setConfirmingReceivedId(null)
+    }
   }
 
   const getStatusInfo = (status) => {
@@ -208,12 +581,12 @@ const MyApprovedRequestsPage = () => {
                     className="card overflow-hidden hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 group"
                   >
                     <div className="flex flex-col sm:flex-row gap-4 p-4">
-                      {/* Sample Image or Placeholder */}
+                      {/* Donation Image or Sample Image or Placeholder */}
                       <div className="flex-shrink-0">
-                        {request.sample_image ? (
+                        {(request.donationImage || request.sample_image) ? (
                           <div className="relative w-full sm:w-48 lg:w-56 h-40 sm:h-48 rounded-lg overflow-hidden border-2 border-yellow-500/30 shadow-lg">
                             <img 
-                              src={request.sample_image} 
+                              src={request.donationImage || request.sample_image} 
                               alt={request.title}
                               className="w-full h-full object-cover"
                             />
@@ -252,15 +625,42 @@ const MyApprovedRequestsPage = () => {
                             </p>
                           </div>
                           
-                          {/* Action Button */}
-                          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+                          {/* Action Buttons */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
                             <button
                               onClick={() => handleViewRequest(request)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-navy-950 bg-yellow-400 hover:bg-yellow-500 rounded-lg transition-all active:scale-95"
+                              className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-navy-950 bg-yellow-400 hover:bg-yellow-500 rounded transition-all active:scale-95"
                             >
-                              <Eye className="h-3.5 w-3.5" />
+                              <Eye className="h-3 w-3" />
                               <span>View</span>
                             </button>
+                            {request.status === 'fulfilled' && 
+                             request.delivery_mode === 'pickup' && 
+                             request.claimStatus !== 'completed' && (
+                              <button
+                                onClick={() => handleConfirmReceived(request)}
+                                disabled={confirmingReceivedId === request.id}
+                                className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="Confirm that you have received the items"
+                              >
+                                {confirmingReceivedId === request.id ? (
+                                  <LoadingSpinner size="sm" />
+                                ) : (
+                                  <>
+                                    <CheckCircle className="h-3 w-3" />
+                                    <span>Received</span>
+                                  </>
+                                )}
+                              </button>
+                            )}
+                            {request.status === 'fulfilled' && 
+                             request.delivery_mode === 'pickup' && 
+                             request.claimStatus === 'completed' && (
+                              <div className="flex items-center gap-1 px-2 py-1 text-xs font-medium text-green-400 bg-green-900/30 rounded border border-green-500/30">
+                                <CheckCircle className="h-3 w-3" />
+                                <span>Received</span>
+                              </div>
+                            )}
                           </div>
                         </div>
 
@@ -330,10 +730,10 @@ const MyApprovedRequestsPage = () => {
             <div className="flex-1 overflow-y-auto px-6 py-4 custom-scrollbar">
               <div className="space-y-6">
                 {/* Image */}
-                {selectedRequest.sample_image && (
+                {(selectedRequest.donationImage || selectedRequest.sample_image) && (
                   <div className="w-full h-64 rounded-lg overflow-hidden border-2 border-yellow-500/30">
                     <img 
-                      src={selectedRequest.sample_image} 
+                      src={selectedRequest.donationImage || selectedRequest.sample_image} 
                       alt={selectedRequest.title}
                       className="w-full h-full object-cover"
                     />

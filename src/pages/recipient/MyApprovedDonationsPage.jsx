@@ -214,7 +214,8 @@ const MyApprovedDonationsPage = () => {
       
       // Filter pickup confirmation notifications (for self-pickup)
       const pickupConfirmationNotifications = notifications.filter(n => 
-        n.type === 'pickup_completed' && 
+        n.type === 'system_alert' &&
+        n.data?.notification_type === 'pickup_completed' && 
         n.data?.action_required === 'confirm_pickup' && 
         n.data?.role === 'recipient' &&
         !n.read_at
@@ -222,7 +223,8 @@ const MyApprovedDonationsPage = () => {
       
       // Filter direct delivery confirmation notifications
       const directDeliveryConfirmationNotifications = notifications.filter(n => 
-        n.type === 'direct_delivery_completed' && 
+        n.type === 'system_alert' &&
+        n.data?.notification_type === 'direct_delivery_completed' && 
         n.data?.action_required === 'confirm_direct_delivery' && 
         n.data?.role === 'recipient' &&
         !n.read_at

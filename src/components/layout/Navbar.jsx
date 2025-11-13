@@ -88,36 +88,65 @@ const Navbar = () => {
   // Realtime notifications
   useEffect(() => {
     let unsubscribe = null
+    let isMounted = true
+    
     async function load() {
       if (!profile?.id) {
         console.log('⚠️ No profile ID, skipping notification load')
+        // Clear notifications when no profile
+        if (isMounted) {
+          setNotifications([])
+          setUnreadCount(0)
+        }
         return
       }
-      console.log(`🔄 Loading notifications for user ${profile.id}...`)
+      
+      const currentProfileId = profile.id // Capture profile ID to avoid stale closure
+      
+      console.log(`🔄 Loading notifications for user ${currentProfileId}...`)
       try {
-        const items = await db.getUserNotifications(profile.id, 50)
-        console.log(`📬 Received ${items?.length || 0} notifications from database:`, items)
-        setNotifications(items || [])
-        setUnreadCount((items || []).filter(n => !n.read_at).length)
-        console.log(`✅ Notifications state updated: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+        const items = await db.getUserNotifications(currentProfileId, 50)
+        if (isMounted && profile?.id === currentProfileId) {
+          console.log(`📬 Received ${items?.length || 0} notifications from database:`, items)
+          setNotifications(items || [])
+          setUnreadCount((items || []).filter(n => !n.read_at).length)
+          console.log(`✅ Notifications state updated: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+        }
       } catch (error) {
         console.error('❌ Error loading notifications:', error)
       }
+      
       try {
-        unsubscribe = db.subscribeToUserNotifications(profile.id, async (payload) => {
+        unsubscribe = db.subscribeToUserNotifications(currentProfileId, async (payload) => {
+          // Check if component is still mounted and profile still exists
+          if (!isMounted || !profile?.id || profile.id !== currentProfileId) {
+            console.log('⚠️ Notification callback skipped - profile changed or component unmounted')
+            return
+          }
+          
           console.log('🔔 Notification change detected in Navbar:', payload)
           try {
-            // Refresh notifications when any change is detected
-            const items = await db.getUserNotifications(profile.id, 50)
-            console.log(`📬 Polling update - received ${items?.length || 0} notifications`)
-            setNotifications(items || [])
-            setUnreadCount((items || []).filter(n => !n.read_at).length)
-            console.log(`📬 Updated notifications: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+            // Double-check profile still exists before fetching
+            if (!profile?.id || profile.id !== currentProfileId) {
+              console.log('⚠️ Profile changed during notification fetch, skipping')
+              return
+            }
             
-            // If it's a new notification (INSERT), show a visual indicator
-            if (payload.eventType === 'INSERT' && payload.new) {
-              console.log('✨ New notification received:', payload.new)
-              // The notification will appear in the list automatically
+            // Refresh notifications when any change is detected
+            const items = await db.getUserNotifications(currentProfileId, 50)
+            
+            // Final check before updating state
+            if (isMounted && profile?.id === currentProfileId) {
+              console.log(`📬 Polling update - received ${items?.length || 0} notifications`)
+              setNotifications(items || [])
+              setUnreadCount((items || []).filter(n => !n.read_at).length)
+              console.log(`📬 Updated notifications: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+              
+              // If it's a new notification (INSERT), show a visual indicator
+              if (payload.eventType === 'INSERT' && payload.new) {
+                console.log('✨ New notification received:', payload.new)
+                // The notification will appear in the list automatically
+              }
             }
           } catch (error) {
             console.error('❌ Error refreshing notifications:', error)
@@ -127,12 +156,18 @@ const Navbar = () => {
         console.error('❌ Error setting up notification subscription:', error)
       }
     }
+    
     load()
+    
     return () => { 
+      isMounted = false
       if (unsubscribe) {
         console.log('🔔 Cleaning up notification subscription')
-        unsubscribe() 
+        unsubscribe()
       }
+      // Clear notifications on cleanup
+      setNotifications([])
+      setUnreadCount(0)
     }
   }, [profile?.id])
 

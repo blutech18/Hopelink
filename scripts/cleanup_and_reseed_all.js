@@ -255,6 +255,28 @@ async function getUsersByRole(role) {
     .limit(50);
   
   if (error) throw error;
+  
+  // Filter to only preferred users based on role
+  const preferredEmails = {
+    'donor': [PREFERRED.donorEmail],
+    'recipient': [PREFERRED.recipientEmail],
+    'volunteer': [PREFERRED.volunteerEmail],
+    'admin': [PREFERRED.adminEmail]
+  };
+  
+  const preferredEmailsForRole = preferredEmails[role] || [];
+  if (preferredEmailsForRole.length > 0) {
+    const filtered = (data || []).filter(user => 
+      preferredEmailsForRole.some(email => 
+        user.email && user.email.toLowerCase() === email.toLowerCase()
+      )
+    );
+    if (filtered.length > 0) {
+      console.log(`   ✅ Filtered ${role}s to ${filtered.length} preferred user(s): ${filtered.map(u => u.email).join(', ')}`);
+      return filtered;
+    }
+  }
+  
   return data || [];
 }
 
@@ -314,6 +336,26 @@ async function getAllUsers() {
     .limit(100);
   
   if (error) throw error;
+  
+  // Filter to only preferred users
+  const preferredEmails = [
+    PREFERRED.donorEmail,
+    PREFERRED.recipientEmail,
+    PREFERRED.volunteerEmail,
+    PREFERRED.adminEmail
+  ];
+  
+  const filtered = (data || []).filter(user => 
+    preferredEmails.some(email => 
+      user.email && user.email.toLowerCase() === email.toLowerCase()
+    )
+  );
+  
+  if (filtered.length > 0) {
+    console.log(`   ✅ Filtered all users to ${filtered.length} preferred user(s): ${filtered.map(u => `${u.email} (${u.role})`).join(', ')}`);
+    return filtered;
+  }
+  
   return data || [];
 }
 
@@ -1172,9 +1214,9 @@ async function seedDonations() {
     
     // Create donations from all templates (18 templates available)
     // IMPORTANT: Ensure we have enough volunteer-mode donations for available tasks
-    // Distribute delivery modes: 40% volunteer, 30% direct, 30% pickup
+    // Distribute delivery modes: 35% volunteer, 35% pickup, 30% direct
     const numDonations = donationTemplates.length;
-    const deliveryModeDistribution = ['volunteer', 'volunteer', 'volunteer', 'volunteer', 'direct', 'direct', 'direct', 'pickup', 'pickup', 'pickup']; // 40% volunteer, 30% direct, 30% pickup
+    const deliveryModeDistribution = ['volunteer', 'volunteer', 'volunteer', 'pickup', 'pickup', 'pickup', 'direct', 'direct', 'direct', 'pickup']; // 35% volunteer, 40% pickup, 25% direct
     
     // Prioritize preferred donor: give them 60% of donations to ensure they have enough for notifications
     const preferredDonorIndex = preferredDonor ? 0 : -1;
@@ -1700,7 +1742,10 @@ async function seedEvents() {
             .insert(eventItemsToInsert);
           
           if (itemsError) {
-            console.error(`Error creating items for "${template.name}":`, itemsError.message);
+            console.error(`Error creating items for "${template.name}":`, itemsError.message || itemsError);
+            // Continue with event creation even if items fail
+          } else {
+            console.log(`   ✅ Created ${eventItemsToInsert.length} event items`);
           }
         }
         
@@ -1742,14 +1787,61 @@ async function seedDonationClaims(donations, recipients) {
     
     console.log(`   Donations by mode: pickup=${donationsByMode.pickup.length}, volunteer=${donationsByMode.volunteer.length}, direct=${donationsByMode.direct.length}`);
     
+    // Ensure we create enough claims for volunteer donations to have volunteer requests
+    // Create claims for at least 10 volunteer donations (or all if less than 10)
+    // This ensures we have enough data for volunteer requests and deliveries
+    let volunteerClaimsCount;
+    if (donationsByMode.volunteer.length === 0) {
+      volunteerClaimsCount = 0;
+    } else if (donationsByMode.volunteer.length < 10) {
+      volunteerClaimsCount = donationsByMode.volunteer.length; // Use all if less than 10
+    } else {
+      volunteerClaimsCount = Math.min(10, donationsByMode.volunteer.length); // Use at least 10
+    }
+    
     const claimsByMode = {
-      volunteer: Math.min(8, donationsByMode.volunteer.length),
+      volunteer: volunteerClaimsCount,
       direct: Math.min(donationsByMode.direct.length, 6),
       pickup: Math.min(3, donationsByMode.pickup.length)
     };
     
     const totalClaims = claimsByMode.volunteer + claimsByMode.direct + claimsByMode.pickup;
     console.log(`   Planning to create ${totalClaims} claims as JSONB`);
+    
+    // Track how many requests were updated to fulfilled
+    let fulfilledRequestsCount = 0;
+    
+    // Helper function to update donation request to fulfilled status
+    const updateRequestToFulfilled = async (recipientId, donationCategory) => {
+      try {
+        // Find the most recent open request from this recipient that matches the donation category
+        const { data: recipientRequests, error: requestsError } = await supabase
+          .from('donation_requests')
+          .select('id, category, status, created_at')
+          .eq('requester_id', recipientId)
+          .eq('category', donationCategory)
+          .eq('status', 'open')
+          .order('created_at', { ascending: false })
+          .limit(1);
+        
+        if (!requestsError && recipientRequests && recipientRequests.length > 0) {
+          // Update the most recent matching request to fulfilled
+          await supabase
+            .from('donation_requests')
+            .update({ 
+              status: 'fulfilled',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', recipientRequests[0].id);
+          fulfilledRequestsCount++;
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.warn(`   ⚠️  Could not update request to fulfilled for recipient ${recipientId}:`, error.message);
+        return false;
+      }
+    };
     
     // Helper function to add claims to a donation
     const addClaimsToDonation = async (donation, numClaims) => {
@@ -1772,6 +1864,11 @@ async function seedDonationClaims(donations, recipients) {
         };
         claims.push(claim);
         claimsData.push({ ...claim, donation_id: donation.id, donor_id: donation.donor_id });
+        
+        // Update the recipient's donation request to fulfilled status
+        if (donation.category) {
+          await updateRequestToFulfilled(recipient.id, donation.category);
+        }
     }
     
       if (claims.length > 0) {
@@ -1784,15 +1881,53 @@ async function seedDonationClaims(donations, recipients) {
       return claims.length;
     };
     
-    // Add claims to volunteer donations
+    // IMPORTANT: Prioritize preferred donor's volunteer donations for claims
+    // This ensures the preferred donor has volunteer requests to approve
+    const preferredDonor = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', PREFERRED.donorEmail)
+      .single();
+    
+    const preferredDonorId = preferredDonor.data?.id;
+    let preferredDonorVolunteerDonations = [];
+    let otherVolunteerDonations = [];
+    
+    if (preferredDonorId) {
+      preferredDonorVolunteerDonations = donationsByMode.volunteer.filter(d => d.donor_id === preferredDonorId);
+      otherVolunteerDonations = donationsByMode.volunteer.filter(d => d.donor_id !== preferredDonorId);
+      console.log(`   📊 Preferred donor has ${preferredDonorVolunteerDonations.length} volunteer-mode donations`);
+      console.log(`   📊 Other donors have ${otherVolunteerDonations.length} volunteer-mode donations`);
+    } else {
+      otherVolunteerDonations = donationsByMode.volunteer;
+    }
+    
+    // Add claims to volunteer donations - prioritize preferred donor's donations
     let totalCreated = 0;
-    for (let i = 0; i < claimsByMode.volunteer; i++) {
-      const availableDonations = donationsByMode.volunteer.filter(d => !claimedDonations.has(d.id));
+    let preferredDonorClaimsCreated = 0;
+    
+    // First, create claims for preferred donor's volunteer donations (at least 8-10)
+    const preferredDonorClaimsTarget = Math.min(Math.max(8, preferredDonorVolunteerDonations.length), preferredDonorVolunteerDonations.length);
+    for (let i = 0; i < preferredDonorClaimsTarget && i < preferredDonorVolunteerDonations.length; i++) {
+      const donation = preferredDonorVolunteerDonations[i];
+      if (!claimedDonations.has(donation.id)) {
+        claimedDonations.add(donation.id);
+        totalCreated += await addClaimsToDonation(donation, 1);
+        preferredDonorClaimsCreated++;
+      }
+    }
+    
+    // Then, create claims for other volunteer donations (fill up to target)
+    const remainingClaimsNeeded = claimsByMode.volunteer - preferredDonorClaimsCreated;
+    for (let i = 0; i < remainingClaimsNeeded && i < otherVolunteerDonations.length; i++) {
+      const availableDonations = otherVolunteerDonations.filter(d => !claimedDonations.has(d.id));
       if (availableDonations.length === 0) break;
       const donation = availableDonations[Math.floor(Math.random() * availableDonations.length)];
       claimedDonations.add(donation.id);
       totalCreated += await addClaimsToDonation(donation, 1);
     }
+    
+    console.log(`   ✅ Created ${preferredDonorClaimsCreated} claims for preferred donor's volunteer donations`);
     
     // Add claims to direct donations
     for (let i = 0; i < claimsByMode.direct; i++) {
@@ -1812,7 +1947,8 @@ async function seedDonationClaims(donations, recipients) {
       totalCreated += await addClaimsToDonation(donation, 1);
     }
     
-    console.log(`✅ Created ${totalCreated} donation claims as JSONB\n`);
+    console.log(`✅ Created ${totalCreated} donation claims as JSONB`);
+    console.log(`   • Updated ${fulfilledRequestsCount} donation requests to 'fulfilled' status\n`);
     return claimsData;
     
   } catch (error) {
@@ -1886,7 +2022,7 @@ async function seedEventParticipants(events, users) {
   }
 }
 
-async function seedNotifications(users, donations, events, claims) {
+async function seedNotifications(users, donations, events, claims, volunteerRequests = []) {
   console.log('🌱 Seeding notifications with real data...\n');
   
   try {
@@ -1902,10 +2038,62 @@ async function seedNotifications(users, donations, events, claims) {
     const volunteers = users.filter(user => user.role === 'volunteer');
     
     console.log(`   Found ${admins.length} admins, ${donors.length} donors, ${recipients.length} recipients, ${volunteers.length} volunteers`);
-    console.log(`   Using real data: ${donations?.length || 0} donations, ${events?.length || 0} events, ${claims?.length || 0} claims`);
+    console.log(`   Using real data: ${donations?.length || 0} donations, ${events?.length || 0} events, ${claims?.length || 0} claims, ${volunteerRequests?.length || 0} volunteer requests`);
     
     const notificationsToInsert = [];
     const usedNotificationIds = new Set();
+    
+    // Use volunteer requests passed to function (they should be available from seedVolunteerRequests)
+    let allVolunteerRequests = volunteerRequests || [];
+    
+    // If not provided, try to fetch from database as fallback
+    if (!allVolunteerRequests || allVolunteerRequests.length === 0) {
+      console.log(`   ⚠️  No volunteer requests provided, fetching from database as fallback...`);
+      const { data: fetchedVolunteerRequests, error: fetchError } = await supabase
+        .from('volunteer_requests')
+        .select('id, volunteer_id, claim_id, status')
+        .limit(100);
+      if (fetchError) {
+        console.error(`   ⚠️  Error fetching volunteer requests:`, fetchError.message);
+        allVolunteerRequests = [];
+      } else {
+        allVolunteerRequests = fetchedVolunteerRequests || [];
+        console.log(`   ✅ Fetched ${allVolunteerRequests.length} volunteer requests from database`);
+      }
+    } else {
+      console.log(`   ✅ Using ${allVolunteerRequests.length} provided volunteer requests`);
+    }
+    
+    // Log status breakdown
+    if (allVolunteerRequests.length > 0) {
+      const statusBreakdown = {
+        pending: allVolunteerRequests.filter(vr => vr.status === 'pending').length,
+        approved: allVolunteerRequests.filter(vr => vr.status === 'approved').length,
+        rejected: allVolunteerRequests.filter(vr => vr.status === 'rejected').length
+      };
+      console.log(`   📊 Volunteer requests status: ${statusBreakdown.pending} pending, ${statusBreakdown.approved} approved, ${statusBreakdown.rejected} rejected`);
+    }
+    
+    // Create a map of volunteer requests by donation_id and volunteer_id for quick lookup
+    // We need to map volunteer requests to donations via claims
+    const volunteerRequestMap = new Map();
+    const claimsMap = new Map();
+    
+    // Map claims by id for quick lookup
+    if (claims && claims.length > 0) {
+      claims.forEach(claim => {
+        claimsMap.set(claim.id, claim);
+      });
+    }
+    
+    // Map volunteer requests by (donation_id, volunteer_id) for quick lookup
+    allVolunteerRequests.forEach(vr => {
+      const claim = claimsMap.get(vr.claim_id);
+      if (claim && claim.donation_id) {
+        const key = `${claim.donation_id}_${vr.volunteer_id}`;
+        volunteerRequestMap.set(key, vr);
+      }
+    });
     
     // Fetch requests for notification data
     const { data: requests } = await supabase
@@ -2135,33 +2323,9 @@ async function seedNotifications(users, donations, events, claims) {
             }
           }
           
-          // Volunteer request - create 2-3 requests per donation (more for preferred donor)
-          if (volunteers.length > 0 && donation.delivery_mode === 'volunteer') {
-            const numVolunteerRequests = (preferredDonor && donor.id === preferredDonor.id)
-              ? Math.floor(Math.random() * 2) + 2  // 2-3 requests for preferred donor
-              : Math.floor(Math.random() * 2) + 1; // 1-2 requests for others
-            const selectedVolunteers = [...volunteers]
-              .sort(() => 0.5 - Math.random())
-              .slice(0, Math.min(numVolunteerRequests, volunteers.length));
-            
-            for (const volunteer of selectedVolunteers) {
-              donorNotifications.push({
-                title: '🚚 Volunteer Delivery Request',
-                message: `${volunteer.name} wants to deliver your "${donation.title}" donation`,
-                data: {
-                  donation_id: donation.id,
-                  volunteer_id: volunteer.id,
-                  volunteer_name: volunteer.name,
-                  volunteer_email: volunteer.email || '',
-                  volunteer_phone: volunteer.phone_number || '',
-                  donation_title: donation.title,
-                  type: 'volunteer_request'
-                },
-                type: 'volunteer_request',
-                isUnread: true // Mark as unread for pending requests page
-              });
-            }
-          }
+          // Volunteer request - create notifications only for existing volunteer requests with pending status
+          // This ensures notifications are linked to actual volunteer_requests records
+          // Note: We'll handle this after the donation loop to ensure we catch all volunteer requests
           
           // Delivery status update (can be read) - skip for preferred donor to focus on pending requests
           if (volunteers.length > 0 && (!preferredDonor || donor.id !== preferredDonor.id) && Math.random() > 0.7) {
@@ -2208,14 +2372,174 @@ async function seedNotifications(users, donations, events, claims) {
             created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
           });
         }
+      }
+    }
+    
+    // IMPORTANT: Create volunteer request notifications AFTER processing all donations
+    // This ensures we can properly match volunteer requests to donations via claims
+    console.log(`   Checking conditions for volunteer request notifications:`);
+    console.log(`     - Donors: ${donors.length}`);
+    console.log(`     - Volunteer requests: ${allVolunteerRequests.length}`);
+    console.log(`     - Claims: ${claims?.length || 0}`);
+    console.log(`     - Donations: ${donations?.length || 0}`);
+    
+    if (donors.length > 0 && allVolunteerRequests.length > 0 && claims && claims.length > 0 && donations && donations.length > 0) {
+      console.log(`   ✅ Creating volunteer request notifications for pending requests...`);
+      
+      // Create maps for quick lookup
+      const claimsMap = new Map();
+      claims.forEach(claim => {
+        claimsMap.set(claim.id, claim);
+      });
+      console.log(`   ✅ Created claims map with ${claimsMap.size} claims`);
+      
+      const donationsMap = new Map();
+      donations.forEach(donation => {
+        donationsMap.set(donation.id, donation);
+      });
+      console.log(`   ✅ Created donations map with ${donationsMap.size} donations`);
+      
+      // Find preferred donor
+      const preferredDonor = donors.find(d => d.email && d.email.toLowerCase() === PREFERRED.donorEmail.toLowerCase());
+      
+      // Process each pending volunteer request
+      const pendingVolunteerRequests = allVolunteerRequests.filter(vr => vr.status === 'pending');
+      console.log(`   ✅ Found ${pendingVolunteerRequests.length} pending volunteer requests (out of ${allVolunteerRequests.length} total)`);
+      
+      // Debug: Log preferred donor info
+      if (preferredDonor) {
+        console.log(`   ✅ Preferred donor found: ${preferredDonor.email} (ID: ${preferredDonor.id?.substring(0, 8)}...)`);
+      } else {
+        console.log(`   ⚠️  Preferred donor not found! Looking for: ${PREFERRED.donorEmail}`);
+      }
+      
+      let createdCount = 0;
+      let skippedCount = 0;
+      let preferredDonorNotificationCount = 0;
+      
+      for (const vr of pendingVolunteerRequests) {
+        // Find the claim for this volunteer request
+        const claim = claimsMap.get(vr.claim_id);
+        if (!claim) {
+          console.log(`   ⚠️  Skipping volunteer request ${vr.id?.substring(0, 8)}...: claim ${vr.claim_id?.substring(0, 8)} not found in claimsMap`);
+          skippedCount++;
+          continue;
+        }
         
-        // Log notification count for preferred donor
-        if (preferredDonor && donor.id === preferredDonor.id) {
-          const unreadDonationRequests = donorNotifications.filter(n => n.type === 'donation_request').length;
-          const unreadVolunteerRequests = donorNotifications.filter(n => n.type === 'volunteer_request').length;
-          console.log(`   ✅ Created ${unreadDonationRequests} donation requests and ${unreadVolunteerRequests} volunteer requests for ${donor.email || donor.name}`);
+        if (!claim.donation_id) {
+          console.log(`   ⚠️  Skipping volunteer request ${vr.id?.substring(0, 8)}...: claim found but missing donation_id`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Find the donation for this claim
+        const donation = donationsMap.get(claim.donation_id);
+        if (!donation) {
+          console.log(`   ⚠️  Skipping volunteer request ${vr.id?.substring(0, 8)}...: donation ${claim.donation_id?.substring(0, 8)} not found`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Find the donor for this donation
+        // IMPORTANT: Check in the users array first, then in donors array
+        // This ensures we find the donor even if they're not in the filtered donors array
+        let donor = users.find(u => u.id === donation.donor_id && u.role === 'donor');
+        if (!donor) {
+          donor = donors.find(d => d.id === donation.donor_id);
+        }
+        if (!donor) {
+          console.log(`   ⚠️  Skipping volunteer request ${vr.id?.substring(0, 8)}...: donor ${donation.donor_id?.substring(0, 8)} not found`);
+          console.log(`       Donation donor_id: ${donation.donor_id?.substring(0, 8)}...`);
+          console.log(`       Available donor IDs: ${donors.map(d => d.id?.substring(0, 8)).join(', ')}`);
+          console.log(`       Available user IDs (donors): ${users.filter(u => u.role === 'donor').map(u => u.id?.substring(0, 8)).join(', ')}`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Verify this is actually a donor
+        if (donor.role !== 'donor') {
+          console.log(`   ⚠️  Skipping volunteer request ${vr.id?.substring(0, 8)}...: user ${donor.id?.substring(0, 8)} is not a donor (role: ${donor.role})`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Find the volunteer
+        const volunteer = volunteers.find(v => v.id === vr.volunteer_id);
+        if (!volunteer) {
+          console.log(`   ⚠️  Skipping volunteer request ${vr.id?.substring(0, 8)}...: volunteer ${vr.volunteer_id?.substring(0, 8)} not found`);
+          skippedCount++;
+          continue;
+        }
+        
+        // Check if this is for the preferred donor
+        const isPreferredDonor = preferredDonor && donor.id === preferredDonor.id;
+        if (isPreferredDonor) {
+          console.log(`   ✅ Creating notification for preferred donor: ${donor.email} for donation "${donation.title}"`);
+          preferredDonorNotificationCount++;
+        }
+        
+        // Create notification for the donor
+        let notificationId;
+        do {
+          notificationId = randomUUID();
+        } while (usedNotificationIds.has(notificationId));
+        usedNotificationIds.add(notificationId);
+        
+        notificationsToInsert.push({
+          id: notificationId,
+          user_id: donor.id,
+          type: 'volunteer_request',
+          title: '🚚 Volunteer Delivery Request',
+          message: `${volunteer.name} wants to deliver your "${donation.title}" donation`,
+          data: {
+            donation_id: donation.id,
+            volunteer_id: volunteer.id,
+            volunteer_name: volunteer.name,
+            volunteer_email: volunteer.email || '',
+            volunteer_phone: volunteer.phone_number || '',
+            donation_title: donation.title,
+            claim_id: claim.id, // IMPORTANT: Include claim_id for delivery assignment
+            volunteer_request_id: vr.id, // IMPORTANT: Include volunteer_request_id for status update
+            type: 'volunteer_request'
+          },
+          // CRITICAL: volunteer_request MUST be unread (null) for pending-requests page
+          read_at: null,
+          created_at: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()
+        });
+        createdCount++;
+      }
+      
+      console.log(`   ✅ Created ${createdCount} volunteer request notifications, skipped ${skippedCount}`);
+      if (preferredDonor) {
+        console.log(`   ✅ Created ${preferredDonorNotificationCount} notifications for preferred donor: ${preferredDonor.email}`);
+        
+        // Log detailed breakdown for preferred donor
+        const preferredDonorVolunteerRequests = notificationsToInsert.filter(n => 
+          n.user_id === preferredDonor.id && n.type === 'volunteer_request'
+        );
+        const preferredDonorDonationRequests = notificationsToInsert.filter(n => 
+          n.user_id === preferredDonor.id && n.type === 'donation_request'
+        ).length;
+        console.log(`   📊 Final count for ${preferredDonor.email || preferredDonor.name}:`);
+        console.log(`      - Donation requests: ${preferredDonorDonationRequests.length}`);
+        console.log(`      - Volunteer requests: ${preferredDonorVolunteerRequests.length}`);
+        if (preferredDonorVolunteerRequests.length > 0) {
+          console.log(`      - Volunteer request notifications details:`);
+          preferredDonorVolunteerRequests.forEach((n, idx) => {
+            console.log(`         ${idx + 1}. ${n.title} - ${n.data?.donation_title || 'N/A'}`);
+            console.log(`            - claim_id: ${n.data?.claim_id?.substring(0, 8)}...`);
+            console.log(`            - volunteer_request_id: ${n.data?.volunteer_request_id?.substring(0, 8)}...`);
+            console.log(`            - read_at: ${n.read_at}`);
+          });
         }
       }
+    } else {
+      console.log(`   ⚠️  Skipping volunteer request notifications: conditions not met`);
+      console.log(`   ⚠️  Debug info:`);
+      console.log(`      - donors.length: ${donors.length}`);
+      console.log(`      - allVolunteerRequests.length: ${allVolunteerRequests.length}`);
+      console.log(`      - claims.length: ${claims?.length || 0}`);
+      console.log(`      - donations.length: ${donations?.length || 0}`);
     }
     
     // Create RECIPIENT notifications using real data
@@ -2434,12 +2758,33 @@ async function seedNotifications(users, donations, events, claims) {
       n.type === 'volunteer_request' && !n.read_at
     ).length;
     
+    // Count notifications for preferred donor specifically
+    const preferredDonorNotifications = notificationsToInsert.filter(n => {
+      const donor = donors.find(d => d.id === n.user_id);
+      return donor && donor.email && donor.email.toLowerCase() === PREFERRED.donorEmail.toLowerCase();
+    });
+    const preferredDonorUnreadVolunteerRequests = preferredDonorNotifications.filter(n => 
+      n.type === 'volunteer_request' && !n.read_at
+    ).length;
+    const preferredDonorUnreadDonationRequests = preferredDonorNotifications.filter(n => 
+      n.type === 'donation_request' && !n.read_at
+    ).length;
+    
     console.log(`   Admin notifications: ${adminNotifCount}`);
     console.log(`   Donor notifications: ${donorNotifCount}`);
     console.log(`   Recipient notifications: ${recipientNotifCount}`);
     console.log(`   Volunteer notifications: ${volunteerNotifCount}`);
     console.log(`   📋 Unread Donation Requests (for /pending-requests): ${unreadDonationRequests}`);
     console.log(`   🚚 Unread Volunteer Requests (for /pending-requests): ${unreadVolunteerRequests}`);
+    if (preferredDonorNotifications.length > 0) {
+      console.log(`   📊 For preferred donor (${PREFERRED.donorEmail}):`);
+      console.log(`      - Unread Donation Requests: ${preferredDonorUnreadDonationRequests}`);
+      console.log(`      - Unread Volunteer Requests: ${preferredDonorUnreadVolunteerRequests}`);
+      if (preferredDonorUnreadVolunteerRequests === 0) {
+        console.log(`      ⚠️  WARNING: No unread volunteer requests for preferred donor!`);
+        console.log(`      ⚠️  This means the Volunteer Requests table will be empty in /pending-requests`);
+      }
+    }
     return data;
     
   } catch (error) {
@@ -2810,6 +3155,94 @@ async function seedDirectDeliveries(claims, donations, recipients) {
     
   } catch (error) {
     console.error('❌ Error seeding direct deliveries:', error);
+    return [];
+  }
+}
+
+async function seedPickupCompletions(claims, donations, recipients) {
+  console.log('🌱 Seeding pickup completions (self-pickup donations)...\n');
+  
+  try {
+    if (!claims || claims.length === 0) {
+      console.log('⚠️  No claims available for pickup completions.');
+      return [];
+    }
+    
+    // Create donations map for quick lookup
+    const donationsMap = {};
+    if (donations && donations.length > 0) {
+      donations.forEach(donation => {
+        donationsMap[donation.id] = donation;
+      });
+    }
+    
+    // Filter claims that use pickup delivery mode
+    const pickupClaims = claims.filter(claim => {
+      const donation = donationsMap[claim.donation_id];
+      return donation && donation.delivery_mode === 'pickup';
+    });
+    
+    if (pickupClaims.length === 0) {
+      console.log('⚠️  No pickup delivery claims available.');
+      console.log(`   Total claims: ${claims.length}`);
+      console.log(`   Donations with pickup mode: ${donations ? donations.filter(d => d.delivery_mode === 'pickup').length : 0}`);
+      return [];
+    }
+    
+    console.log(`   Processing ${pickupClaims.length} pickup claims...`);
+    
+    // Create pickup completion records - some completed, some still pending
+    const pickupCompletions = [];
+    const statusOptions = ['completed', 'claimed', 'claimed']; // 33% completed, 67% still claimed (pending pickup)
+    
+    for (let i = 0; i < Math.min(pickupClaims.length, 5); i++) {
+      const claim = pickupClaims[i];
+      const donation = donationsMap[claim.donation_id];
+      const recipient = recipients.find(r => r.id === claim.recipient_id);
+      
+      if (!donation || !recipient) continue;
+      
+      const status = statusOptions[i % statusOptions.length];
+      
+      // Update the claim status in the donation's claims JSONB
+      const updatedClaims = donation.claims.map(c => 
+        c.id === claim.id ? { ...c, status: status } : c
+      );
+      
+      // Update donation status based on claim status
+      let donationStatus = donation.status;
+      if (status === 'completed') {
+        donationStatus = 'delivered'; // Pickup completed
+      } else {
+        donationStatus = 'claimed'; // Still waiting for pickup
+      }
+      
+      // Update the donation in database
+      await supabase
+        .from('donations')
+        .update({ 
+          claims: updatedClaims,
+          status: donationStatus,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', donation.id);
+      
+      pickupCompletions.push({
+        claimId: claim.id,
+        donationId: donation.id,
+        recipientId: claim.recipient_id,
+        status: status,
+        completedAt: status === 'completed' ? new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString() : null
+      });
+      
+      console.log(`   • Pickup for "${donation.title}": ${status}`);
+    }
+    
+    console.log(`✅ Created ${pickupCompletions.length} pickup completion records\n`);
+    return pickupCompletions;
+    
+  } catch (error) {
+    console.error('❌ Error seeding pickup completions:', error);
     return [];
   }
 }
@@ -3327,14 +3760,60 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
     
     // IMPORTANT: Create volunteer requests for claims that will have deliveries
     // We need to ensure that deliveries are only created for approved volunteer requests
-    // Create requests for ~40% of volunteer claims (matching the delivery creation rate)
-    const numRequests = Math.max(1, Math.floor(volunteerClaims.length * 0.4));
-    const selectedClaims = volunteerClaims.slice(0, numRequests);
+    // Create requests for ALL volunteer claims to ensure we have enough pending requests
+    const selectedClaims = volunteerClaims;
     
     // Track which volunteers are assigned to which claims to avoid duplicates
     const claimToVolunteerMap = new Map();
     
+    // Find preferred donor to prioritize their donations
+    const { data: preferredDonorData } = await supabase
+      .from('users')
+      .select('id, email')
+      .eq('email', PREFERRED.donorEmail)
+      .single();
+    
+    const preferredDonorId = preferredDonorData?.id;
+    
+    // Separate claims by preferred donor vs others
+    const preferredDonorClaims = [];
+    const otherClaims = [];
+    
     for (const claim of selectedClaims) {
+      const donation = donationsMap.get(claim.donation_id);
+      if (preferredDonorId && donation?.donor_id === preferredDonorId) {
+        preferredDonorClaims.push(claim);
+      } else {
+        otherClaims.push(claim);
+      }
+    }
+    
+    // Ensure we have at least some approved requests for deliveries
+    // For preferred donor: prioritize PENDING requests (80% pending, 10% approved, 10% rejected)
+    // This ensures we have plenty of pending requests for testing the approval flow
+    // For others: ensure at least 30% approved
+    let approvedCount = 0;
+    let preferredPendingCount = 0;
+    let preferredRejectedCount = 0;
+    
+    // For preferred donor: Create mostly PENDING requests for testing
+    // Only create 1-2 approved requests for deliveries, rest should be pending
+    const minApprovedForPreferred = Math.min(2, Math.max(1, Math.floor(preferredDonorClaims.length * 0.1)));
+    const minApprovedForOthers = Math.max(1, Math.floor(otherClaims.length * 0.3));
+    
+    console.log(`   📊 Processing ${preferredDonorClaims.length} preferred donor claims and ${otherClaims.length} other claims`);
+    console.log(`   📊 Min approved for preferred: ${minApprovedForPreferred}, min approved for others: ${minApprovedForOthers}`);
+    
+    if (preferredDonorClaims.length === 0) {
+      console.log(`   ⚠️  WARNING: No claims found for preferred donor!`);
+      console.log(`   ⚠️  This means no volunteer requests will be created for the preferred donor`);
+      console.log(`   ⚠️  Check that the preferred donor has volunteer-mode donations with claims`);
+    }
+    
+    // Process preferred donor claims first
+    // IMPORTANT: Create MOSTLY pending requests (80%) for the preferred donor to test approval flow
+    for (let i = 0; i < preferredDonorClaims.length; i++) {
+      const claim = preferredDonorClaims[i];
       const volunteer = volunteers[Math.floor(Math.random() * volunteers.length)];
       
       let requestId;
@@ -3343,16 +3822,81 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
       } while (usedRequestIds.has(requestId));
       usedRequestIds.add(requestId);
       
-      // IMPORTANT: For deliveries to appear in my-deliveries, volunteer requests MUST be 'approved'
-      // Distribute: 70% approved (for deliveries), 20% pending, 10% rejected
+      // For preferred donor: Create MOSTLY pending requests for testing approval flow
+      // Distribution: 10% approved (for deliveries), 80% pending (for testing), 10% rejected
       let status;
+      if (i < minApprovedForPreferred && minApprovedForPreferred > 0) {
+        status = 'approved'; // Ensure minimum approved for deliveries
+        approvedCount++;
+        console.log(`   ✅ Created APPROVED volunteer request ${i + 1}/${preferredDonorClaims.length} for preferred donor's claim ${claim.id?.substring(0, 8)}...`);
+      } else {
+        // For remaining: 80% pending, 10% rejected, 10% approved
+        // This ensures we have plenty of pending requests for the preferred donor to test with
+        const rand = Math.random();
+        if (rand < 0.8) {
+          status = 'pending'; // Most should be pending for testing approval flow
+          preferredPendingCount++;
+          console.log(`   ✅ Created PENDING volunteer request ${i + 1}/${preferredDonorClaims.length} for preferred donor's claim ${claim.id?.substring(0, 8)}... (volunteer: ${volunteer.email?.substring(0, 30) || volunteer.id?.substring(0, 8)})`);
+        } else if (rand < 0.9) {
+          status = 'rejected';
+          preferredRejectedCount++;
+          console.log(`   ✅ Created REJECTED volunteer request ${i + 1}/${preferredDonorClaims.length} for preferred donor's claim ${claim.id?.substring(0, 8)}...`);
+        } else {
+          status = 'approved';
+          approvedCount++;
+          console.log(`   ✅ Created APPROVED volunteer request ${i + 1}/${preferredDonorClaims.length} for preferred donor's claim ${claim.id?.substring(0, 8)}...`);
+        }
+      }
+      
+      // Store the volunteer assignment for this claim (for delivery creation)
+      if (status === 'approved') {
+        claimToVolunteerMap.set(claim.id, volunteer.id);
+      }
+      
+      requestsToInsert.push({
+        id: requestId,
+        volunteer_id: volunteer.id,
+        claim_id: claim.id,
+        request_id: null,
+        task_type: 'approved_donation',
+        status: status,
+        created_at: new Date(Date.now() - Math.random() * 14 * 24 * 60 * 60 * 1000).toISOString(),
+        updated_at: new Date().toISOString()
+      });
+    }
+    
+    console.log(`   📊 Created ${preferredDonorClaims.length} volunteer requests for preferred donor:`);
+    console.log(`      - ${preferredPendingCount} pending (will have notifications created)`);
+    console.log(`      - ${approvedCount} approved (will have deliveries created)`);
+    console.log(`      - ${preferredRejectedCount} rejected`);
+    
+    // Process other claims
+    for (let i = 0; i < otherClaims.length; i++) {
+      const claim = otherClaims[i];
+      const volunteer = volunteers[Math.floor(Math.random() * volunteers.length)];
+      
+      let requestId;
+      do {
+        requestId = randomUUID();
+      } while (usedRequestIds.has(requestId));
+      usedRequestIds.add(requestId);
+      
+      // Ensure at least minApprovedForOthers are approved, then distribute the rest
+      let status;
+      if (i < minApprovedForOthers) {
+        status = 'approved'; // Ensure minimum approved
+        approvedCount++;
+      } else {
+        // For remaining: 70% approved, 20% pending, 10% rejected
       const rand = Math.random();
       if (rand < 0.7) {
-        status = 'approved'; // These will have deliveries created
+          status = 'approved';
+          approvedCount++;
       } else if (rand < 0.9) {
         status = 'pending';
       } else {
         status = 'rejected';
+        }
       }
       
       // Store the volunteer assignment for this claim (for delivery creation)
@@ -3390,14 +3934,46 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
       return { requests: [], claimToVolunteerMap: new Map() };
     }
     
-    const approvedCount = data.filter(r => r.status === 'approved').length;
-    const pendingCount = data.filter(r => r.status === 'pending').length;
-    const rejectedCount = data.filter(r => r.status === 'rejected').length;
+    // Count statuses from inserted data
+    const finalApprovedCount = data.filter(r => r.status === 'approved').length;
+    const finalPendingCount = data.filter(r => r.status === 'pending').length;
+    const finalRejectedCount = data.filter(r => r.status === 'rejected').length;
+    
+    // Count how many are for preferred donor
+    let preferredDonorPendingCount = 0;
+    let preferredDonorApprovedCount = 0;
+    if (preferredDonorId && claims) {
+      // Get all donations for preferred donor
+      const preferredDonorDonationIds = new Set();
+      donations.forEach(d => {
+        if (d.donor_id === preferredDonorId) {
+          preferredDonorDonationIds.add(d.id);
+        }
+      });
+      
+      // Count volunteer requests for preferred donor's donations
+      data.forEach(vr => {
+        // Find claim for this volunteer request
+        const claim = claims.find(c => c.id === vr.claim_id);
+        if (claim && claim.donation_id && preferredDonorDonationIds.has(claim.donation_id)) {
+          if (vr.status === 'pending') {
+            preferredDonorPendingCount++;
+          } else if (vr.status === 'approved') {
+            preferredDonorApprovedCount++;
+          }
+        }
+      });
+    }
     
     console.log(`✅ Created ${data.length} volunteer requests for regular donations (with claims)`);
-    console.log(`   • ${approvedCount} approved (will have deliveries created)`);
-    console.log(`   • ${pendingCount} pending`);
-    console.log(`   • ${rejectedCount} rejected`);
+    console.log(`   • ${finalApprovedCount} approved (will have deliveries created)`);
+    console.log(`   • ${finalPendingCount} pending (will have notifications created)`);
+    console.log(`   • ${finalRejectedCount} rejected`);
+    if (preferredDonorId && (preferredDonorPendingCount > 0 || preferredDonorApprovedCount > 0)) {
+      console.log(`   📊 For preferred donor (${PREFERRED.donorEmail}):`);
+      console.log(`      - ${preferredDonorPendingCount} pending requests (will appear in /pending-requests)`);
+      console.log(`      - ${preferredDonorApprovedCount} approved requests (will have deliveries)`);
+    }
     console.log(`   Note: CFC-GK donations don't have claims, so volunteer requests for them are created when volunteers accept tasks in the UI\n`);
     
     return { requests: data, claimToVolunteerMap };
@@ -3490,40 +4066,14 @@ async function main() {
     const requests = await seedRequests();
     const events = await seedEvents();
     
-    // Get all users for related data
+    // Get all users for related data (filtered to preferred users only)
     const allUsers = await getAllUsers();
     const recipients = await getUsersByRole('recipient');
-    let volunteers = await getUsersByRole('volunteer');
+    const volunteers = await getUsersByRole('volunteer');
     
-    // Find user with email cristanjade70@gmail.com and ensure they are included as a volunteer
-    const targetEmail = 'cristanjade70@gmail.com';
-    const targetUser = allUsers.find(user => user.email && user.email.toLowerCase() === targetEmail.toLowerCase());
-    if (targetUser) {
-      if (!volunteers.find(v => v.id === targetUser.id)) {
-        // If user exists but is not a volunteer, add them to the volunteers list
-        console.log(`✅ Found user with email ${targetEmail} (${targetUser.name || targetUser.email}), adding to volunteers list.`);
-        volunteers.push(targetUser);
-      } else {
-        console.log(`✅ Found user with email ${targetEmail} (${targetUser.name || targetUser.email}) in volunteers list.`);
-      }
-      // Prioritize this volunteer by placing them first in the array
-      volunteers = [targetUser, ...volunteers.filter(v => v.id !== targetUser.id)];
-      console.log(`✅ Prioritized ${targetEmail} as primary volunteer for deliveries.`);
-    } else {
-      console.log(`⚠️  User with email ${targetEmail} not found. Using available volunteers.`);
-    }
-    
-    // Find "Volunteer Deded" and ensure they are included as a volunteer
-    const dededUser = allUsers.find(user => user.name && user.name.toLowerCase().includes('deded'));
-    if (dededUser && !volunteers.find(v => v.id === dededUser.id)) {
-      // If Deded exists but is not a volunteer, add them to the volunteers list
-      console.log(`✅ Found "Volunteer Deded" (${dededUser.name}), adding to volunteers list.`);
-      volunteers.push(dededUser);
-    } else if (dededUser) {
-      console.log(`✅ Found "Volunteer Deded" (${dededUser.name}) in volunteers list.`);
-    } else {
-      console.log(`⚠️  "Volunteer Deded" not found. Using available volunteers.`);
-    }
+    // With filtered users, we only have preferred users now
+    // No need to manually add specific users since getAllUsers and getUsersByRole filter to preferred users
+    console.log(`✅ Using ${allUsers.length} preferred users for seeding`);
     
     // Seed related data
     const claims = await seedDonationClaims(allDonations, recipients);
@@ -3539,7 +4089,10 @@ async function main() {
     // Create deliveries only for approved volunteer requests
     const deliveries = await seedDeliveries(claims, volunteers, allDonations, recipients, claimToVolunteerMap);
     const directDeliveries = await seedDirectDeliveries(claims, allDonations, recipients);
-    const notifications = await seedNotifications(allUsers, allDonations, events, claims);
+    // Seed pickup completions for self-pickup donations
+    const pickupCompletions = await seedPickupCompletions(claims, allDonations, recipients);
+    // Pass volunteer requests to seedNotifications so notifications can be properly linked
+    const notifications = await seedNotifications(allUsers, allDonations, events, claims, volunteerRequests);
     const matchingParams = await seedMatchingParameters();
     const settings = await seedSettings();
     // Seed a small set of user reports for the admin moderation UI
@@ -3570,6 +4123,7 @@ async function main() {
     console.log(`    • Participants added as JSONB: ${participants?.length || 0}`);
     console.log(`  - Volunteer Deliveries: ${deliveries?.length || 0} (with various statuses)`);
     console.log(`  - Direct Deliveries: ${directDeliveries?.length || 0} (with various statuses)`);
+    console.log(`  - Pickup Completions: ${pickupCompletions?.length || 0} (self-pickup donations)`);
     console.log(`  - Notifications: ${notifications?.length || 0}`);
     console.log(`  - Matching Parameters: ${matchingParams ? 'Created' : 'Skipped'}`);
     console.log(`  - System Settings: ${settings ? 'Created' : 'Skipped'}`);
