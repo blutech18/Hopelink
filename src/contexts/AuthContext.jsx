@@ -413,6 +413,11 @@ export const AuthProvider = ({ children }) => {
             return
           }
           
+          // If this is a "Profile not found" error, re-throw it so outer catch can handle metadata creation
+          if (authError?.message?.includes('Profile not found - needs creation from metadata')) {
+            throw authError
+          }
+          
           // Auth check also failed - likely network issue
           console.warn('Both profile and auth check failed - network error, setting profile to null')
           authDebug.logProfileLoading(userId, 'NETWORK_ERROR')
@@ -474,6 +479,8 @@ export const AuthProvider = ({ children }) => {
           }
           
           console.log('Current user metadata:', currentUser?.user_metadata)
+          console.log('Current user email:', currentUser?.email)
+          console.log('User metadata keys:', currentUser?.user_metadata ? Object.keys(currentUser.user_metadata) : 'none')
           
           // Check for pending Google signup role data first
           // IMPORTANT: Don't create profile here during Google signup flow
@@ -492,6 +499,24 @@ export const AuthProvider = ({ children }) => {
           
           // Check for name or full_name in metadata for regular (non-Google) signups
           const userName = currentUser?.user_metadata?.full_name || currentUser?.user_metadata?.name
+          
+          // If metadata is missing but user exists, this might be after email confirmation
+          // Try to get metadata from the session or check if we can create a basic profile
+          if (!currentUser?.user_metadata || !userName) {
+            console.warn('⚠️ User metadata is missing or incomplete after email confirmation')
+            console.warn('This might happen if metadata was lost during email confirmation')
+            console.warn('User email:', currentUser?.email)
+            
+            // If we have an email but no metadata, we can't create a profile
+            // The user will need to complete signup or contact support
+            if (currentUser?.email) {
+              console.error('Cannot create profile without user metadata. User may need to complete signup.')
+              authDebug.logProfileLoading(userId, 'MISSING_METADATA_AFTER_CONFIRMATION')
+              setProfile(null)
+              setLoading(false)
+              return
+            }
+          }
           
           if (currentUser?.user_metadata && userName) {
             // Set flag to prevent duplicate profile creation
@@ -582,6 +607,22 @@ export const AuthProvider = ({ children }) => {
           // Reset flag in case of error
           profileCreationInProgress = false
           console.log('🔄 Profile creation from metadata failed, flag cleared')
+          
+          // If it's a network error, don't give up - the profile might still be created
+          // Let the user try refreshing or logging in again
+          if (createError.message?.includes('Failed to fetch') || 
+              createError.message?.includes('CORS') || 
+              createError.message?.includes('NetworkError') ||
+              createError.message?.includes('QUIC') ||
+              createError.message?.includes('TypeError: Failed to fetch')) {
+            console.warn('Network error during profile creation - profile may still be created, setting profile to null for now')
+            setProfile(null)
+            setLoading(false)
+            return
+          }
+          
+          // For other errors, log and continue - user might need to complete signup
+          console.warn('Profile creation failed - user may need to complete signup process')
         }
       }
       
