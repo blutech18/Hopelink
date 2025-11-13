@@ -1386,7 +1386,7 @@ export const db = {
     // First, check if donation is still available and get delivery mode
     const { data: donation, error: checkError } = await supabase
       .from('donations')
-      .select('status, quantity, delivery_mode, donor_id, pickup_location, pickup_instructions')
+      .select('status, quantity, delivery_mode, donor_id, pickup_location, pickup_instructions, claims')
       .eq('id', donationId)
       .single()
 
@@ -1396,26 +1396,37 @@ export const db = {
       throw new Error('This donation is no longer available')
     }
 
-    // Create a claim
-    const { data: claim, error } = await supabase
-      .from('donation_claims')
-      .insert({
-        donation_id: donationId,
-        recipient_id: recipientId,
-        donor_id: donation.donor_id,
-        quantity_claimed: donation.quantity,
+    // Generate claim ID
+    const claimId = crypto.randomUUID()
+    const claimedAt = new Date().toISOString()
+
+    // Create claim object
+    const newClaim = {
+      id: claimId,
+      recipient_id: recipientId,
+      donor_id: donation.donor_id,
+      quantity_claimed: donation.quantity,
+      status: 'claimed',
+      claimed_at: claimedAt
+    }
+
+    // Get existing claims array or create new one
+    const existingClaims = Array.isArray(donation.claims) ? donation.claims : []
+    const updatedClaims = [...existingClaims, newClaim]
+
+    // Update donation with new claim in JSONB array and update status
+    const { error: updateError } = await supabase
+      .from('donations')
+      .update({ 
+        claims: updatedClaims,
         status: 'claimed'
       })
-      .select()
-      .single()
-
-    if (error) throw error
-
-    // Update donation status
-    await supabase
-      .from('donations')
-      .update({ status: 'claimed' })
       .eq('id', donationId)
+
+    if (updateError) throw updateError
+
+    // Use the new claim object for return value
+    const claim = newClaim
 
     // Handle different delivery modes
     if (donation.delivery_mode === 'volunteer') {
