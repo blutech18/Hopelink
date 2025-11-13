@@ -2869,27 +2869,54 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    const { data, error } = await supabase
+    // Update delivery without foreign key relationships (claims are JSONB)
+    const { data: delivery, error } = await supabase
       .from('deliveries')
       .update({ ...updates, updated_at: new Date().toISOString() })
       .eq('id', deliveryId)
       .select(`
         *,
-        volunteer:users!deliveries_volunteer_id_fkey(id, name),
-        claim:donation_claims!deliveries_claim_id_fkey(
-          id,
-          donation:donations(id, title, category)
-        )
+        volunteer:users!deliveries_volunteer_id_fkey(id, name)
       `)
       .single()
     
     if (error) throw error
 
+    // Fetch claim from JSONB in donations table if claim_id exists
+    if (delivery.claim_id) {
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, title, category, claims')
+        .not('claims', 'is', null)
+
+      if (!donationsError && donations) {
+        // Find the claim in the donations' JSONB claims arrays
+        for (const d of donations) {
+          if (Array.isArray(d.claims)) {
+            const claim = d.claims.find(c => c && c.id === delivery.claim_id)
+            if (claim) {
+              // Add claim data to delivery object
+              delivery.claim = {
+                ...claim,
+                donation_id: d.id,
+                donation: {
+                  id: d.id,
+                  title: d.title,
+                  category: d.category
+                }
+              }
+              break
+            }
+          }
+        }
+      }
+    }
+
     // Notify admins when delivery is completed or delivered
-    if ((updates.status === 'completed' || updates.status === 'delivered') && data.volunteer) {
+    if ((updates.status === 'completed' || updates.status === 'delivered') && delivery.volunteer) {
       try {
-        const volunteerName = data.volunteer?.name || 'A volunteer'
-        const donationTitle = data.claim?.donation?.title || 'a donation'
+        const volunteerName = delivery.volunteer?.name || 'A volunteer'
+        const donationTitle = delivery.claim?.donation?.title || 'a donation'
         
         await this.notifyAllAdmins({
           type: 'system_alert',
@@ -2897,7 +2924,7 @@ export const db = {
           message: `${volunteerName} completed delivery of "${donationTitle}"`,
           data: {
             delivery_id: deliveryId,
-            volunteer_id: data.volunteer_id,
+            volunteer_id: delivery.volunteer_id,
             volunteer_name: volunteerName,
             donation_title: donationTitle,
             status: updates.status,
@@ -2911,7 +2938,7 @@ export const db = {
       }
     }
 
-    return data
+    return delivery
   },
 
   // Volunteer-specific functions
@@ -3294,22 +3321,56 @@ export const db = {
       return data
     } else {
       // Create new delivery record
-      const { data: claim } = await supabase
-        .from('donation_claims')
-        .select('donor_id, recipient_id')
-        .eq('id', claimId)
+      // Get claim from JSONB in donations table
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select('id, claims, pickup_location, donor_id')
+        .not('claims', 'is', null)
+
+      if (donationsError) throw donationsError
+
+      // Find the claim in the donations' JSONB claims arrays
+      let claim = null
+      let donation = null
+      for (const d of donations || []) {
+        if (Array.isArray(d.claims)) {
+          claim = d.claims.find(c => c && c.id === claimId)
+          if (claim) {
+            donation = d
+            break
+          }
+        }
+      }
+
+      if (!claim || !donation) {
+        throw new Error(`Claim ${claimId} not found in any donation`)
+      }
+
+      // Get recipient address for delivery address
+      const { data: recipient } = await supabase
+        .from('users')
+        .select('address, city')
+        .eq('id', claim.recipient_id)
         .single()
+
+      const pickupAddress = donation.pickup_location || 'TBD'
+      const deliveryAddress = recipient?.address 
+        ? `${recipient.address}, ${recipient.city || ''}`.trim()
+        : 'TBD'
+      const pickupCity = donation.pickup_location?.split(',')?.pop()?.trim() || 'TBD'
+      const deliveryCity = recipient?.city || 'TBD'
 
       const { data, error } = await supabase
         .from('deliveries')
         .insert({
           claim_id: claimId,
           volunteer_id: volunteerId,
-          pickup_address: 'TBD', // Will be filled by volunteer
-          delivery_address: 'TBD', // Will be filled by volunteer
-          pickup_city: 'TBD',
-          delivery_city: 'TBD',
-          status: 'assigned'
+          pickup_address: pickupAddress,
+          delivery_address: deliveryAddress,
+          pickup_city: pickupCity,
+          delivery_city: deliveryCity,
+          status: 'assigned',
+          delivery_mode: 'volunteer'
         })
         .select()
         .single()
@@ -4062,35 +4123,70 @@ export const db = {
         // Mark notification as read
         await this.markNotificationAsRead(notificationId)
         
-        // Get claim details for notifications
-        const { data: claim } = await supabase
-          .from('donation_claims')
+        // Get claim details from JSONB in donations table
+        const { data: donations, error: donationsError } = await supabase
+          .from('donations')
           .select(`
-            *,
-            donation:donations(title, donor:users!donations_donor_id_fkey(id, name)),
-            recipient:users!donation_claims_recipient_id_fkey(id, name)
+            id,
+            title,
+            donor_id,
+            claims,
+            donor:users!donations_donor_id_fkey(id, name)
           `)
-          .eq('id', claimId)
-          .single()
+          .not('claims', 'is', null)
 
-        if (claim) {
+        if (donationsError) throw donationsError
+
+        // Find the claim in the donations' JSONB claims arrays
+        let claim = null
+        let donation = null
+        for (const d of donations || []) {
+          if (Array.isArray(d.claims)) {
+            claim = d.claims.find(c => c && c.id === claimId)
+            if (claim) {
+              donation = d
+              break
+            }
+          }
+        }
+
+        if (claim && donation) {
+          // Fetch recipient details
+          const { data: recipient, error: recipientError } = await supabase
+            .from('users')
+            .select('id, name')
+            .eq('id', claim.recipient_id)
+            .single()
+
+          // Structure claim object to match expected format
+          const claimData = {
+            ...claim,
+            donation_id: donation.id,
+            donation: {
+              id: donation.id,
+              title: donation.title,
+              donor: donation.donor
+            },
+            recipient: recipient || { id: claim.recipient_id, name: 'Unknown' }
+          }
+
           // Notify volunteer of confirmation
           await this.createNotification({
             user_id: volunteerId,
             type: 'delivery_assigned',
             title: 'Volunteer Request Approved',
-            message: `Your volunteer request has been approved! You can now start the delivery process for: ${claim.donation?.title}`,
+            message: `Your volunteer request has been approved! You can now start the delivery process for: ${claimData.donation?.title}`,
             data: { delivery_id: deliveryRecord.id, claim_id: claimId }
           })
 
           // Notify other party (donor/recipient) about confirmation
-          const otherPartyId = claim.donation?.donor?.id === volunteerId ? claim.recipient?.id : claim.donation?.donor?.id
+          const otherPartyId = claimData.donation?.donor?.id === volunteerId ? claimData.recipient?.id : claimData.donation?.donor?.id
           if (otherPartyId) {
             await this.createNotification({
               user_id: otherPartyId,
               type: 'delivery_assigned',
               title: 'Volunteer Confirmed',
-              message: `The volunteer request has been approved and delivery will proceed for: ${claim.donation?.title}`,
+              message: `The volunteer request has been approved and delivery will proceed for: ${claimData.donation?.title}`,
               data: { delivery_id: deliveryRecord.id, claim_id: claimId }
             })
           }
@@ -4222,34 +4318,66 @@ export const db = {
 
       // Create notifications for relevant parties
       if (requestData.task_type === 'approved_donation' && requestData.claim_id) {
-        // Get claim details for donor and recipient notifications
-        const { data: claim } = await supabase
-          .from('donation_claims')
+        // Get claim details from JSONB in donations table
+        const { data: donations, error: donationsError } = await supabase
+          .from('donations')
           .select(`
-            *,
-            donation:donations(
-              *,
-              donor:users!donations_donor_id_fkey(id, name)
-            ),
-            recipient:users!donation_claims_recipient_id_fkey(id, name)
+            id,
+            title,
+            donor_id,
+            claims,
+            donor:users!donations_donor_id_fkey(id, name)
           `)
-          .eq('id', requestData.claim_id)
-          .single()
+          .not('claims', 'is', null)
 
-        if (claim) {
+        if (donationsError) throw donationsError
+
+        // Find the claim in the donations' JSONB claims arrays
+        let claim = null
+        let donation = null
+        for (const d of donations || []) {
+          if (Array.isArray(d.claims)) {
+            claim = d.claims.find(c => c && c.id === requestData.claim_id)
+            if (claim) {
+              donation = d
+              break
+            }
+          }
+        }
+
+        if (claim && donation) {
+          // Fetch recipient details
+          const { data: recipient, error: recipientError } = await supabase
+            .from('users')
+            .select('id, name')
+            .eq('id', claim.recipient_id)
+            .single()
+
+          // Structure claim object to match expected format
+          const claimData = {
+            ...claim,
+            donation_id: donation.id,
+            donation: {
+              id: donation.id,
+              title: donation.title,
+              donor: donation.donor
+            },
+            recipient: recipient || { id: claim.recipient_id, name: 'Unknown' }
+          }
+
           // Notify donor
           await this.createNotification({
-            user_id: claim.donation.donor.id,
+            user_id: claimData.donation.donor.id,
             type: 'volunteer_request',
             title: 'Volunteer Request',
-            message: `${requestData.volunteer_name} is requesting to deliver your donation: ${claim.donation.title}. Please confirm if you approve this volunteer.`,
+            message: `${requestData.volunteer_name} is requesting to deliver your donation: ${claimData.donation.title}. Please confirm if you approve this volunteer.`,
             data: { 
               volunteer_id: requestData.volunteer_id,
               volunteer_name: requestData.volunteer_name,
               volunteer_email: requestData.volunteer_email,
               volunteer_phone: requestData.volunteer_phone,
               claim_id: requestData.claim_id,
-              donation_id: claim.donation.id,
+              donation_id: claimData.donation.id,
               task_type: 'approved_donation',
               volunteer_request_id: volunteerRequest.id
             }
@@ -4257,17 +4385,17 @@ export const db = {
           
           // Notify recipient
           await this.createNotification({
-            user_id: claim.recipient.id,
+            user_id: claimData.recipient.id,
             type: 'volunteer_request',
             title: 'Volunteer Request',
-            message: `${requestData.volunteer_name} is requesting to deliver your requested item: ${claim.donation.title}. Please confirm if you approve this volunteer.`,
+            message: `${requestData.volunteer_name} is requesting to deliver your requested item: ${claimData.donation.title}. Please confirm if you approve this volunteer.`,
             data: { 
               volunteer_id: requestData.volunteer_id,
               volunteer_name: requestData.volunteer_name,
               volunteer_email: requestData.volunteer_email,
               volunteer_phone: requestData.volunteer_phone,
               claim_id: requestData.claim_id,
-              donation_id: claim.donation.id,
+              donation_id: claimData.donation.id,
               task_type: 'approved_donation',
               volunteer_request_id: volunteerRequest.id
             }
@@ -4385,16 +4513,11 @@ export const db = {
     }
 
     try {
-      // Get delivery and claim details
+      // Get delivery details (claims are now stored as JSONB in donations table)
       const { data: delivery, error: deliveryError } = await supabase
         .from('deliveries')
         .select(`
           *,
-          claim:donation_claims(
-            *,
-            donation:donations(id, title, donor:users!donations_donor_id_fkey(id, name)),
-            recipient:users!donation_claims_recipient_id_fkey(id, name)
-          ),
           volunteer:users!deliveries_volunteer_id_fkey(id, name)
         `)
         .eq('id', deliveryId)
@@ -4404,6 +4527,64 @@ export const db = {
 
       if (!delivery) {
         throw new Error('Delivery not found')
+      }
+
+      if (!delivery.claim_id) {
+        throw new Error('Delivery does not have a claim_id')
+      }
+
+      // Fetch donation that contains this claim in its JSONB claims array
+      const { data: donations, error: donationsError } = await supabase
+        .from('donations')
+        .select(`
+          id,
+          title,
+          donor_id,
+          claims,
+          donor:users!donations_donor_id_fkey(id, name)
+        `)
+        .not('claims', 'is', null)
+
+      if (donationsError) throw donationsError
+
+      // Find the claim in the donations' JSONB claims arrays
+      let claim = null
+      let donation = null
+      for (const d of donations || []) {
+        if (Array.isArray(d.claims)) {
+          claim = d.claims.find(c => c && c.id === delivery.claim_id)
+          if (claim) {
+            donation = d
+            break
+          }
+        }
+      }
+
+      if (!claim || !donation) {
+        throw new Error(`Claim ${delivery.claim_id} not found in any donation`)
+      }
+
+      // Fetch recipient details
+      const { data: recipient, error: recipientError } = await supabase
+        .from('users')
+        .select('id, name')
+        .eq('id', claim.recipient_id)
+        .single()
+
+      if (recipientError) {
+        console.warn('Could not fetch recipient:', recipientError)
+      }
+
+      // Structure the delivery object to match expected format
+      delivery.claim = {
+        ...claim,
+        donation_id: donation.id,
+        donation: {
+          id: donation.id,
+          title: donation.title,
+          donor: donation.donor
+        },
+        recipient: recipient || { id: claim.recipient_id, name: 'Unknown' }
       }
 
       console.log('📦 Delivery data retrieved:', {
@@ -4416,13 +4597,19 @@ export const db = {
       // AUTOMATICALLY UPDATE DONATION STATUS TO DELIVERED when volunteer marks as delivered
       console.log('🔄 Updating donation claim to delivered:', delivery.claim.id)
       
-      // Update donation claim status to delivered (not completed yet)
+      // Update claim status in the JSONB claims array
+      const updatedClaims = donation.claims.map(c => 
+        c.id === delivery.claim_id 
+          ? { ...c, status: 'delivered' }
+          : c
+      )
+      
       const { error: claimUpdateError } = await supabase
-        .from('donation_claims')
+        .from('donations')
         .update({ 
-          status: 'delivered'
+          claims: updatedClaims
         })
-        .eq('id', delivery.claim.id)
+        .eq('id', donation.id)
 
       if (claimUpdateError) {
         console.error('❌ Error updating donation claim:', claimUpdateError)

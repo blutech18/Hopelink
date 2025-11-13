@@ -274,6 +274,11 @@ function AppContent() {
                   <MyApprovedRequestsPage />
                 </ProtectedRoute>
               } />
+              <Route path="/my-approved-donations" element={
+                <ProtectedRoute allowedRoles={['recipient']}>
+                  <MyApprovedDonationsPage />
+                </ProtectedRoute>
+              } />
               
               {/* Volunteer routes */}
               <Route path="/volunteer-dashboard" element={

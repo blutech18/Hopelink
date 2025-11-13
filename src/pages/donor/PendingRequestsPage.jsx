@@ -97,19 +97,44 @@ const PendingRequestsPage = () => {
     try {
       setLoading(true)
       
-      // Get notifications with reduced limit for faster initial load
-      // Load only 30 notifications initially for better performance
-      const notifications = await db.getUserNotifications(user.id, 30)
+      // Query notifications directly by type for better performance and to ensure we get all relevant notifications
+      // Query for donation_request and volunteer_request notifications separately
+      const [allNotifications, volunteerRequestNotificationsQuery, donationRequestNotificationsQuery] = await Promise.all([
+        db.getUserNotifications(user.id, 100), // Fallback: get all notifications
+        // Direct query for volunteer_request notifications
+        supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('type', 'volunteer_request')
+          .is('read_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50),
+        // Direct query for donation_request notifications
+        supabase
+          .from('notifications')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('type', 'donation_request')
+          .is('read_at', null)
+          .order('created_at', { ascending: false })
+          .limit(50)
+      ])
       
-      // Filter unread donation requests (from recipients)
-      const donationRequestNotifications = notifications.filter(
-        n => n.type === 'donation_request' && !n.read_at
-      )
+      // Use direct queries if available, otherwise fall back to filtering all notifications
+      const donationRequestNotifications = donationRequestNotificationsQuery.data || 
+        allNotifications.filter(n => n.type === 'donation_request' && !n.read_at)
       
-      // Filter unread volunteer requests (from volunteers)
-      const volunteerRequestNotifications = notifications.filter(
-        n => n.type === 'volunteer_request' && !n.read_at
-      )
+      const volunteerRequestNotifications = volunteerRequestNotificationsQuery.data || 
+        allNotifications.filter(n => n.type === 'volunteer_request' && !n.read_at)
+      
+      // Debug logging
+      console.log('📋 PendingRequestsPage - Notification counts:', {
+        totalNotifications: allNotifications.length,
+        donationRequests: donationRequestNotifications.length,
+        volunteerRequests: volunteerRequestNotifications.length,
+        volunteerRequestQueryResult: volunteerRequestNotificationsQuery.data?.length || 0
+      })
       
       // Show notifications immediately for better perceived performance
       setDonationRequests(donationRequestNotifications.map(r => ({ ...r, donation: null })))

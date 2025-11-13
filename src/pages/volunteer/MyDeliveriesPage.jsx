@@ -145,20 +145,22 @@ const MyDeliveriesPage = () => {
         updateData.delivered_at = new Date().toISOString()
       }
 
-      if (notes) {
-        updateData.volunteer_notes = notes
-      }
-
-      // Upload photos if provided
-      if (statusUpdate.pickup_photo?.file) {
-        const pickupPhotoUrl = await uploadPhoto(statusUpdate.pickup_photo.file)
-        updateData.pickup_photo_url = pickupPhotoUrl
-      }
-
-      if (statusUpdate.delivery_photo?.file) {
-        const deliveryPhotoUrl = await uploadPhoto(statusUpdate.delivery_photo.file)
-        updateData.delivery_photo_url = deliveryPhotoUrl
-      }
+      // Note: volunteer_notes, pickup_photo_url, and delivery_photo_url columns don't exist in deliveries table
+      // These features would need to be implemented via JSONB field or separate table
+      // For now, we'll skip updating these fields to avoid schema errors
+      
+      // TODO: Store notes and photos in a JSONB field or separate table if needed
+      // if (notes) {
+      //   updateData.volunteer_notes = notes
+      // }
+      // if (statusUpdate.pickup_photo?.file) {
+      //   const pickupPhotoUrl = await uploadPhoto(statusUpdate.pickup_photo.file)
+      //   updateData.pickup_photo_url = pickupPhotoUrl
+      // }
+      // if (statusUpdate.delivery_photo?.file) {
+      //   const deliveryPhotoUrl = await uploadPhoto(statusUpdate.delivery_photo.file)
+      //   updateData.delivery_photo_url = deliveryPhotoUrl
+      // }
 
       await db.updateDelivery(deliveryId, updateData)
 
@@ -915,10 +917,10 @@ const MyDeliveriesPage = () => {
                   </button>
                   <button
                     onClick={() => handleStatusUpdate(selectedDelivery.id, statusUpdate.status, statusUpdate.notes)}
-                    disabled={uploading || 
-                      (statusUpdate.status === 'accepted' && !statusUpdate.pickup_photo) ||
-                      (statusUpdate.status === 'delivered' && !statusUpdate.delivery_photo)
-                    }
+                    disabled={uploading || !statusUpdate.status}
+                    // Note: Photo requirements removed since pickup_photo_url and delivery_photo_url columns don't exist
+                    // (statusUpdate.status === 'accepted' && !statusUpdate.pickup_photo) ||
+                    // (statusUpdate.status === 'delivered' && !statusUpdate.delivery_photo)
                     className="flex-1 px-4 py-3 sm:py-2 bg-green-600 hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center gap-2 active:scale-95"
                   >
                     {uploading ? (

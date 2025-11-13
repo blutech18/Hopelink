@@ -2448,12 +2448,20 @@ async function seedNotifications(users, donations, events, claims) {
   }
 }
 
-async function seedDeliveries(claims, volunteers, donations, recipients) {
+async function seedDeliveries(claims, volunteers, donations, recipients, claimToVolunteerMap) {
   console.log('🌱 Seeding volunteer deliveries...\n');
   
   try {
     if (!volunteers || volunteers.length === 0 || !donations || donations.length === 0) {
       console.log('⚠️  No volunteers or donations available for deliveries.');
+      return [];
+    }
+    
+    // IMPORTANT: Only create deliveries for claims that have APPROVED volunteer requests
+    // This ensures deliveries appear in my-deliveries page (which requires approved requests)
+    if (!claimToVolunteerMap || claimToVolunteerMap.size === 0) {
+      console.log('⚠️  No approved volunteer requests found. Deliveries will only be created for approved requests.');
+      console.log('   This ensures deliveries appear in /my-deliveries page.\n');
       return [];
     }
     
@@ -2492,14 +2500,16 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
       }
     });
     
-    // Filter claims that use volunteer delivery mode (already filtered by query)
-    const volunteerClaims = allVolunteerClaims;
+    // IMPORTANT: Filter to only include claims that have approved volunteer requests
+    const approvedClaims = allVolunteerClaims.filter(claim => claimToVolunteerMap.has(claim.id));
     
-    console.log(`   Found ${volunteerClaims.length} claims with volunteer delivery mode`);
+    console.log(`   Found ${allVolunteerClaims.length} total claims with volunteer delivery mode`);
+    console.log(`   Found ${approvedClaims.length} claims with approved volunteer requests`);
     console.log(`   Available volunteers: ${volunteers.length}`);
     
-    if (volunteerClaims.length === 0) {
-      console.log('⚠️  No volunteer delivery claims available.');
+    if (approvedClaims.length === 0) {
+      console.log('⚠️  No claims with approved volunteer requests available for deliveries.');
+      console.log('   Note: Deliveries are only created for approved volunteer requests to ensure they appear in /my-deliveries\n');
       return [];
     }
     
@@ -2515,39 +2525,33 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
     const deliveryStatuses = ['pending', 'assigned', 'accepted', 'picked_up', 'in_transit', 'delivered'];
   let volunteerDeliveryHasDelivered = false;
     
-    // IMPORTANT: Only create deliveries for ~40% of volunteer claims
-    // This leaves ~60% of claims WITHOUT deliveries, making them available tasks on the available-tasks page
-    // Available tasks = claims with volunteer delivery mode that don't have volunteer assignments yet
-    const numDeliveriesToCreate = Math.max(1, Math.floor(volunteerClaims.length * 0.4)); // 40% of volunteer claims
-    const numDeliveries = Math.min(numDeliveriesToCreate, volunteers.length * 2);
+    // Create deliveries for ALL approved claims (they have approved volunteer requests)
+    const numDeliveries = approvedClaims.length;
     
-    console.log(`   Total volunteer claims: ${volunteerClaims.length}`);
-    console.log(`   Creating ${numDeliveries} volunteer deliveries (leaving ${volunteerClaims.length - numDeliveries} claims as available tasks)...`);
+    console.log(`   Creating ${numDeliveries} volunteer deliveries (one for each approved volunteer request)...`);
     
     // Create a set to track which claims already have deliveries
     const claimsWithDeliveries = new Set();
     
-    // Shuffle volunteer claims to randomly select which ones get deliveries
-    const shuffledClaims = [...volunteerClaims].sort(() => Math.random() - 0.5);
-    
     // Find the prioritized volunteer (cristanjade70@gmail.com) if they exist
     const prioritizedVolunteer = volunteers.find(v => v.email && v.email.toLowerCase() === 'cristanjade70@gmail.com');
-    let volunteerAssignmentCount = 0;
-    const maxAssignmentsForPrioritized = Math.min(Math.floor(numDeliveries * 0.6), numDeliveries); // Give 60% of deliveries to prioritized volunteer
+    let prioritizedCount = 0;
     
-    // Only create deliveries for the first numDeliveries claims (40% of total)
-    for (let i = 0; i < shuffledClaims.length && deliveriesToInsert.length < numDeliveries; i++) {
-      const claim = shuffledClaims[i];
+    // Create deliveries for all approved claims
+    for (const claim of approvedClaims) {
       if (claimsWithDeliveries.has(claim.id)) continue;
       
-      // Assign a volunteer - prioritize cristanjade70@gmail.com for first assignments
-      let volunteer;
-      if (prioritizedVolunteer && volunteerAssignmentCount < maxAssignmentsForPrioritized) {
-        volunteer = prioritizedVolunteer;
-        volunteerAssignmentCount++;
-      } else {
-        // Assign random volunteer from the list
-        volunteer = volunteers[Math.floor(Math.random() * volunteers.length)];
+      // Get the volunteer assigned to this claim from the approved volunteer request
+      const assignedVolunteerId = claimToVolunteerMap.get(claim.id);
+      const volunteer = volunteers.find(v => v.id === assignedVolunteerId);
+      
+      if (!volunteer) {
+        console.log(`⚠️  Volunteer not found for claim ${claim.id}, skipping delivery creation.`);
+        continue;
+      }
+      
+      if (prioritizedVolunteer && volunteer.id === prioritizedVolunteer.id) {
+        prioritizedCount++;
       }
       
       // Get donation info for addresses
@@ -2555,13 +2559,14 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
       const recipient = recipients.find(r => r.id === claim.recipient_id);
       
       // Choose status - prefer more advanced statuses for variety
+      // Since these are approved volunteer requests, they should start at 'assigned' or higher
+      // Status distribution: 30% assigned, 25% accepted, 20% picked_up, 15% in_transit, 10% delivered
       const statusWeights = {
-        'pending': 1,
-        'assigned': 2,
-        'accepted': 3,
-        'picked_up': 2,
-        'in_transit': 2,
-        'delivered': 1
+        'assigned': 6,      // Most common - just approved (30%)
+        'accepted': 5,      // Volunteer accepted (25%)
+        'picked_up': 4,    // In progress (20%)
+        'in_transit': 3,   // On the way (15%)
+        'delivered': 2     // Completed (10%)
       };
       const weightedStatuses = [];
       Object.entries(statusWeights).forEach(([status, weight]) => {
@@ -2649,10 +2654,12 @@ async function seedDeliveries(claims, volunteers, donations, recipients) {
     // Count how many deliveries were assigned to the prioritized volunteer
     if (prioritizedVolunteer) {
       const prioritizedDeliveries = data.filter(d => d.volunteer_id === prioritizedVolunteer.id);
-      console.log(`✅ Created ${data.length} volunteer deliveries`);
-      console.log(`   📦 ${prioritizedDeliveries.length} delivery(ies) assigned to ${prioritizedVolunteer.email || prioritizedVolunteer.name || 'prioritized volunteer'}\n`);
+      console.log(`✅ Created ${data.length} volunteer deliveries (all from approved volunteer requests)`);
+      console.log(`   📦 ${prioritizedDeliveries.length} delivery(ies) assigned to ${prioritizedVolunteer.email || prioritizedVolunteer.name || 'prioritized volunteer'}`);
+      console.log(`   ✅ All deliveries have approved volunteer requests and will appear in /my-deliveries page\n`);
     } else {
-    console.log(`✅ Created ${data.length} volunteer deliveries\n`);
+      console.log(`✅ Created ${data.length} volunteer deliveries (all from approved volunteer requests)`);
+      console.log(`   ✅ All deliveries have approved volunteer requests and will appear in /my-deliveries page\n`);
     }
     return data;
     
@@ -3288,7 +3295,7 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
   try {
     if (!claims || claims.length === 0 || !volunteers || volunteers.length === 0) {
       console.log('⚠️  No claims or volunteers available for volunteer requests.');
-      return [];
+      return { requests: [], claimToVolunteerMap: new Map() };
     }
     
     // Create a map of donations by ID for quick lookup
@@ -3312,15 +3319,20 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
     
     if (volunteerClaims.length === 0) {
       console.log('⚠️  No volunteer claims available for volunteer requests.');
-      return [];
+      return { requests: [], claimToVolunteerMap: new Map() };
     }
     
     const requestsToInsert = [];
     const usedRequestIds = new Set();
     
-    // Create requests for ~30% of volunteer claims
-    const numRequests = Math.max(1, Math.floor(volunteerClaims.length * 0.3));
+    // IMPORTANT: Create volunteer requests for claims that will have deliveries
+    // We need to ensure that deliveries are only created for approved volunteer requests
+    // Create requests for ~40% of volunteer claims (matching the delivery creation rate)
+    const numRequests = Math.max(1, Math.floor(volunteerClaims.length * 0.4));
     const selectedClaims = volunteerClaims.slice(0, numRequests);
+    
+    // Track which volunteers are assigned to which claims to avoid duplicates
+    const claimToVolunteerMap = new Map();
     
     for (const claim of selectedClaims) {
       const volunteer = volunteers[Math.floor(Math.random() * volunteers.length)];
@@ -3331,7 +3343,22 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
       } while (usedRequestIds.has(requestId));
       usedRequestIds.add(requestId);
       
-      const statuses = ['pending', 'approved', 'rejected'];
+      // IMPORTANT: For deliveries to appear in my-deliveries, volunteer requests MUST be 'approved'
+      // Distribute: 70% approved (for deliveries), 20% pending, 10% rejected
+      let status;
+      const rand = Math.random();
+      if (rand < 0.7) {
+        status = 'approved'; // These will have deliveries created
+      } else if (rand < 0.9) {
+        status = 'pending';
+      } else {
+        status = 'rejected';
+      }
+      
+      // Store the volunteer assignment for this claim (for delivery creation)
+      if (status === 'approved') {
+        claimToVolunteerMap.set(claim.id, volunteer.id);
+      }
       
       // Note: volunteer_requests table has claim_id and request_id, but NOT donation_id
       // CFC-GK donations don't have claims, so they won't have volunteer requests seeded here
@@ -3342,7 +3369,7 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
         claim_id: claim.id,
         request_id: null,
         task_type: 'approved_donation',
-        status: statuses[Math.floor(Math.random() * statuses.length)],
+        status: status,
         created_at: new Date(Date.now() - Math.random() * 14 * 24 * 60 * 60 * 1000).toISOString(),
         updated_at: new Date().toISOString()
       });
@@ -3350,7 +3377,7 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
     
     if (requestsToInsert.length === 0) {
       console.log('⚠️  No volunteer requests to insert.');
-      return [];
+      return { requests: [], claimToVolunteerMap: new Map() };
     }
     
     const { data, error } = await supabase
@@ -3360,16 +3387,24 @@ async function seedVolunteerRequests(claims, volunteers, donations) {
     
     if (error) {
       console.error('⚠️  Error seeding volunteer requests:', error.message);
-      return [];
+      return { requests: [], claimToVolunteerMap: new Map() };
     }
     
+    const approvedCount = data.filter(r => r.status === 'approved').length;
+    const pendingCount = data.filter(r => r.status === 'pending').length;
+    const rejectedCount = data.filter(r => r.status === 'rejected').length;
+    
     console.log(`✅ Created ${data.length} volunteer requests for regular donations (with claims)`);
+    console.log(`   • ${approvedCount} approved (will have deliveries created)`);
+    console.log(`   • ${pendingCount} pending`);
+    console.log(`   • ${rejectedCount} rejected`);
     console.log(`   Note: CFC-GK donations don't have claims, so volunteer requests for them are created when volunteers accept tasks in the UI\n`);
-    return data;
+    
+    return { requests: data, claimToVolunteerMap };
     
   } catch (error) {
     console.error('❌ Error seeding volunteer requests:', error);
-    return [];
+    return { requests: [], claimToVolunteerMap: new Map() };
   }
 }
 
@@ -3493,7 +3528,16 @@ async function main() {
     // Seed related data
     const claims = await seedDonationClaims(allDonations, recipients);
     const participants = await seedEventParticipants(events, allUsers);
-    const deliveries = await seedDeliveries(claims, volunteers, allDonations, recipients);
+    
+    // IMPORTANT: Seed volunteer requests BEFORE deliveries
+    // Deliveries should only be created for approved volunteer requests
+    // This ensures deliveries appear in /my-deliveries page
+    const volunteerRequestsResult = await seedVolunteerRequests(claims, volunteers, allDonations);
+    const volunteerRequests = volunteerRequestsResult.requests || volunteerRequestsResult || [];
+    const claimToVolunteerMap = volunteerRequestsResult.claimToVolunteerMap || new Map();
+    
+    // Create deliveries only for approved volunteer requests
+    const deliveries = await seedDeliveries(claims, volunteers, allDonations, recipients, claimToVolunteerMap);
     const directDeliveries = await seedDirectDeliveries(claims, allDonations, recipients);
     const notifications = await seedNotifications(allUsers, allDonations, events, claims);
     const matchingParams = await seedMatchingParameters();
@@ -3508,8 +3552,6 @@ async function main() {
     const feedbackRatings = await seedFeedbackRatings(allDonations, requests, allUsers);
     const performanceMetrics = await seedPerformanceMetrics(allUsers);
     // Note: user_preferences, user_reports, user_verifications, volunteer_ratings are now JSONB in user_profiles
-    // Pass donations to seedVolunteerRequests so it can filter by delivery_mode
-    const volunteerRequests = await seedVolunteerRequests(claims, volunteers, allDonations);
     const volunteerTimeTracking = await seedVolunteerTimeTracking(deliveries, volunteers);
 
     await diversifyDonationStatuses(allDonations, claims, deliveries, directDeliveries);
