@@ -235,8 +235,64 @@ export const AuthProvider = ({ children }) => {
     authDebug.logProfileLoading(userId, 'START')
 
     try {
-      // Single fast attempt - no retries for maximum speed
-      const userProfile = await db.getProfile(userId)
+      // Retry mechanism with exponential backoff for profile loading
+      // This handles cases where profile isn't immediately available after login
+      let userProfile = null
+      const maxRetries = 3
+      const baseDelay = 500 // Start with 500ms
+      
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+          userProfile = await db.getProfile(userId)
+          if (userProfile) {
+            break // Success, exit retry loop
+          }
+          
+          // If profile is null, check if it's a timing issue (user just logged in)
+          // Only retry if user exists in auth (indicating recent login)
+          if (attempt < maxRetries && userProfile === null) {
+            try {
+              const { data: { user: currentUser } } = await supabase.auth.getUser()
+              if (currentUser) {
+                // User exists in auth but profile is null - might be timing issue, retry
+                const delay = baseDelay * Math.pow(2, attempt) // Exponential backoff: 500ms, 1000ms, 2000ms
+                console.log(`Profile not found but user exists in auth, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`)
+                await new Promise(resolve => setTimeout(resolve, delay))
+                continue
+              }
+            } catch (authCheckError) {
+              // If we can't check auth, don't retry
+              break
+            }
+          }
+          // If profile is null and user doesn't exist or we're out of retries, break
+          break
+        } catch (retryError) {
+          // If it's a network error and we have retries left, retry
+          if (attempt < maxRetries && (
+            retryError.message?.includes('Failed to fetch') || 
+            retryError.message?.includes('CORS') || 
+            retryError.message?.includes('NetworkError') ||
+            retryError.message?.includes('QUIC') ||
+            retryError.message?.includes('TypeError: Failed to fetch')
+          )) {
+            const delay = baseDelay * Math.pow(2, attempt)
+            console.log(`Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`)
+            await new Promise(resolve => setTimeout(resolve, delay))
+            continue
+          }
+          // If it's a "profile not found" error, don't retry - let fallback logic handle it
+          if (retryError.code === 'PGRST116' || 
+              retryError.message?.includes('No rows found') || 
+              retryError.message?.includes('Profile not found')) {
+            // Break out of retry loop and let the fallback logic handle it
+            userProfile = null
+            break
+          }
+          // If it's not a network error or we're out of retries, throw
+          throw retryError
+        }
+      }
       
       if (userProfile) {
         authDebug.logProfileLoading(userId, 'SUCCESS', userProfile)
@@ -329,13 +385,15 @@ export const AuthProvider = ({ children }) => {
           }
           
           if (currentUser) {
-            // User exists in auth but profile is null - likely network error
-            // Set profile to null and continue (don't try to create from metadata)
-            console.warn('Profile is null but user exists in auth - likely network error, setting profile to null')
-            authDebug.logProfileLoading(userId, 'NETWORK_ERROR_NULL_PROFILE')
-            setProfile(null)
-            setLoading(false)
-            return
+            // User exists in auth but profile is null after retries
+            // This could be a network error or the profile truly doesn't exist
+            // Try to create from metadata as a fallback
+            console.warn('Profile is null but user exists in auth after retries - attempting to create from metadata')
+            authDebug.logProfileLoading(userId, 'NULL_PROFILE_AFTER_RETRIES')
+            
+            // Don't set profile to null yet - let the fallback logic below try to create from metadata
+            // This will be handled by the catch block that checks for "Profile not found"
+            throw new Error('Profile not found - needs creation from metadata')
           }
         } catch (authError) {
           // Handle 403 Forbidden errors specifically
