@@ -132,11 +132,17 @@ const EventsPage = () => {
       await db.joinEvent(eventToJoin.id, user.id)
       
       setParticipantStatus(prev => ({ ...prev, [eventToJoin.id]: true }))
-      setEvents(prev => prev.map(e => 
-        e.id === eventToJoin.id 
-          ? { ...e, current_participants: (e.participants?.[0]?.count || 0) + 1 }
-          : e
-      ))
+      setEvents(prev => prev.map(e => {
+        if (e.id === eventToJoin.id) {
+          const currentParticipants = Array.isArray(e.participants) ? e.participants.length : 0
+          return { 
+            ...e, 
+            participants: [...(Array.isArray(e.participants) ? e.participants : []), { user_id: user.id }],
+            current_participants: currentParticipants + 1
+          }
+        }
+        return e
+      }))
       success('Successfully joined the event!')
       setShowJoinModal(false)
       setEventToJoin(null)
@@ -170,11 +176,20 @@ const EventsPage = () => {
       await db.leaveEvent(eventToCancel.id, user.id)
       
       setParticipantStatus(prev => ({ ...prev, [eventToCancel.id]: false }))
-      setEvents(prev => prev.map(e => 
-        e.id === eventToCancel.id 
-          ? { ...e, current_participants: Math.max(0, (e.participants?.[0]?.count || 0) - 1) }
-          : e
-      ))
+      setEvents(prev => prev.map(e => {
+        if (e.id === eventToCancel.id) {
+          const currentParticipants = Array.isArray(e.participants) ? e.participants.length : 0
+          const updatedParticipants = Array.isArray(e.participants) 
+            ? e.participants.filter(p => p.user_id !== user.id)
+            : []
+          return { 
+            ...e, 
+            participants: updatedParticipants,
+            current_participants: Math.max(0, currentParticipants - 1)
+          }
+        }
+        return e
+      }))
       success('You have canceled your registration')
       setShowCancelModal(false)
       setEventToCancel(null)
@@ -433,7 +448,7 @@ const EventsPage = () => {
                                 e.stopPropagation()
                                 handleJoinEvent(event.id)
                               }}
-                              disabled={joinLoading[event.id] || (event.max_participants && (event.participants?.[0]?.count || 0) >= event.max_participants)}
+                              disabled={joinLoading[event.id] || (event.max_participants && (Array.isArray(event.participants) ? event.participants.length : 0) >= event.max_participants)}
                             >
                               <UserPlus className="h-4 w-4 flex-shrink-0" />
                               <span className="hidden sm:inline">Join</span>
@@ -503,7 +518,7 @@ const EventsPage = () => {
                             <div className="flex items-center gap-1.5">
                               <Users className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                               <span className="text-yellow-300 font-medium text-xs">
-                                {event.participants?.[0]?.count || 0} / {event.max_participants}
+                                {Array.isArray(event.participants) ? event.participants.length : 0} / {event.max_participants}
                               </span>
                             </div>
                             )}
@@ -611,7 +626,7 @@ const EventsPage = () => {
                 </div>
                 <div>
                   <div className="text-xl sm:text-2xl font-bold text-yellow-400 mb-1">
-                    {events.reduce((total, event) => total + (event.participants?.[0]?.count || 0), 0)}
+                    {events.reduce((total, event) => total + (Array.isArray(event.participants) ? event.participants.length : 0), 0)}
                   </div>
                   <div className="text-sm text-yellow-300">Total Participants</div>
                 </div>

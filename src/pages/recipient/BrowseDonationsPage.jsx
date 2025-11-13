@@ -44,6 +44,7 @@ const BrowseDonationsPage = () => {
   const navigate = useNavigate()
   const [donations, setDonations] = useState([])
   const [donationsWithScores, setDonationsWithScores] = useState([])
+  const [userRequests, setUserRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('')
@@ -113,17 +114,17 @@ const BrowseDonationsPage = () => {
         }
       }
       
-      // Load ALL open requests for matching (not just recipient's own)
-      // This allows recipients to see how donations match against all available requests
-      let allOpenRequests = []
+      // Load user's requests for matching (ONLY user's requests should be used for matching)
+      let userRequestsList = []
       let recipientUser = null
       
       if (user?.id) {
         // Get recipient's user profile with location data
         recipientUser = await db.getProfile(user.id)
         
-        // Get ALL open requests (not just recipient's own) for comprehensive matching
-        allOpenRequests = await db.getRequests({ status: 'open', limit: 10000 })
+        // Get user's open requests only (not all requests)
+        userRequestsList = await db.getRequests({ requester_id: user.id, status: 'open', limit: 10000 })
+        setUserRequests(userRequestsList || [])
       }
       
       // Progressive loading: Show donations immediately, then calculate matching scores in batches
@@ -134,8 +135,8 @@ const BrowseDonationsPage = () => {
         matchReason: 'Calculating match...'
       })))
       
-      // If no requests available, show donations without scores
-      if (!allOpenRequests || allOpenRequests.length === 0) {
+      // If user has no requests, show donations without scores (no matching section)
+      if (!userRequestsList || userRequestsList.length === 0) {
         setDonationsWithScores(availableDonations.map(donation => ({
           ...donation,
           matchingScore: 0,
@@ -171,14 +172,24 @@ const BrowseDonationsPage = () => {
         const batchResults = await Promise.all(
           batch.map(async (donation) => {
             try {
-              // Use the matching algorithm to find best matches from ALL open requests
-              const matches = await intelligentMatcher.matchDonationToRequests(donation, allOpenRequests, recipientUser, 1)
+              // Use the matching algorithm to find best matches from USER'S requests only
+              const matches = await intelligentMatcher.matchDonationToRequests(donation, userRequestsList, recipientUser, 1)
               
               if (matches && matches.length > 0 && matches[0].score > 0) {
                 const bestMatch = matches[0]
                 
-                // Auto-claim logic: If auto-match is enabled and score >= 80% (0.8) and request belongs to current user
-                if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold && bestMatch.request?.requester_id === user?.id) {
+                // Ensure the matched request belongs to the current user (safety check)
+                if (bestMatch.request?.requester_id !== user?.id) {
+                  return {
+                    ...donation,
+                    matchingScore: 0,
+                    bestMatchingRequest: null,
+                    matchReason: 'No compatible requests found'
+                  }
+                }
+                
+                // Auto-claim logic: If auto-match is enabled and score >= threshold
+                if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold) {
                   try {
                     // Check if donation is still available and request is still open
                     if (donation.status === 'available' && bestMatch.request.status === 'open') {
@@ -661,52 +672,62 @@ const BrowseDonationsPage = () => {
                   className="relative"
                 >
                   {/* Compatibility Score Extension - Connected to Card */}
-                  {donation.matchingScore !== undefined && donation.matchingScore > 0.01 && (
-                    <div
-                      className="px-4 py-3 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-yellow-500 rounded-t-lg mb-0 relative z-10"
-                      style={{
-                        borderTopLeftRadius: '0.5rem',
-                        borderTopRightRadius: '0.5rem',
-                        borderBottomLeftRadius: '0',
-                        borderBottomRightRadius: '0',
-                        marginBottom: '0',
-                        borderLeftColor: '#cdd74a'
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="flex items-center justify-between gap-4">
-                        <div className="flex items-center gap-2 flex-1 min-w-0">
-                          {donation.bestMatchingRequest && (
-                            <>
-                              <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide whitespace-nowrap">Matches Request:</span>
-                              <span className="text-xs text-white font-medium truncate">{donation.bestMatchingRequest.title}</span>
-                            </>
-                          )}
-                          {donation.matchReason && (
-                            <>
-                              {donation.bestMatchingRequest && <span className="text-xs text-gray-500">•</span>}
-                              <span className="text-xs text-white font-medium truncate">{donation.matchReason}</span>
-                            </>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide">Match Score:</span>
-                          <div className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getScoreColor(donation.matchingScore)}`}>
-                            {Math.round(donation.matchingScore * 100)}%
+                  {/* Only show matching section if user has requests and the matched request belongs to the user */}
+                  {(() => {
+                    const showMatchingSection = donation.matchingScore !== undefined && 
+                                               donation.matchingScore > 0.01 && 
+                                               donation.bestMatchingRequest && 
+                                               donation.bestMatchingRequest.requester_id === user?.id && 
+                                               userRequests.length > 0
+                    return (
+                      <>
+                        {showMatchingSection && (
+                          <div
+                            className="px-4 py-3 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-yellow-500 rounded-t-lg mb-0 relative z-10"
+                            style={{
+                              borderTopLeftRadius: '0.5rem',
+                              borderTopRightRadius: '0.5rem',
+                              borderBottomLeftRadius: '0',
+                              borderBottomRightRadius: '0',
+                              marginBottom: '0',
+                              borderLeftColor: '#cdd74a'
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="flex items-center justify-between gap-4">
+                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                {donation.bestMatchingRequest && (
+                                  <>
+                                    <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide whitespace-nowrap">Matches Request:</span>
+                                    <span className="text-xs text-white font-medium truncate">{donation.bestMatchingRequest.title}</span>
+                                  </>
+                                )}
+                                {donation.matchReason && (
+                                  <>
+                                    {donation.bestMatchingRequest && <span className="text-xs text-gray-500">•</span>}
+                                    <span className="text-xs text-white font-medium truncate">{donation.matchReason}</span>
+                                  </>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                <span className="text-xs font-semibold text-skyblue-200 uppercase tracking-wide">Match Score:</span>
+                                <div className={`px-2.5 py-0.5 rounded text-xs font-bold border ${getScoreColor(donation.matchingScore)}`}>
+                                  {Math.round(donation.matchingScore * 100)}%
+                                </div>
+                              </div>
+                            </div>
                           </div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
+                        )}
 
-                  {/* Card */}
-                  <div
-                    className={`card hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 overflow-hidden border-2 border-navy-700 cursor-pointer group active:scale-[0.99] ${donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? 'rounded-t-none -mt-[1px]' : ''}`}
-                    style={{
-                      borderTopLeftRadius: donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? '0' : undefined,
-                      borderTopRightRadius: donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? '0' : undefined,
-                      marginTop: donation.matchingScore !== undefined && donation.matchingScore > 0.01 ? '-1px' : undefined
-                    }}
+                        {/* Card */}
+                        {/* Only apply rounded-t-none styling if matching section is actually shown */}
+                        <div
+                          className={`card hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 overflow-hidden border-2 border-navy-700 cursor-pointer group active:scale-[0.99] ${showMatchingSection ? 'rounded-t-none -mt-[1px]' : ''}`}
+                          style={{
+                            borderTopLeftRadius: showMatchingSection ? '0' : undefined,
+                            borderTopRightRadius: showMatchingSection ? '0' : undefined,
+                            marginTop: showMatchingSection ? '-1px' : undefined
+                          }}
                     onClick={() => handleViewDetails(donation)}
                   >
                   <div className="flex flex-col sm:flex-row gap-4 p-4">
@@ -852,14 +873,17 @@ const BrowseDonationsPage = () => {
                     </div>
                   </div>
                   
-                  {/* Status Indicator - Bottom Line */}
-                  <div 
-                    className="h-1 w-full"
-                    style={{
-                      backgroundColor: donation.is_urgent ? '#ef4444' : '#fbbf24'
-                    }}
-                  ></div>
-                  </div>
+                      {/* Status Indicator - Bottom Line */}
+                      <div 
+                        className="h-1 w-full"
+                        style={{
+                          backgroundColor: donation.is_urgent ? '#ef4444' : '#fbbf24'
+                        }}
+                      ></div>
+                        </div>
+                      </>
+                    )
+                  })()}
                 </motion.div>
               ))}
             </AnimatePresence>

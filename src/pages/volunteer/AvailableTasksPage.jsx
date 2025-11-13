@@ -210,38 +210,93 @@ const AvailableTasksPage = () => {
         })
         
         // For CFC-GK tasks, match via notifications since volunteer_requests doesn't have donation_id
-        // Check notifications sent TO the volunteer that contain donation_id and volunteer_request_id
+        // CFC-GK requests are not stored in volunteer_requests table, so we check notifications
+        // sent to donors/admins that contain this volunteer's ID and donation_id
         if (cfcgkTaskIds.length > 0) {
           try {
             // Get CFC-GK donation IDs from task IDs
             const cfcgkDonationIds = cfcgkTaskIds.map(id => id.replace('cfcgk-', ''))
             
-            // Fetch notifications that might contain CFC-GK volunteer request info
-            const { data: notifications } = await supabase
-              .from('notifications')
-              .select('id, data, type')
-              .eq('user_id', profile.id)
-              .in('type', ['volunteer_approved', 'delivery_assigned', 'system_alert'])
-              .not('data', 'is', null)
-              .limit(50) // Limit to recent notifications for performance
+            // Fetch notifications that mention this volunteer and CFC-GK donations
+            // 1. Notifications sent TO the volunteer (for approvals/rejections)
+            // 2. Notifications sent to donors/admins (for pending requests) - we check data.volunteer_id
+            const [volunteerNotifications, allNotifications] = await Promise.all([
+              // Notifications sent TO the volunteer
+              supabase
+                .from('notifications')
+                .select('id, data, type, created_at')
+                .eq('user_id', profile.id)
+                .in('type', ['volunteer_approved', 'delivery_assigned', 'system_alert'])
+                .not('data', 'is', null)
+                .limit(50),
+              // Notifications sent to anyone (to find pending requests sent to donors/admins)
+              supabase
+                .from('notifications')
+                .select('id, data, type, created_at')
+                .in('type', ['volunteer_request', 'system_alert'])
+                .not('data', 'is', null)
+                .limit(100)
+            ])
             
-            if (notifications) {
-              // Get volunteer requests with null claim_id/request_id (likely CFC-GK)
-              const cfcgkRequests = allVolunteerRequests.filter(req => !req.claim_id && !req.request_id)
+            // Combine both notification sets
+            const notifications = [
+              ...(volunteerNotifications.data || []),
+              ...(allNotifications.data || [])
+            ]
+            
+            if (notifications && notifications.length > 0) {
+              // Group notifications by donation_id to find the most recent status
+              const donationStatusMap = new Map()
               
               notifications.forEach(notif => {
                 const notifData = notif.data
-                // Match if notification has donation_id and volunteer_request_id
-                if (notifData && notifData.donation_id && notifData.volunteer_request_id) {
+                // Check if this notification is for a CFC-GK donation and mentions this volunteer
+                if (notifData && 
+                    notifData.donation_id && 
+                    notifData.volunteer_id === profile.id &&
+                    cfcgkDonationIds.includes(notifData.donation_id)) {
+                  
                   const donationId = notifData.donation_id
-                  if (cfcgkDonationIds.includes(donationId)) {
-                    // Find matching volunteer request
-                    const matchingRequest = cfcgkRequests.find(req => req.id === notifData.volunteer_request_id)
-                    if (matchingRequest) {
-                      requestStatusMap.set(`cfcgk-${donationId}`, matchingRequest)
-                    }
+                  const notifTime = new Date(notif.created_at).getTime()
+                  
+                  // Determine status based on notification type
+                  let status = 'pending' // Default status
+                  
+                  if (notif.type === 'volunteer_approved' || notif.type === 'delivery_assigned') {
+                    status = 'approved'
+                  } else if (notif.type === 'donation_declined' || notifData.status === 'rejected' || notifData.status === 'declined') {
+                    status = 'rejected'
+                  } else if (notif.type === 'volunteer_request') {
+                    status = 'pending' // Still waiting for approval
+                  }
+                  
+                  // Keep the most recent notification for each donation
+                  const existing = donationStatusMap.get(donationId)
+                  if (!existing || notifTime > existing.time) {
+                    donationStatusMap.set(donationId, {
+                      status,
+                      time: notifTime,
+                      notif,
+                      notifData
+                    })
                   }
                 }
+              })
+              
+              // Create virtual volunteer request objects for each donation
+              donationStatusMap.forEach((info, donationId) => {
+                const virtualRequest = {
+                  id: info.notifData.volunteer_request_id || `cfcgk-${donationId}-${profile.id}`,
+                  volunteer_id: profile.id,
+                  claim_id: null,
+                  request_id: null,
+                  task_type: 'approved_donation',
+                  status: info.status,
+                  created_at: info.notif.created_at || new Date().toISOString(),
+                  updated_at: info.notif.created_at || new Date().toISOString()
+                }
+                
+                requestStatusMap.set(`cfcgk-${donationId}`, virtualRequest)
               })
             }
           } catch (notifErr) {
@@ -790,8 +845,9 @@ const AvailableTasksPage = () => {
                           
                           {/* Action Buttons */}
                           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-                            <button 
-                              onClick={() => {
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 setSelectedTask(task)
                                 setShowViewModal(true)
                               }}
@@ -802,7 +858,10 @@ const AvailableTasksPage = () => {
                             </button>
                             {!volunteerRequests.has(task.id) ? (
                               <button
-                                onClick={() => handleAcceptTask(task)}
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleAcceptTask(task)
+                                }}
                                 disabled={loading}
                                 className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-green-600 hover:bg-green-700 rounded-lg transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                               >

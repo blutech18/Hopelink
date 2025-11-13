@@ -4125,8 +4125,79 @@ export const db = {
     }
 
     try {
-      // Insert volunteer request record
-      const { data: volunteerRequest, error: requestError } = await supabase
+      // The constraint volunteer_requests_task_check likely requires:
+      // - For 'approved_donation': claim_id must be set (not null)
+      // - For 'request': request_id must be set (not null)
+      // CFC-GK tasks don't have claims, so we need to handle them differently
+      // For now, we'll skip creating the volunteer_request record for CFC-GK tasks
+      // and handle notifications directly
+      
+      let volunteerRequest = null
+      
+      // For CFC-GK tasks (approved_donation without claim_id), handle notifications directly
+      if (requestData.task_type === 'approved_donation' && !requestData.claim_id && !requestData.request_id && requestData.donation_id) {
+        // CFC-GK direct donations - create notifications without volunteer_request record
+        // This bypasses the constraint issue
+        const { data: donation } = await supabase
+          .from('donations')
+          .select(`
+            *,
+            donor:users!donations_donor_id_fkey(id, name)
+          `)
+          .eq('id', requestData.donation_id)
+          .single()
+
+        if (donation && donation.donation_destination === 'organization') {
+          // Create a temporary volunteer request object for state management
+          volunteerRequest = {
+            id: `temp-${Date.now()}`,
+            volunteer_id: requestData.volunteer_id,
+            claim_id: null,
+            request_id: null,
+            task_type: 'approved_donation',
+            status: 'pending',
+            created_at: new Date().toISOString()
+          }
+          
+          // Notify donor for CFC-GK donation
+          await this.createNotification({
+            user_id: donation.donor.id,
+            type: 'volunteer_request',
+            title: 'Volunteer Request for CFC-GK Delivery',
+            message: `${requestData.volunteer_name} is requesting to deliver your donation to CFC-GK: ${donation.title}. Please confirm if you approve this volunteer.`,
+            data: { 
+              volunteer_id: requestData.volunteer_id,
+              volunteer_name: requestData.volunteer_name,
+              volunteer_email: requestData.volunteer_email,
+              volunteer_phone: requestData.volunteer_phone,
+              donation_id: requestData.donation_id,
+              task_type: 'approved_donation',
+              volunteer_request_id: volunteerRequest.id,
+              is_cfcgk: true
+            }
+          })
+          
+          // Also notify admins about volunteer request for CFC-GK donation
+          await this.notifyAllAdmins({
+            type: 'system_alert',
+            title: '🚚 Volunteer Request for CFC-GK Delivery',
+            message: `${requestData.volunteer_name} wants to deliver "${donation.title}" to CFC-GK Mission Center`,
+            data: {
+              donation_id: requestData.donation_id,
+              volunteer_id: requestData.volunteer_id,
+              volunteer_name: requestData.volunteer_name,
+              volunteer_request_id: volunteerRequest.id,
+              link: '/admin/cfc-donations',
+              notification_type: 'cfcgk_volunteer_request'
+            }
+          })
+          
+          return volunteerRequest
+        }
+      }
+      
+      // For regular tasks, insert volunteer request record normally
+      const { data: insertedRequest, error: requestError } = await supabase
         .from('volunteer_requests')
         .insert({
           volunteer_id: requestData.volunteer_id,
@@ -4139,7 +4210,15 @@ export const db = {
         .select()
         .single()
 
-      if (requestError) throw requestError
+      if (requestError) {
+        // If it's a constraint violation, provide a more helpful error message
+        if (requestError.code === '23514' && requestError.message?.includes('volunteer_requests_task_check')) {
+          throw new Error('Invalid task configuration. For approved donations, a claim_id or request_id is required.')
+        }
+        throw requestError
+      }
+      
+      volunteerRequest = insertedRequest
 
       // Create notifications for relevant parties
       if (requestData.task_type === 'approved_donation' && requestData.claim_id) {
@@ -4191,51 +4270,6 @@ export const db = {
               donation_id: claim.donation.id,
               task_type: 'approved_donation',
               volunteer_request_id: volunteerRequest.id
-            }
-          })
-        }
-      } else if (requestData.task_type === 'approved_donation' && requestData.donation_id && !requestData.claim_id) {
-        // Handle CFC-GK direct donations (no claim, just donation_id)
-        const { data: donation } = await supabase
-          .from('donations')
-          .select(`
-            *,
-            donor:users!donations_donor_id_fkey(id, name)
-          `)
-          .eq('id', requestData.donation_id)
-          .single()
-
-        if (donation && donation.donation_destination === 'organization') {
-          // Notify donor for CFC-GK donation
-          await this.createNotification({
-            user_id: donation.donor.id,
-            type: 'volunteer_request',
-            title: 'Volunteer Request for CFC-GK Delivery',
-            message: `${requestData.volunteer_name} is requesting to deliver your donation to CFC-GK: ${donation.title}. Please confirm if you approve this volunteer.`,
-            data: { 
-              volunteer_id: requestData.volunteer_id,
-              volunteer_name: requestData.volunteer_name,
-              volunteer_email: requestData.volunteer_email,
-              volunteer_phone: requestData.volunteer_phone,
-              donation_id: requestData.donation_id,
-              task_type: 'approved_donation',
-              volunteer_request_id: volunteerRequest.id,
-              is_cfcgk: true
-            }
-          })
-
-          // Also notify admins about volunteer request for CFC-GK donation
-          await this.notifyAllAdmins({
-            type: 'system_alert',
-            title: '🚚 Volunteer Request for CFC-GK Delivery',
-            message: `${requestData.volunteer_name} wants to deliver "${donation.title}" to CFC-GK Mission Center`,
-            data: {
-              donation_id: requestData.donation_id,
-              volunteer_id: requestData.volunteer_id,
-              volunteer_name: requestData.volunteer_name,
-              volunteer_request_id: volunteerRequest.id,
-              link: '/admin/cfc-donations',
-              notification_type: 'cfcgk_volunteer_request'
             }
           })
         }

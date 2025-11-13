@@ -223,15 +223,12 @@ const BrowseRequestsPage = () => {
       const fallbackRequests = rankedRequests.length > 0 ? rankedRequests : (await db.getRequests({ status: 'open', limit: 30 }))
       setRequests(fallbackRequests || [])
       
-      // Load user's donations for display
+      // Load user's donations for matching (ONLY user's donations should be used for matching)
+      let userDonations = []
       if (user?.id) {
-        const userDonations = await db.getDonations({ donor_id: user.id, status: 'available' })
+        userDonations = await db.getDonations({ donor_id: user.id, status: 'available' })
         setUserDonations(userDonations || [])
       }
-      
-      // Load ALL available donations for matching (not just user's)
-      // Get all available donations without limit to ensure complete matching
-      const allDonations = await db.getAvailableDonations({ limit: 10000 })
       
       // Progressive loading: Show requests immediately, then calculate matching scores in batches
       // Set initial requests without blocking
@@ -242,8 +239,8 @@ const BrowseRequestsPage = () => {
         matchReason: 'Calculating match...'
       })))
       
-      // If no donations available, show requests without scores
-      if (!allDonations || allDonations.length === 0) {
+      // If user has no donations, show requests without scores (no matching section)
+      if (!userDonations || userDonations.length === 0) {
         setRequestsWithScores(fallbackRequests.map(req => ({
           ...req,
           matchingScore: 0,
@@ -279,14 +276,24 @@ const BrowseRequestsPage = () => {
         const batchResults = await Promise.all(
           batch.map(async (request) => {
             try {
-              // Use the unified matching algorithm to find best matches from ALL available donations
-              const matches = await intelligentMatcher.matchDonorsToRequest(request, allDonations, 1)
+              // Use the unified matching algorithm to find best matches from USER'S donations only
+              const matches = await intelligentMatcher.matchDonorsToRequest(request, userDonations, 1)
               
               if (matches && matches.length > 0 && matches[0].score > 0) {
                 const bestMatch = matches[0]
                 
-                // Auto-claim logic: If auto-match is enabled and score >= 80% (0.8) and donation belongs to current user
-                if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold && bestMatch.donation?.donor_id === user?.id) {
+                // Ensure the matched donation belongs to the current user (safety check)
+                if (bestMatch.donation?.donor_id !== user?.id) {
+                  return {
+                    ...request,
+                    matchingScore: 0,
+                    bestMatchingDonation: null,
+                    matchReason: 'No compatible donations found'
+                  }
+                }
+                
+                // Auto-claim logic: If auto-match is enabled and score >= threshold
+                if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold) {
                   try {
                     // Check if already matched/claimed
                     const donationStatus = bestMatch.donation.status
@@ -1056,7 +1063,12 @@ const BrowseRequestsPage = () => {
                     className="relative"
                   >
                     {/* Compatibility Score Extension - Connected to Card */}
-                    {request.matchingScore !== undefined && request.matchingScore > 0.01 && (
+                    {/* Only show matching section if user has donations and the matched donation belongs to the user */}
+                    {request.matchingScore !== undefined && 
+                     request.matchingScore > 0.01 && 
+                     request.bestMatchingDonation && 
+                     request.bestMatchingDonation.donor_id === user?.id && 
+                     userDonations.length > 0 && (
                       <div
                         className="px-4 py-3 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-yellow-500 rounded-t-lg mb-0 relative z-10"
                     style={{
@@ -1095,13 +1107,21 @@ const BrowseRequestsPage = () => {
                     )}
 
                     {/* Card */}
-                    <div
-                      className={`card hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 overflow-hidden border-2 border-navy-700 cursor-pointer group active:scale-[0.99] ${request.matchingScore !== undefined && request.matchingScore > 0 ? 'rounded-t-none -mt-[1px]' : ''}`}
-                      style={{
-                        borderTopLeftRadius: request.matchingScore !== undefined && request.matchingScore > 0 ? '0' : undefined,
-                        borderTopRightRadius: request.matchingScore !== undefined && request.matchingScore > 0 ? '0' : undefined,
-                        marginTop: request.matchingScore !== undefined && request.matchingScore > 0 ? '-1px' : undefined
-                    }}
+                    {/* Only apply rounded-t-none styling if matching section is actually shown */}
+                    {(() => {
+                      const showMatchingSection = request.matchingScore !== undefined && 
+                                                   request.matchingScore > 0.01 && 
+                                                   request.bestMatchingDonation && 
+                                                   request.bestMatchingDonation.donor_id === user?.id && 
+                                                   userDonations.length > 0
+                      return (
+                        <div
+                          className={`card hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 overflow-hidden border-2 border-navy-700 cursor-pointer group active:scale-[0.99] ${showMatchingSection ? 'rounded-t-none -mt-[1px]' : ''}`}
+                          style={{
+                            borderTopLeftRadius: showMatchingSection ? '0' : undefined,
+                            borderTopRightRadius: showMatchingSection ? '0' : undefined,
+                            marginTop: showMatchingSection ? '-1px' : undefined
+                          }}
                     onClick={() => handleViewDetails(request)}
                   >
                     <div className="flex flex-col sm:flex-row gap-4 p-4">
@@ -1278,11 +1298,13 @@ const BrowseRequestsPage = () => {
                         className="h-1 w-full"
                         style={{
                           backgroundColor: request.urgency === 'critical' ? '#ef4444' : 
-                                          request.urgency === 'high' ? '#a8b03c' : 
+                                          request.urgency === 'high' ? '#a8b03c' :
                                           request.urgency === 'medium' ? '#cdd74a' : '#60a5fa'
                         }}
                       ></div>
-                    </div>
+                        </div>
+                      )
+                    })()}
                   </motion.div>
                 )
               })}
