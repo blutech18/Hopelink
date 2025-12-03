@@ -120,7 +120,7 @@ const HomePage = () => {
       setLoadingEvents(true)
       const allEvents = await db.getEvents()
       
-      // Filter for upcoming/active events and limit to 3 for homepage
+      // Filter for upcoming/active events and limit to 4 for homepage
       const upcoming = allEvents
         .filter(event => {
           const eventDate = new Date(event.start_date)
@@ -128,7 +128,7 @@ const HomePage = () => {
           return event.status === 'active' || event.status === 'upcoming' || eventDate >= today
         })
         .sort((a, b) => new Date(a.start_date) - new Date(b.start_date))
-        .slice(0, 3)
+        .slice(0, 4)
       
       setUpcomingEvents(upcoming)
     } catch (err) {
@@ -280,7 +280,7 @@ const HomePage = () => {
 
           {loadingEvents ? (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {[1, 2, 3].map((i) => (
+            {[1, 2, 3, 4].map((i) => (
                 <div key={i} className="rounded-lg p-6 border border-gray-600 animate-pulse" style={{backgroundColor: '#001a5c'}}>
                   <div className="h-6 bg-gray-600 rounded mb-4"></div>
                   <div className="h-4 bg-gray-600 rounded mb-3"></div>
@@ -302,48 +302,62 @@ const HomePage = () => {
                   whileInView={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5, delay: index * 0.1 }}
                   viewport={{ once: true }}
-                  className="rounded-lg p-6 border border-gray-600 hover:border-yellow-400 transition-colors"
-                  style={{backgroundColor: '#001a5c'}}
+                  className="flex h-full flex-col rounded-lg border border-gray-600 bg-[#001a5c] p-6 transition-colors hover:border-yellow-400"
                 >
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="px-3 py-1 bg-yellow-500 text-navy-950 text-sm font-semibold rounded-full">
-                      {event.target_goal || 'Community Event'}
-                    </span>
-                    <Calendar className="h-5 w-5 text-yellow-400" />
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-3">
-                    {event.name}
-                  </h3>
-                  <div className="space-y-2 mb-4">
-                    <div className="flex items-center text-yellow-300">
-                      <Calendar className="h-4 w-4 mr-2" />
-                      <span className="text-sm">
-                        {new Date(event.start_date).toLocaleDateString('en-US', {
-                          month: 'long',
-                          day: 'numeric',
-                          year: 'numeric'
-                        })}
+                  <div className="flex flex-1 flex-col gap-4">
+                    <div className="flex items-center gap-3 justify-between">
+                      <h3 className="text-xl font-semibold text-white">
+                        {event.name}
+                      </h3>
+                      <span className="inline-flex items-center gap-2 rounded-full border border-yellow-500 bg-yellow-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-yellow-100">
+                        <Calendar className="h-4 w-4 text-yellow-400" />
+                        {event.target_goal || 'Community Event'}
                       </span>
                     </div>
-                    <div className="flex items-center text-yellow-300">
-                      <MapPin className="h-4 w-4 mr-2" />
-                      <span className="text-sm">{event.location}</span>
-                    </div>
-                    {event.max_participants && (
-                      <div className="flex items-center text-yellow-300">
-                        <UserPlus className="h-4 w-4 mr-2" />
-                        <span className="text-sm">
-                          {event.current_participants || 0}/{event.max_participants} participants
-                        </span>
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-6">
+                        <div className="flex flex-1 gap-3 min-w-0">
+                          <span className="inline-flex items-center justify-center rounded-full bg-yellow-500/10 p-2 text-yellow-400">
+                            <Calendar className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs uppercase tracking-wide text-yellow-300">Date</p>
+                            <p className="text-sm font-semibold text-white truncate">
+                              {new Date(event.start_date).toLocaleDateString('en-US', {
+                                month: 'long',
+                                day: 'numeric',
+                                year: 'numeric'
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 whitespace-nowrap text-right text-xs sm:text-sm">
+                          <UserPlus className="h-4 w-4 text-yellow-300" />
+                          <p className="text-sm font-semibold text-white">
+                            {(event.current_participants || 0)}
+                            {event.max_participants ? `/${event.max_participants}` : ''}
+                          </p>
+                        </div>
                       </div>
-                    )}
+                      <div className="flex items-center gap-3">
+                        <span className="inline-flex items-center justify-center rounded-full bg-yellow-500/10 p-2 text-yellow-400">
+                          <MapPin className="h-4 w-4" />
+                        </span>
+                        <div>
+                          <p className="text-xs uppercase tracking-wide text-yellow-300">Location</p>
+                          <p className="text-sm font-semibold text-white">
+                            {event.location || event.address || 'TBD'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                    <p className="text-yellow-200 text-sm line-clamp-3">
+                      {event.description}
+                    </p>
                   </div>
-                  <p className="text-yellow-200 text-sm mb-4 line-clamp-3">
-                    {event.description}
-                  </p>
                   <Link
                     to="/events"
-                    className="w-full px-4 py-2 bg-yellow-500 text-navy-950 font-semibold rounded-lg hover:bg-yellow-600 transition-colors text-center block"
+                    className="mt-6 rounded-lg bg-yellow-500 px-4 py-2 text-center text-navy-950 font-semibold hover:bg-yellow-600 transition-colors"
                   >
                     Learn More
                   </Link>

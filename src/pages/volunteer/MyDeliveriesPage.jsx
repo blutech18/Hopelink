@@ -25,6 +25,7 @@ import {
   Building,
   Users
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
@@ -34,6 +35,7 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 const MyDeliveriesPage = () => {
   const { profile } = useAuth()
   const { success, error } = useToast()
+  const navigate = useNavigate()
   const [deliveries, setDeliveries] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedDelivery, setSelectedDelivery] = useState(null)
@@ -474,7 +476,7 @@ const MyDeliveriesPage = () => {
                 You haven't been assigned any deliveries yet. Check the Available Tasks page to find delivery opportunities.
               </p>
               <button
-                onClick={() => window.location.href = '/available-tasks'}
+                onClick={() => navigate('/available-tasks')}
                 className="bg-yellow-600 hover:bg-yellow-700 text-white px-6 py-3 rounded-lg font-semibold transition-colors active:scale-95"
               >
                 Find Available Tasks

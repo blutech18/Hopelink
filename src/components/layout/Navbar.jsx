@@ -19,21 +19,30 @@ import {
   MessageSquare,
   Building,
   ShieldCheck,
-  AlertTriangle,
+  Info,
   Flag,
   CheckCircle,
-  Target
+  Target,
+  Home,
+  Phone
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
 import FeedbackModal from '../ui/FeedbackModal'
 
+const enableNavbarLogs = false
+const navbarLog = (...args) => {
+  if (enableNavbarLogs) {
+    console.log(...args)
+  }
+}
+
 const Navbar = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false)
   const [isSigningOut, setIsSigningOut] = useState(false)
-  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false)
+  const [isSidebarExpanded, setIsSidebarExpanded] = useState(false)
   const [activeSection, setActiveSection] = useState('home')
   const [showFeedbackFloat, setShowFeedbackFloat] = useState(false)
   const [showFeedbackModal, setShowFeedbackModal] = useState(false)
@@ -41,16 +50,28 @@ const Navbar = () => {
   const [showNotificationsModal, setShowNotificationsModal] = useState(false)
   const [notifications, setNotifications] = useState([])
   const [unreadCount, setUnreadCount] = useState(0)
+  const [isMobile, setIsMobile] = useState(false)
   const { isAuthenticated, profile, signOut } = useAuth()
   const { success, error } = useToast()
   const location = useLocation()
   const navigate = useNavigate()
   const desktopProfileMenuRef = useRef(null)
   const mobileProfileMenuRef = useRef(null)
+  const notificationsDropdownRef = useRef(null)
   
   // Hide profile display during callback processing to prevent flash of user info before error handling
   const isCallbackPage = location.pathname === '/auth/callback'
   const shouldShowProfile = isAuthenticated && profile && !isCallbackPage
+
+  // Detect mobile screen size
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 640)
+    }
+    checkMobile()
+    window.addEventListener('resize', checkMobile)
+    return () => window.removeEventListener('resize', checkMobile)
+  }, [])
 
   // Close profile menu when clicking outside either desktop or mobile dropdowns
   useEffect(() => {
@@ -65,6 +86,21 @@ const Navbar = () => {
     document.addEventListener('click', handleClickOutside)
     return () => document.removeEventListener('click', handleClickOutside)
   }, [])
+
+  // Close notification dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      const clickedInside = notificationsDropdownRef.current && notificationsDropdownRef.current.contains(event.target)
+      if (!clickedInside && showNotifications) {
+        setShowNotifications(false)
+      }
+    }
+
+    if (showNotifications) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [showNotifications])
 
   // Periodic floating animation for feedback tooltip every 20 minutes
   useEffect(() => {
@@ -92,7 +128,7 @@ const Navbar = () => {
     
     async function load() {
       if (!profile?.id) {
-        console.log('⚠️ No profile ID, skipping notification load')
+        navbarLog('⚠️ No profile ID, skipping notification load')
         // Clear notifications when no profile
         if (isMounted) {
           setNotifications([])
@@ -103,14 +139,14 @@ const Navbar = () => {
       
       const currentProfileId = profile.id // Capture profile ID to avoid stale closure
       
-      console.log(`🔄 Loading notifications for user ${currentProfileId}...`)
+      navbarLog(`🔄 Loading notifications for user ${currentProfileId}...`)
       try {
         const items = await db.getUserNotifications(currentProfileId, 50)
         if (isMounted && profile?.id === currentProfileId) {
-          console.log(`📬 Received ${items?.length || 0} notifications from database:`, items)
+          navbarLog(`📬 Received ${items?.length || 0} notifications from database:`, items)
           setNotifications(items || [])
           setUnreadCount((items || []).filter(n => !n.read_at).length)
-          console.log(`✅ Notifications state updated: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+          navbarLog(`✅ Notifications state updated: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
         }
       } catch (error) {
         console.error('❌ Error loading notifications:', error)
@@ -118,17 +154,20 @@ const Navbar = () => {
       
       try {
         unsubscribe = db.subscribeToUserNotifications(currentProfileId, async (payload) => {
-          // Check if component is still mounted and profile still exists
-          if (!isMounted || !profile?.id || profile.id !== currentProfileId) {
-            console.log('⚠️ Notification callback skipped - profile changed or component unmounted')
-            return
+          const isPollEvent = payload?.eventType === 'POLL'
+          if (!isPollEvent) {
+            navbarLog('🔔 Notification change detected in Navbar:', payload)
           }
           
-          console.log('🔔 Notification change detected in Navbar:', payload)
+          // Check if component is still mounted and profile still exists
+          if (!isMounted || !profile?.id || profile.id !== currentProfileId) {
+            navbarLog('⚠️ Notification callback skipped - profile changed or component unmounted')
+            return
+          }
           try {
             // Double-check profile still exists before fetching
             if (!profile?.id || profile.id !== currentProfileId) {
-              console.log('⚠️ Profile changed during notification fetch, skipping')
+              navbarLog('⚠️ Profile changed during notification fetch, skipping')
               return
             }
             
@@ -137,14 +176,14 @@ const Navbar = () => {
             
             // Final check before updating state
             if (isMounted && profile?.id === currentProfileId) {
-              console.log(`📬 Polling update - received ${items?.length || 0} notifications`)
+              navbarLog(`📬 Polling update - received ${items?.length || 0} notifications`)
               setNotifications(items || [])
               setUnreadCount((items || []).filter(n => !n.read_at).length)
-              console.log(`📬 Updated notifications: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
+              navbarLog(`📬 Updated notifications: ${items?.length || 0} total, ${(items || []).filter(n => !n.read_at).length} unread`)
               
               // If it's a new notification (INSERT), show a visual indicator
               if (payload.eventType === 'INSERT' && payload.new) {
-                console.log('✨ New notification received:', payload.new)
+                navbarLog('✨ New notification received:', payload.new)
                 // The notification will appear in the list automatically
               }
             }
@@ -162,7 +201,7 @@ const Navbar = () => {
     return () => { 
       isMounted = false
       if (unsubscribe) {
-        console.log('🔔 Cleaning up notification subscription')
+        navbarLog('🔔 Cleaning up notification subscription')
         unsubscribe()
       }
       // Clear notifications on cleanup
@@ -233,7 +272,7 @@ const Navbar = () => {
       setIsProfileMenuOpen(false)
       
       // Add a loading state to prevent multiple clicks
-      console.log('Starting sign out process...')
+      navbarLog('Starting sign out process...')
       
       await signOut()
       
@@ -285,10 +324,10 @@ const Navbar = () => {
 
   // Public navigation links (shown only when not authenticated or when clicking logo)
   const publicNavLinks = [
-    { path: '/', label: 'Home', scrollTo: 'home' },
-    { path: '/events', label: 'Events', scrollTo: 'events' },
-    { path: '/about', label: 'About', scrollTo: 'about' },
-    { path: '/', label: 'Contact', scrollTo: 'contact' },
+    { path: '/', label: 'Home', scrollTo: 'home', icon: Home },
+    { path: '/events', label: 'Events', scrollTo: 'events', icon: Calendar },
+    { path: '/about', label: 'About', scrollTo: 'about', icon: Info },
+    { path: '/', label: 'Contact', scrollTo: 'contact', icon: Phone },
   ]
 
   // Helper function to determine if a link is active
@@ -358,19 +397,75 @@ const Navbar = () => {
     : publicNavLinks
 
   return (
-    <nav className="shadow-sm border-b border-navy-800 sticky top-0 z-40" style={{backgroundColor: '#000f3d'}}>
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+    <>
+    {/* Fixed Sidebar for authenticated users - must be before nav for proper z-index */}
+    {shouldShowProfile && (
+      <motion.aside
+        initial={false}
+        animate={{ 
+          width: isSidebarExpanded 
+            ? '16rem' 
+            : isMobile ? '3rem' : '4rem' // Mobile: 3rem (48px), Desktop: 4rem (64px)
+        }}
+        transition={{ type: 'tween', duration: 0.2 }}
+        className="fixed top-14 sm:top-16 left-0 bottom-0 border-r border-navy-800 z-30 overflow-hidden flex flex-col"
+        style={{backgroundColor: '#000f3d'}}
+      >
+        <div className="p-2 sm:p-3 md:p-4 overflow-y-auto flex-1">
+          {/* Role-based links */}
+          {profile?.role && roleBasedLinks[profile.role] && (
+            <div className="space-y-1 sm:space-y-1.5 md:space-y-2">
+              {roleBasedLinks[profile.role].map((link) => (
+                <Link
+                  key={link.path}
+                  to={link.path}
+                  className={`flex items-center transition-all duration-200 ${
+                    isSidebarExpanded 
+                      ? 'justify-start space-x-2 sm:space-x-3 px-2 sm:px-3 py-2 sm:py-2.5 md:py-3 rounded-md text-xs sm:text-sm font-medium border border-navy-700 group hover:bg-navy-800 hover:border-yellow-400' 
+                      : 'justify-center py-1.5 sm:py-2 md:py-2.5 lg:py-3'
+                  } ${
+                    location.pathname === link.path
+                      ? isSidebarExpanded
+                        ? 'text-yellow-400 bg-navy-800 border-yellow-400'
+                        : 'text-yellow-400'
+                      : isSidebarExpanded
+                        ? 'text-yellow-200 hover:text-yellow-400'
+                        : 'text-yellow-200 hover:text-yellow-400'
+                  }`}
+                  title={!isSidebarExpanded ? link.label : ''}
+                >
+                  <link.icon className="h-4 w-4 sm:h-4 sm:w-4 md:h-5 md:w-5 flex-shrink-0" />
+                  {isSidebarExpanded && (
+                    <motion.span
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      className="whitespace-nowrap"
+                    >
+                      {link.label}
+                    </motion.span>
+                  )}
+                </Link>
+              ))}
+            </div>
+          )}
+
+        </div>
+      </motion.aside>
+    )}
+    
+    <nav className="shadow-sm border-b border-navy-800 sticky top-0 z-40 w-full" style={{backgroundColor: '#000f3d'}}>
+      <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8">
         <div className="flex justify-between h-14 sm:h-16">
           {/* Logo and Hamburger Container */}
           <div className="flex items-center relative">
             {/* Left: Desktop Sidebar Toggle for authenticated users */}
             {shouldShowProfile && (
               <button
-                onClick={() => setIsSideMenuOpen(true)}
+                onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
                 className="p-1.5 sm:p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800 mr-1 sm:mr-2 transition-colors"
-                aria-label="Open menu"
+                aria-label={isSidebarExpanded ? "Collapse sidebar" : "Expand sidebar"}
               >
-                <Menu className="h-5 w-5 sm:h-6 sm:w-6" />
+                {isSidebarExpanded ? <X className="h-5 w-5 sm:h-6 sm:w-6" /> : <Menu className="h-5 w-5 sm:h-6 sm:w-6" />}
               </button>
             )}
             {shouldShowProfile ? (
@@ -454,9 +549,12 @@ const Navbar = () => {
             {shouldShowProfile ? (
               <div className="flex items-center space-x-2">
             {/* Notifications Bell */}
-            <div className="relative">
+            <div className="relative" ref={notificationsDropdownRef}>
               <button
-                onClick={() => setShowNotifications(v => !v)}
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setShowNotifications(v => !v)
+                }}
                 className="p-2 rounded-lg hover:bg-navy-800 transition-colors relative group"
                 aria-label="Notifications"
               >
@@ -474,6 +572,7 @@ const Navbar = () => {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -8 }}
                     className="absolute right-0 mt-2 w-96 bg-navy-900 border-2 border-yellow-500/30 rounded-lg shadow-2xl z-50 flex flex-col"
+                    onClick={(e) => e.stopPropagation()}
                   >
                     {/* Header */}
                     <div className="flex items-center justify-between p-4 border-b-2 border-yellow-500/20 bg-navy-800/50">
@@ -550,7 +649,7 @@ const Navbar = () => {
                                       <Flag className="h-4 w-4 text-red-400 flex-shrink-0" />
                                     )}
                                     {n.type !== 'user_report' && n.type === 'system_alert' && (
-                                      <AlertTriangle className="h-4 w-4 text-yellow-400 flex-shrink-0" />
+                                      <Info className="h-4 w-4 text-blue-400 flex-shrink-0" />
                                     )}
                                     <h4 className={`text-sm font-semibold truncate ${
                                       n.type === 'user_report' ? 'text-red-300' : 'text-white'
@@ -857,121 +956,6 @@ const Navbar = () => {
         </div>
       </div>
 
-      {/* Desktop Sidebar Drawer for authenticated users */}
-      <AnimatePresence>
-        {shouldShowProfile && isSideMenuOpen && (
-          <>
-            {/* Backdrop */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 0.5 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 bg-black z-40"
-              onClick={() => setIsSideMenuOpen(false)}
-            />
-            {/* Drawer */}
-            <motion.div
-              initial={{ x: -300 }}
-              animate={{ x: 0 }}
-              exit={{ x: -300 }}
-              transition={{ type: 'tween', duration: 0.2 }}
-              className="fixed top-0 left-0 bottom-0 w-72 border-r border-navy-800 z-50 p-4 overflow-y-auto"
-              style={{backgroundColor: '#000f3d'}}
-            >
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center space-x-2">
-                  <img src="/hopelinklogo.png" alt="HopeLink" className="h-10 rounded" />
-                  <span className="text-lg font-bold text-white">Menu</span>
-                </div>
-                <button
-                  onClick={() => setIsSideMenuOpen(false)}
-                  className="p-2 rounded-md text-yellow-400 hover:text-white hover:bg-navy-800"
-                  aria-label="Close menu"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-
-              {/* Role-based links */}
-              {profile?.role && roleBasedLinks[profile.role] && (
-                <div className="space-y-2">
-                  {roleBasedLinks[profile.role].map((link) => (
-                    <Link
-                      key={link.path}
-                      to={link.path}
-                      className={`flex items-center justify-center space-x-2 px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                        location.pathname === link.path
-                          ? 'text-yellow-400 bg-navy-800 border-yellow-400'
-                          : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
-                      }`}
-                      onClick={() => setIsSideMenuOpen(false)}
-                    >
-                      <link.icon className="h-4 w-4" />
-                      <span>{link.label}</span>
-                    </Link>
-                  ))}
-                </div>
-              )}
-
-              {/* Feedback Button in Side Menu */}
-              {profile?.role !== 'admin' && (
-                <div className="mt-2">
-                  <button
-                    onClick={() => {
-                      setShowFeedbackModal(true)
-                      setIsSideMenuOpen(false)
-                    }}
-                    className="w-full flex items-center justify-center space-x-2 px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400"
-                  >
-                    <MessageSquare className="h-4 w-4" />
-                    <span>Share Feedback</span>
-                  </button>
-                </div>
-              )}
-
-              {/* Divider */}
-              <hr className="my-3 border-navy-700" />
-
-              {/* Public quick links */}
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-yellow-300 text-center mb-2">Public Links</h3>
-                {publicNavLinks.map((link) => (
-                  link.scrollTo ? (
-                    <button
-                      key={`sidebar-${link.path}-${link.scrollTo}`}
-                      onClick={() => {
-                        handleScrollNavigation(link.scrollTo)
-                        setIsSideMenuOpen(false)
-                      }}
-                      className={`block w-full text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                        isLinkActive(link)
-                          ? 'text-yellow-400 bg-navy-800 border-yellow-400'
-                          : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
-                      }`}
-                    >
-                      {link.label}
-                    </button>
-                  ) : (
-                    <Link
-                      key={`sidebar-${link.path}-${link.label}`}
-                      to={link.path}
-                      className={`block text-center px-3 py-3 rounded-md text-sm font-medium transition-colors border border-navy-700 ${
-                        isLinkActive(link)
-                          ? 'text-yellow-400 bg-navy-800 border-yellow-400'
-                          : 'text-yellow-200 hover:text-yellow-400 hover:bg-navy-800 hover:border-yellow-400'
-                      }`}
-                      onClick={() => setIsSideMenuOpen(false)}
-                    >
-                      {link.label}
-                    </Link>
-                  )
-                ))}
-              </div>
-            </motion.div>
-          </>
-        )}
-      </AnimatePresence>
-
       {/* Mobile Navigation Menu - Show for all users */}
       <AnimatePresence>
         {isMenuOpen && (
@@ -1174,7 +1158,7 @@ const Navbar = () => {
                               <Truck className="h-6 w-6 text-blue-400" />
                             )}
                             {n.type === 'system_alert' && (
-                              <AlertTriangle className="h-6 w-6 text-yellow-400" />
+                              <Info className="h-6 w-6 text-blue-400" />
                             )}
                             {!['user_report', 'donation_request', 'volunteer_request', 'delivery_completed', 'volunteer_approved', 'delivery_assigned', 'system_alert'].includes(n.type) && (
                               <Bell className="h-6 w-6 text-yellow-400" />
@@ -1257,6 +1241,7 @@ const Navbar = () => {
         )}
       </AnimatePresence>
     </nav>
+    </>
   )
 }
 

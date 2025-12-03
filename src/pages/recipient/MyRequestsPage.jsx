@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useForm } from 'react-hook-form'
 import { 
@@ -14,18 +14,18 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  XCircle,
   Heart,
   Package,
   Truck,
   X,
   Gift,
-  User,
-  Phone,
   Upload,
-  Image as ImageIcon,
-  Navigation
+  // User,
+  // Phone,
+  // Image as ImageIcon,
+  // Navigation
 } from 'lucide-react'
+import PropTypes from 'prop-types'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { useNavigate } from 'react-router-dom'
@@ -57,7 +57,7 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
     }
   }
 
-  const { register, handleSubmit, formState: { errors, isSubmitting, isDirty }, reset } = useForm({
+  const { register, handleSubmit, formState: { errors, isSubmitting, isDirty } } = useForm({
     defaultValues: {
       title: request.title || '',
       description: request.description || '',
@@ -176,7 +176,7 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
           <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Image Upload Section */}
             <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-              <label className="block text-sm font-semibold text-yellow-300 mb-3">Sample Image</label>
+              <p className="block text-sm font-semibold text-yellow-300 mb-3">Sample Image</p>
               
               {sampleImage ? (
                 <div className="relative">
@@ -224,10 +224,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
             {/* Basic Information */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-title" className="block text-sm font-medium text-white mb-2">
                   Request Title *
                 </label>
                 <input
+                  id="edit-title"
                   {...register('title', {
                     required: 'Title is required',
                     minLength: { value: 5, message: 'Title must be at least 5 characters' }
@@ -241,10 +242,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-description" className="block text-sm font-medium text-white mb-2">
                   Description
                 </label>
                 <textarea
+                  id="edit-description"
                   {...register('description', {
                     maxLength: { value: 1000, message: 'Description must be less than 1000 characters' }
                   })}
@@ -257,10 +259,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-category" className="block text-sm font-medium text-white mb-2">
                   Category *
                 </label>
                 <select
+                  id="edit-category"
                   {...register('category', { required: 'Category is required' })}
                   className="input"
                 >
@@ -277,10 +280,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-quantity" className="block text-sm font-medium text-white mb-2">
                   Quantity *
                 </label>
                 <input
+                  id="edit-quantity"
                   {...register('quantity_needed', {
                     required: 'Quantity is required',
                     min: { value: 1, message: 'Quantity must be at least 1' }
@@ -296,10 +300,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-urgency" className="block text-sm font-medium text-white mb-2">
                   Urgency Level *
                 </label>
                 <select
+                  id="edit-urgency"
                   {...register('urgency', { required: 'Urgency is required' })}
                   className="input"
                 >
@@ -315,10 +320,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-needed-by" className="block text-sm font-medium text-white mb-2">
                   Needed By (Optional)
                 </label>
                 <input
+                  id="edit-needed-by"
                   {...register('needed_by')}
                   type="date"
                   className="input"
@@ -327,10 +333,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-location" className="block text-sm font-medium text-white mb-2">
                   Location *
                 </label>
                 <input
+                  id="edit-location"
                   {...register('location', { required: 'Location is required' })}
                   className="input"
                   placeholder="Enter your address"
@@ -341,10 +348,11 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
               </div>
 
               <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-white mb-2">
+                <label htmlFor="edit-delivery-mode" className="block text-sm font-medium text-white mb-2">
                   Delivery Mode *
                 </label>
                 <select
+                  id="edit-delivery-mode"
                   {...register('delivery_mode', { required: 'Delivery mode is required' })}
                   className="input"
                 >
@@ -414,8 +422,25 @@ const EditRequestModal = ({ request, onClose, onSuccess }) => {
   )
 }
 
+EditRequestModal.propTypes = {
+  request: PropTypes.shape({
+    id: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+    sample_image: PropTypes.string,
+    title: PropTypes.string,
+    description: PropTypes.string,
+    category: PropTypes.string,
+    quantity_needed: PropTypes.oneOfType([PropTypes.string, PropTypes.number]),
+    urgency: PropTypes.string,
+    needed_by: PropTypes.oneOfType([PropTypes.string, PropTypes.instanceOf(Date)]),
+    location: PropTypes.string,
+    delivery_mode: PropTypes.string,
+  }).isRequired,
+  onClose: PropTypes.func.isRequired,
+  onSuccess: PropTypes.func.isRequired,
+}
+
 const MyRequestsPage = () => {
-  const { user, profile } = useAuth()
+  const { user } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
   const [requests, setRequests] = useState([])
@@ -457,6 +482,22 @@ const MyRequestsPage = () => {
     'Furniture', 'Financial Assistance', 'Transportation', 'Other'
   ]
 
+  const loadDeliveryConfirmations = useCallback(async () => {
+    if (!user?.id) return
+    try {
+      const notifications = await db.getUserNotifications(user.id, 100)
+      const deliveryConfirmationNotifications = notifications.filter(
+        (n) =>
+          n.type === 'delivery_completed' &&
+          n.data?.action_required === 'confirm_delivery' &&
+          !n.read_at
+      )
+      setDeliveryConfirmationNotifications(deliveryConfirmationNotifications)
+    } catch (err) {
+      console.error('Error loading delivery confirmations:', err)
+    }
+  }, [user?.id])
+
   const loadRequests = useCallback(async () => {
     if (!user?.id) {
       setLoading(false)
@@ -467,8 +508,6 @@ const MyRequestsPage = () => {
       setLoading(true)
       const userRequests = await db.getUserDonationRequests(user.id)
       setRequests(userRequests || [])
-      
-      // Load delivery confirmation notifications
       await loadDeliveryConfirmations()
     } catch (err) {
       console.error('Error loading requests:', err)
@@ -476,19 +515,7 @@ const MyRequestsPage = () => {
     } finally {
       setLoading(false)
     }
-  }, [user?.id, error])
-
-  const loadDeliveryConfirmations = useCallback(async () => {
-    if (!user?.id) return
-
-    try {
-      const notifications = await db.getUserNotifications(user.id, 100)
-      const deliveryConfirmationNotifications = notifications.filter(n => n.type === 'delivery_completed' && n.data?.action_required === 'confirm_delivery' && !n.read_at)
-      setDeliveryConfirmationNotifications(deliveryConfirmationNotifications)
-    } catch (err) {
-      console.error('Error loading delivery confirmations:', err)
-    }
-  }, [user?.id])
+  }, [user?.id, error, loadDeliveryConfirmations])
 
   useEffect(() => {
     loadRequests()
@@ -592,107 +619,6 @@ const MyRequestsPage = () => {
     await loadRequests()
   }
 
-  const handleConfirmReceived = async (request) => {
-    if (!user?.id) return
-
-    try {
-      setDeletingId(request.id) // Reuse loading state
-      
-      // Find the claim associated with this fulfilled request
-      // Look for donations with claims where recipient_id matches, status is 'claimed', and delivery_mode is 'pickup'
-      const { data: donations, error: donationsError } = await supabase
-        .from('donations')
-        .select('id, title, category, claims, delivery_mode')
-        .not('claims', 'is', null)
-        .eq('delivery_mode', 'pickup')
-
-      if (donationsError) throw donationsError
-
-      // Find the claim for this recipient that matches the request category
-      let claimId = null
-      let matchedDonation = null
-      
-      for (const donation of donations || []) {
-        // First check if category matches (more specific match)
-        if (donation.category === request.category && Array.isArray(donation.claims)) {
-          const claim = donation.claims.find(
-            c => c && 
-            c.recipient_id === user.id && 
-            c.status === 'claimed'
-          )
-          if (claim) {
-            claimId = claim.id
-            matchedDonation = donation
-            break
-          }
-        }
-      }
-
-      // If no category match, try to find any pickup claim for this recipient
-      if (!claimId) {
-        for (const donation of donations || []) {
-          if (Array.isArray(donation.claims)) {
-            const claim = donation.claims.find(
-              c => c && 
-              c.recipient_id === user.id && 
-              c.status === 'claimed'
-            )
-            if (claim) {
-              claimId = claim.id
-              matchedDonation = donation
-              break
-            }
-          }
-        }
-      }
-
-      // If still no claim found, try to find via pickup deliveries
-      if (!claimId) {
-        const { data: deliveries, error: deliveriesError } = await supabase
-          .from('deliveries')
-          .select('claim_id, delivery_mode')
-          .eq('delivery_mode', 'pickup')
-
-        if (!deliveriesError && deliveries && deliveries.length > 0) {
-          const pickupClaimIds = deliveries.map(d => d.claim_id).filter(Boolean)
-          
-          for (const donation of donations || []) {
-            if (Array.isArray(donation.claims)) {
-              const claim = donation.claims.find(
-                c => c && 
-                c.recipient_id === user.id && 
-                c.status === 'claimed' &&
-                pickupClaimIds.includes(c.id)
-              )
-              if (claim) {
-                claimId = claim.id
-                matchedDonation = donation
-                break
-              }
-            }
-          }
-        }
-      }
-
-      if (!claimId) {
-        error('Could not find the donation claim. The donation may have already been completed or the claim may not exist.')
-        return
-      }
-
-      // Confirm pickup completion
-      await db.confirmPickupCompletion(claimId, user.id, true)
-      success('Received confirmation sent! Thank you for confirming.')
-      
-      // Refresh requests
-      await loadRequests()
-    } catch (err) {
-      console.error('Error confirming received:', err)
-      error(err.message || 'Failed to confirm receipt. Please try again.')
-    } finally {
-      setDeletingId(null)
-    }
-  }
-
   const filteredRequests = requests.filter(request => {
     const matchesSearch = request.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          request.description?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -710,18 +636,6 @@ const MyRequestsPage = () => {
 
   const getUrgencyInfo = (urgency) => {
     return urgencyLevels.find(level => level.value === urgency) || urgencyLevels[1]
-  }
-
-  const getStatusIcon = (status) => {
-    switch (status) {
-      case 'open': return Eye
-      case 'claimed': return Heart
-      case 'in_progress': return Truck
-      case 'fulfilled': return CheckCircle
-      case 'cancelled': return XCircle
-      case 'expired': return Clock
-      default: return Eye
-    }
   }
 
   const formatDate = (dateString) => {
@@ -967,7 +881,6 @@ const MyRequestsPage = () => {
               {filteredRequests.map((request, index) => {
                 const statusInfo = getStatusInfo(request.status)
                 const urgencyInfo = getUrgencyInfo(request.urgency)
-                const StatusIcon = getStatusIcon(request.status)
 
                 return (
                   <motion.div
@@ -1165,7 +1078,7 @@ const MyRequestsPage = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Package className="h-4 w-4 text-blue-400" />
-                            <label className="text-sm font-semibold text-yellow-300">Quantity Needed</label>
+                            <span className="text-sm font-semibold text-yellow-300">Quantity Needed</span>
                           </div>
                           <p className="text-white text-lg font-medium">{selectedRequest.quantity_needed}</p>
                         </div>
@@ -1178,7 +1091,7 @@ const MyRequestsPage = () => {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <AlertCircle className="h-4 w-4 text-orange-400" />
-                                <label className="text-sm font-semibold text-yellow-300">Status</label>
+                                <span className="text-sm font-semibold text-yellow-300">Status</span>
                               </div>
                               <p className="text-white text-lg font-medium">{statusInfo.label}</p>
                             </div>
@@ -1193,7 +1106,7 @@ const MyRequestsPage = () => {
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <Clock className="h-4 w-4 text-red-400" />
-                                <label className="text-sm font-semibold text-yellow-300">Urgency</label>
+                                <span className="text-sm font-semibold text-yellow-300">Urgency</span>
                               </div>
                               <p className="text-white text-lg font-medium">{urgencyInfo.label}</p>
                             </div>
@@ -1205,7 +1118,7 @@ const MyRequestsPage = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Heart className="h-4 w-4 text-green-400" />
-                            <label className="text-sm font-semibold text-yellow-300">Claims</label>
+                            <span className="text-sm font-semibold text-yellow-300">Claims</span>
                           </div>
                           <p className={`text-lg font-medium ${selectedRequest.claims_count > 0 ? 'text-white' : 'text-gray-400 italic'}`}>
                             {selectedRequest.claims_count > 0 ? `${selectedRequest.claims_count} claim(s)` : 'Not provided'}
@@ -1219,7 +1132,7 @@ const MyRequestsPage = () => {
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <MapPin className="h-4 w-4 text-purple-400" />
-                          <label className="text-sm font-semibold text-yellow-300">Location</label>
+                          <span className="text-sm font-semibold text-yellow-300">Location</span>
                         </div>
                         <p className={`text-center max-w-[60%] break-words ${selectedRequest.location ? 'text-white' : 'text-gray-400 italic'}`}>
                           {selectedRequest.location || 'Not provided'}
@@ -1233,7 +1146,7 @@ const MyRequestsPage = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-orange-400" />
-                            <label className="text-sm font-semibold text-yellow-300">Posted Date</label>
+                            <span className="text-sm font-semibold text-yellow-300">Posted Date</span>
                           </div>
                           <p className="text-white">{formatDate(selectedRequest.created_at)}</p>
                         </div>
@@ -1243,7 +1156,7 @@ const MyRequestsPage = () => {
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-red-400" />
-                            <label className="text-sm font-semibold text-yellow-300">Needed By</label>
+                            <span className="text-sm font-semibold text-yellow-300">Needed By</span>
                           </div>
                           <p className={selectedRequest.needed_by ? 'text-white' : 'text-gray-400 italic'}>
                             {selectedRequest.needed_by ? formatDate(selectedRequest.needed_by) : 'Not provided'}
@@ -1254,11 +1167,11 @@ const MyRequestsPage = () => {
 
                     {/* Tags */}
                     <div className="bg-navy-800/30 rounded-lg p-4 border border-navy-700">
-                      <label className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</label>
+                      <p className="text-sm font-semibold text-yellow-300 mb-3 block">Tags</p>
                       {selectedRequest.tags && selectedRequest.tags.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
-                          {selectedRequest.tags.map((tag, tagIndex) => (
-                            <span key={tagIndex} className="inline-flex items-center text-xs font-medium bg-navy-700 text-yellow-300 px-3 py-1.5 rounded-lg border border-yellow-500/30">
+                          {selectedRequest.tags.map((tag) => (
+                            <span key={tag} className="inline-flex items-center text-xs font-medium bg-navy-700 text-yellow-300 px-3 py-1.5 rounded-lg border border-yellow-500/30">
                               <Tag className="h-3 w-3 mr-1" />
                               {tag}
                             </span>

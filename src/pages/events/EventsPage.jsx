@@ -75,11 +75,21 @@ const EventsPage = () => {
   const fetchEvents = async () => {
     try {
       setLoading(true)
-      const data = await db.getEvents()
+      // Add timeout to prevent infinite loading
+      const timeoutPromise = new Promise((_, reject) => {
+        setTimeout(() => reject(new Error('Request timeout after 15 seconds')), 15000)
+      })
+      
+      const data = await Promise.race([
+        db.getEvents(),
+        timeoutPromise
+      ])
       setEvents(data || [])
     } catch (err) {
       console.error('Error fetching events:', err)
-      error('Failed to load events')
+      error(err.message || 'Failed to load events')
+      // Set empty array on error to prevent infinite loading state
+      setEvents([])
     } finally {
       setLoading(false)
     }

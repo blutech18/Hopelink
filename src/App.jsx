@@ -6,65 +6,152 @@ import Footer from './components/layout/Footer'
 import { DashboardSkeleton } from './components/ui/Skeleton'
 import SetupGuide from './components/ui/SetupGuide'
 import ScrollToTop from './components/ui/ScrollToTop'
+import { ErrorBoundaryWithNavigate } from './components/ui/ErrorBoundary'
 import { useAuth } from './contexts/AuthContext'
 import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
 import { supabase } from './lib/supabase'
+import lazyWithRetry from './lib/lazyWithRetry'
+import { preloadRoutes } from './lib/preloadRoutes'
 
 // Import public pages directly (avoiding lazy loading for these specific pages due to Vercel build issues)
 import HomePage from './pages/HomePage.jsx'
 import AboutPage from './pages/AboutPage.jsx'
 
 // Lazy load other pages for better performance
-const LoginPage = React.lazy(() => import('./pages/auth/LoginPage'))
-const SignupPage = React.lazy(() => import('./pages/auth/SignupPage'))
-const CallbackPage = React.lazy(() => import('./pages/auth/CallbackPage'))
-const ResetPasswordPage = React.lazy(() => import('./pages/auth/ResetPasswordPage'))
-const DashboardPage = React.lazy(() => import('./pages/dashboard/DashboardPage'))
-const ProfilePage = React.lazy(() => import('./pages/profile/ProfilePage'))
+const importLoginPage = () => import('./pages/auth/LoginPage')
+const importSignupPage = () => import('./pages/auth/SignupPage')
+const importCallbackPage = () => import('./pages/auth/CallbackPage')
+const importResetPasswordPage = () => import('./pages/auth/ResetPasswordPage')
+const importDashboardPage = () => import('./pages/dashboard/DashboardPage')
+const importProfilePage = () => import('./pages/profile/ProfilePage')
+
+const LoginPage = lazyWithRetry(importLoginPage)
+const SignupPage = lazyWithRetry(importSignupPage)
+const CallbackPage = lazyWithRetry(importCallbackPage)
+const ResetPasswordPage = lazyWithRetry(importResetPasswordPage)
+const DashboardPage = lazyWithRetry(importDashboardPage)
+const ProfilePage = lazyWithRetry(importProfilePage)
 
 // Donor pages
-const PostDonationPage = React.lazy(() => import('./pages/donor/PostDonationPage'))
-const FulfillRequestPage = React.lazy(() => import('./pages/donor/FulfillRequestPage'))
-const MyDonationsPage = React.lazy(() => import('./pages/donor/MyDonationsPage'))
-const BrowseRequestsPage = React.lazy(() => import('./pages/donor/BrowseRequestsPage'))
-const PendingRequestsPage = React.lazy(() => import('./pages/donor/PendingRequestsPage'))
+const importPostDonationPage = () => import('./pages/donor/PostDonationPage')
+const importFulfillRequestPage = () => import('./pages/donor/FulfillRequestPage')
+const importMyDonationsPage = () => import('./pages/donor/MyDonationsPage')
+const importBrowseRequestsPage = () => import('./pages/donor/BrowseRequestsPage')
+const importPendingRequestsPage = () => import('./pages/donor/PendingRequestsPage')
+
+const PostDonationPage = lazyWithRetry(importPostDonationPage)
+const FulfillRequestPage = lazyWithRetry(importFulfillRequestPage)
+const MyDonationsPage = lazyWithRetry(importMyDonationsPage)
+const BrowseRequestsPage = lazyWithRetry(importBrowseRequestsPage)
+const PendingRequestsPage = lazyWithRetry(importPendingRequestsPage)
 
 // Recipient pages
-const BrowseDonationsPage = React.lazy(() => import('./pages/recipient/BrowseDonationsPage'))
-const CreateRequestPage = React.lazy(() => import('./pages/recipient/CreateRequestPage'))
-const MyRequestsPage = React.lazy(() => import('./pages/recipient/MyRequestsPage'))
-const MyApprovedDonationsPage = React.lazy(() => import('./pages/recipient/MyApprovedDonationsPage'))
-const MyApprovedRequestsPage = React.lazy(() => import('./pages/recipient/MyApprovedRequestsPage'))
+const importBrowseDonationsPage = () => import('./pages/recipient/BrowseDonationsPage')
+const importCreateRequestPage = () => import('./pages/recipient/CreateRequestPage')
+const importMyRequestsPage = () => import('./pages/recipient/MyRequestsPage')
+const importMyApprovedDonationsPage = () => import('./pages/recipient/MyApprovedDonationsPage')
+const importMyApprovedRequestsPage = () => import('./pages/recipient/MyApprovedRequestsPage')
+
+const BrowseDonationsPage = lazyWithRetry(importBrowseDonationsPage)
+const CreateRequestPage = lazyWithRetry(importCreateRequestPage)
+const MyRequestsPage = lazyWithRetry(importMyRequestsPage)
+const MyApprovedDonationsPage = lazyWithRetry(importMyApprovedDonationsPage)
+const MyApprovedRequestsPage = lazyWithRetry(importMyApprovedRequestsPage)
 
 // Volunteer pages
-const VolunteerDashboardPage = React.lazy(() => import('./pages/volunteer/VolunteerDashboardPage'))
-const AvailableTasksPage = React.lazy(() => import('./pages/volunteer/AvailableTasksPage'))
-const MyDeliveriesPage = React.lazy(() => import('./pages/volunteer/MyDeliveriesPage'))
-const VolunteerSchedulePage = React.lazy(() => import('./pages/volunteer/VolunteerSchedulePage'))
+const importVolunteerDashboardPage = () => import('./pages/volunteer/VolunteerDashboardPage')
+const importAvailableTasksPage = () => import('./pages/volunteer/AvailableTasksPage')
+const importMyDeliveriesPage = () => import('./pages/volunteer/MyDeliveriesPage')
+const importVolunteerSchedulePage = () => import('./pages/volunteer/VolunteerSchedulePage')
+
+const VolunteerDashboardPage = lazyWithRetry(importVolunteerDashboardPage)
+const AvailableTasksPage = lazyWithRetry(importAvailableTasksPage)
+const MyDeliveriesPage = lazyWithRetry(importMyDeliveriesPage)
+const VolunteerSchedulePage = lazyWithRetry(importVolunteerSchedulePage)
 
 // Event pages
-const EventsPage = React.lazy(() => import('./pages/events/EventsPage'))
-const EventDetailsPage = React.lazy(() => import('./pages/events/EventDetailsPage'))
+const importEventsPage = () => import('./pages/events/EventsPage')
+const importEventDetailsPage = () => import('./pages/events/EventDetailsPage')
+
+const EventsPage = lazyWithRetry(importEventsPage)
+const EventDetailsPage = lazyWithRetry(importEventDetailsPage)
 
 // Admin pages
-const AdminDashboard = React.lazy(() => import('./pages/admin/AdminDashboard'))
-const UserManagementPage = React.lazy(() => import('./pages/admin/UserManagementPage'))
-const IDVerificationPage = React.lazy(() => import('./pages/admin/IDVerificationPage'))
-const AdminSettingsPage = React.lazy(() => import('./pages/admin/AdminSettingsPage'))
-const MatchingParametersPage = React.lazy(() => import('./pages/admin/MatchingParametersPage'))
-const AdminDonationsPage = React.lazy(() => import('./pages/admin/AdminDonationsPage'))
-const AdminCFCDonationsPage = React.lazy(() => import('./pages/admin/AdminCFCDonationsPage'))
-const AdminVolunteersPage = React.lazy(() => import('./pages/admin/AdminVolunteersPage'))
-const AdminRequestsPage = React.lazy(() => import('./pages/admin/AdminRequestsPage'))
-const AdminEventsPage = React.lazy(() => import('./pages/admin/AdminEventsPage'))
-const AdminFeedbackPage = React.lazy(() => import('./pages/admin/AdminFeedbackPage'))
+const importAdminDashboard = () => import('./pages/admin/AdminDashboard')
+const importUserManagementPage = () => import('./pages/admin/UserManagementPage')
+const importIDVerificationPage = () => import('./pages/admin/IDVerificationPage')
+const importAdminSettingsPage = () => import('./pages/admin/AdminSettingsPage')
+const importMatchingParametersPage = () => import('./pages/admin/MatchingParametersPage')
+const importAdminDonationsPage = () => import('./pages/admin/AdminDonationsPage')
+const importAdminCFCDonationsPage = () => import('./pages/admin/AdminCFCDonationsPage')
+const importAdminVolunteersPage = () => import('./pages/admin/AdminVolunteersPage')
+const importAdminRequestsPage = () => import('./pages/admin/AdminRequestsPage')
+const importAdminEventsPage = () => import('./pages/admin/AdminEventsPage')
+const importAdminFeedbackPage = () => import('./pages/admin/AdminFeedbackPage')
+
+const AdminDashboard = lazyWithRetry(importAdminDashboard)
+const UserManagementPage = lazyWithRetry(importUserManagementPage)
+const IDVerificationPage = lazyWithRetry(importIDVerificationPage)
+const AdminSettingsPage = lazyWithRetry(importAdminSettingsPage)
+const MatchingParametersPage = lazyWithRetry(importMatchingParametersPage)
+const AdminDonationsPage = lazyWithRetry(importAdminDonationsPage)
+const AdminCFCDonationsPage = lazyWithRetry(importAdminCFCDonationsPage)
+const AdminVolunteersPage = lazyWithRetry(importAdminVolunteersPage)
+const AdminRequestsPage = lazyWithRetry(importAdminRequestsPage)
+const AdminEventsPage = lazyWithRetry(importAdminEventsPage)
+const AdminFeedbackPage = lazyWithRetry(importAdminFeedbackPage)
 
 // Legal pages
-const TermsOfServicePage = React.lazy(() => import('./pages/legal/TermsOfServicePage'))
-const PrivacyPolicyPage = React.lazy(() => import('./pages/legal/PrivacyPolicyPage'))
-const CookiesPolicyPage = React.lazy(() => import('./pages/legal/CookiesPolicyPage'))
-const CodeOfConductPage = React.lazy(() => import('./pages/legal/CodeOfConductPage'))
+const importTermsOfServicePage = () => import('./pages/legal/TermsOfServicePage')
+const importPrivacyPolicyPage = () => import('./pages/legal/PrivacyPolicyPage')
+const importCookiesPolicyPage = () => import('./pages/legal/CookiesPolicyPage')
+const importCodeOfConductPage = () => import('./pages/legal/CodeOfConductPage')
+
+const TermsOfServicePage = lazyWithRetry(importTermsOfServicePage)
+const PrivacyPolicyPage = lazyWithRetry(importPrivacyPolicyPage)
+const CookiesPolicyPage = lazyWithRetry(importCookiesPolicyPage)
+const CodeOfConductPage = lazyWithRetry(importCodeOfConductPage)
+
+const routePreloaders = [
+  importLoginPage,
+  importSignupPage,
+  importCallbackPage,
+  importResetPasswordPage,
+  importDashboardPage,
+  importProfilePage,
+  importPostDonationPage,
+  importFulfillRequestPage,
+  importMyDonationsPage,
+  importBrowseRequestsPage,
+  importPendingRequestsPage,
+  importBrowseDonationsPage,
+  importCreateRequestPage,
+  importMyRequestsPage,
+  importMyApprovedDonationsPage,
+  importMyApprovedRequestsPage,
+  importVolunteerDashboardPage,
+  importAvailableTasksPage,
+  importMyDeliveriesPage,
+  importVolunteerSchedulePage,
+  importEventsPage,
+  importEventDetailsPage,
+  importAdminDashboard,
+  importUserManagementPage,
+  importIDVerificationPage,
+  importAdminSettingsPage,
+  importMatchingParametersPage,
+  importAdminDonationsPage,
+  importAdminCFCDonationsPage,
+  importAdminVolunteersPage,
+  importAdminRequestsPage,
+  importAdminEventsPage,
+  importAdminFeedbackPage,
+  importTermsOfServicePage,
+  importPrivacyPolicyPage,
+  importCookiesPolicyPage,
+  importCodeOfConductPage,
+]
 
 // Protected Route component
 const ProtectedRoute = ({ children, allowedRoles }) => {
@@ -134,7 +221,58 @@ function AppContent() {
   const { loading, profile } = useAuth()
   const { showToast, error: showError } = useToast()
   const [showSetupGuide, setShowSetupGuide] = useState(false)
+  const [forceRemountKey, setForceRemountKey] = useState(0)
   
+  useEffect(() => {
+    preloadRoutes(routePreloaders)
+  }, [])
+
+  // Real-time navigation watchdog - forces React to retry loading without browser refresh
+  useEffect(() => {
+    // Reset remount key when route changes
+    setForceRemountKey(0)
+    
+    const routeLoadStart = Date.now()
+    let checkCount = 0
+    let lastRemountTime = Date.now()
+    
+    // Check every 0.1 seconds if page is still loading
+    const checkInterval = setInterval(() => {
+      checkCount++
+      const loadTime = Date.now() - routeLoadStart
+      const timeSinceLastRemount = Date.now() - lastRemountTime
+      
+      // Check if Suspense fallback is still visible
+      const suspenseFallback = document.querySelector('[data-suspense-fallback="true"]')
+      const skeletonElements = document.querySelectorAll('[class*="Skeleton"], [class*="skeleton"]')
+      const isStillLoading = suspenseFallback || skeletonElements.length > 0
+      
+      // If stuck loading for more than 0.5 seconds, force React to remount
+      if (isStillLoading && loadTime > 500 && timeSinceLastRemount > 500) {
+        const attemptNumber = Math.floor(checkCount / 5) + 1
+        console.log(`Route ${location.pathname} stuck, forcing React remount (attempt ${attemptNumber})...`)
+        // Force remount by changing the key - this will cause React to retry loading the lazy component
+        setForceRemountKey(prev => prev + 1)
+        lastRemountTime = Date.now()
+      }
+      
+      // If page has loaded successfully, stop checking
+      if (!isStillLoading && checkCount > 3) {
+        clearInterval(checkInterval)
+      }
+      
+      // Safety: stop after 10 seconds of checking
+      if (checkCount > 100) {
+        clearInterval(checkInterval)
+        console.warn(`Route ${location.pathname} still loading after 10 seconds, stopping watchdog`)
+      }
+    }, 100) // Check every 0.1 seconds
+    
+    return () => {
+      clearInterval(checkInterval)
+    }
+  }, [location.pathname])
+
   // Hide footer on login and signup pages
   const hideFooter = location.pathname === '/login' || location.pathname === '/signup'
 
@@ -188,19 +326,27 @@ function AppContent() {
     )
   }
 
+  const shouldShowSidebar = profile && location.pathname !== '/auth/callback'
+  
   return (
     <div className="min-h-screen flex flex-col" style={{backgroundColor: '#1e293b'}}>
       <Navbar />
       
-      <main className="flex-1">
-          <React.Suspense 
-            fallback={
-              <div className="min-h-screen" style={{backgroundColor: '#1e293b'}}>
-                <DashboardSkeleton />
-              </div>
-            }
-          >
-            <Routes>
+      <main className={`flex-1 transition-all duration-200 ${shouldShowSidebar ? 'ml-12 sm:ml-16' : ''}`}>
+          <ErrorBoundaryWithNavigate>
+            <React.Suspense 
+              key={`${location.pathname}-${forceRemountKey}`}
+              fallback={
+                <div 
+                  className="min-h-screen" 
+                  style={{backgroundColor: '#1e293b'}}
+                  data-suspense-fallback="true"
+                >
+                  <DashboardSkeleton />
+                </div>
+              }
+            >
+              <Routes key={`routes-${forceRemountKey}`}>
               {/* Public routes */}
               <Route path="/" element={<HomePage />} />
               <Route path="/about" element={<AboutPage />} />
@@ -389,6 +535,7 @@ function AppContent() {
               } />
             </Routes>
           </React.Suspense>
+          </ErrorBoundaryWithNavigate>
         </main>
         
         {!hideFooter && <Footer userRole={profile?.role} />}

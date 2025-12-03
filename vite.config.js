@@ -3,7 +3,12 @@ import react from '@vitejs/plugin-react'
 import path from 'path'
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react({
+      // Enable Fast Refresh for all files, including context files
+      fastRefresh: true,
+    })
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -26,6 +31,9 @@ export default defineConfig({
     },
   },
   build: {
+    // Production optimizations
+    minify: 'esbuild',
+    sourcemap: false, // Disable sourcemaps in production for smaller bundle
     rollupOptions: {
       output: {
         manualChunks: (id) => {
@@ -83,6 +91,10 @@ export default defineConfig({
       include: [/node_modules/],
       transformMixedEsModules: true,
     },
+    // Production build optimizations
+    target: 'esnext',
+    cssCodeSplit: true,
+    reportCompressedSize: false, // Faster builds
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react/jsx-runtime'],

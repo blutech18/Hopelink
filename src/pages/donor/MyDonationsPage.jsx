@@ -43,6 +43,13 @@ import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import DonorRecipientTrackingModal from '../../components/ui/DonorRecipientTrackingModal'
 import ReportUserModal from '../../components/ui/ReportUserModal'
 
+const enableMyDonationsLogs = false
+const myDonationsLog = (...args) => {
+  if (enableMyDonationsLogs) {
+    console.log(...args)
+  }
+}
+
 const MyDonationsPage = () => {
   const { user } = useAuth()
   const { success, error } = useToast()
@@ -304,7 +311,7 @@ const MyDonationsPage = () => {
       const data = await db.getDonations({ donor_id: user.id, limit: 30 })
       
       // Log donation statuses for debugging
-      console.log('📊 Fetched donations with statuses:', data?.map(d => ({ 
+      myDonationsLog('📊 Fetched donations with statuses:', data?.map(d => ({ 
         id: d.id, 
         title: d.title, 
         status: d.status 
@@ -544,7 +551,7 @@ const MyDonationsPage = () => {
             filter: `donor_id=eq.${user.id}`
           },
           (payload) => {
-            console.log('📦 Donation change detected:', payload)
+            myDonationsLog('📦 Donation change detected:', payload)
             // Refresh donations when any change occurs
             fetchDonations()
           }
@@ -563,7 +570,7 @@ const MyDonationsPage = () => {
             filter: `user_id=eq.${user.id}`
           },
           (payload) => {
-            console.log('🔔 Notification change detected:', payload)
+            myDonationsLog('🔔 Notification change detected:', payload)
             // Refresh requests when notifications change
             fetchDonationRequests()
           }

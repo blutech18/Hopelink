@@ -17,19 +17,6 @@ export const GoogleMapsLoader = ({ children, onLoad, onError }) => {
   const [mapsError, setMapsError] = useState(null)
   const [mapsLoaded, setMapsLoaded] = useState(false)
 
-  // Display informative message about expected CSP test error
-  useEffect(() => {
-    // Log a helpful message about the expected error
-    console.log(
-      '%c⚠️ Google Maps Notice',
-      'color: #f59e0b; font-weight: bold; font-size: 12px;',
-      '\nIf you see "ERR_BLOCKED_BY_CLIENT" for "gen_204?csp_test=true" in the console,',
-      '\nthis is a harmless error caused by ad blockers blocking Google\'s CSP test request.',
-      '\nMaps will still work normally - this error can be safely ignored.',
-      '\nThe app will continue to function correctly.'
-    )
-  }, [])
-
   // Monitor for Google Maps API loading (handles cases where CSP test fails but Maps still loads)
   useEffect(() => {
     if (mapsLoaded) return
@@ -47,11 +34,6 @@ export const GoogleMapsLoader = ({ children, onLoad, onError }) => {
     // Check periodically if Maps loaded despite any errors
     const checkMapsLoaded = setInterval(() => {
       if (window.google?.maps) {
-        console.log(
-          '%c✅ Google Maps API Loaded',
-          'color: #10b981; font-weight: bold;',
-          'Maps loaded successfully (CSP test error was harmless)'
-        )
         setMapsLoaded(true)
         setMapsError(null)
         if (onLoad) {
@@ -84,11 +66,6 @@ export const GoogleMapsLoader = ({ children, onLoad, onError }) => {
     // Check if Maps actually loaded despite the error
     if (window.google?.maps) {
       // Maps loaded successfully despite any error
-      console.log(
-        '%c✅ Google Maps API Loaded',
-        'color: #10b981; font-weight: bold;',
-        'Maps loaded successfully (any CSP test error was harmless)'
-      )
       handleLoad()
       return
     }
@@ -104,11 +81,6 @@ export const GoogleMapsLoader = ({ children, onLoad, onError }) => {
     if (isCSPTestError) {
       // CSP test errors are non-critical - this is expected with ad blockers
       // Don't set error state - Maps should still load
-      console.log(
-        '%cℹ️ Google Maps CSP Test Blocked',
-        'color: #3b82f6; font-weight: bold;',
-        'CSP test was blocked (likely by ad blocker). This is harmless - Maps should still load.'
-      )
       // Give Maps time to load - the monitoring useEffect will handle it
       return
     }

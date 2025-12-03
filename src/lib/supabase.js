@@ -8,29 +8,47 @@ const isSupabaseConfigured = supabaseUrl && supabaseAnonKey && supabaseUrl !== '
 
 let supabase = null
 
-// Log configuration status
-console.log('🔧 HopeLink Configuration:', {
-  isSupabaseConfigured,
-  hasSupabaseUrl: !!supabaseUrl,
-  hasSupabaseKey: !!supabaseAnonKey,
-  env: import.meta.env.NODE_ENV
-})
-
 if (isSupabaseConfigured) {
   try {
+    // Production-optimized Supabase client configuration
+    const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'production'
+    
     supabase = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
-        autoRefreshToken: true,
+        autoRefreshToken: true, // Critical for production - keeps sessions alive
         persistSession: true,
-        detectSessionInUrl: true
+        detectSessionInUrl: true,
+        // Production-specific settings
+        storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+        storageKey: 'hopelink-auth-token',
+        // Refresh token before it expires (5 minutes before expiry)
+        flowType: 'pkce'
+      },
+      // Production optimizations
+      global: {
+        headers: isProduction ? {
+          'x-client-info': 'hopelink-web'
+        } : {}
+      },
+      // Real-time settings for production
+      realtime: {
+        params: {
+          eventsPerSecond: isProduction ? 10 : 2
+        }
       }
     })
-    console.log('✅ Supabase client initialized successfully')
+    
+    // Note: Session refresh is handled in AuthContext.jsx to prevent idle timeout
+    // This ensures proper cleanup and React lifecycle management
   } catch (error) {
+    if (import.meta.env.DEV) {
     console.warn('❌ Failed to initialize Supabase:', error)
+    }
   }
 } else {
+  if (import.meta.env.DEV) {
   console.warn('⚠️ Supabase not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY')
+  }
 }
 
 // Helper functions for common database operations
@@ -3589,7 +3607,6 @@ export const db = {
         throw error
       }
 
-      console.log(`✅ Created ${data.length} notifications for ${admins.length} admin(s)`)
       return data
     } catch (error) {
       console.error('Error notifying admins:', error)
@@ -3637,14 +3654,6 @@ export const db = {
         dataToInsert.created_at = created_at
       }
 
-      console.log('Inserting notification into database:', {
-        user_id: dataToInsert.user_id,
-        type: dataToInsert.type,
-        title: dataToInsert.title,
-        message: dataToInsert.message?.substring(0, 50) + '...',
-        has_data: !!dataToInsert.data
-      })
-
       const { data, error } = await supabase
         .from('notifications')
         .insert(dataToInsert)
@@ -3662,14 +3671,6 @@ export const db = {
         throw new Error('Failed to create notification: No data returned')
       }
 
-      console.log('Notification successfully created in database:', {
-        id: data.id,
-        user_id: data.user_id,
-        type: data.type,
-        title: data.title,
-        created_at: data.created_at
-      })
-
       // Verify the notification was actually created by fetching it
       const { data: verifyData, error: verifyError } = await supabase
         .from('notifications')
@@ -3681,13 +3682,6 @@ export const db = {
         console.warn('Warning: Could not verify notification creation:', verifyError)
       } else if (!verifyData) {
         console.warn('Warning: Notification was created but could not be retrieved for verification')
-      } else {
-        console.log('Notification verified in database:', {
-          id: verifyData.id,
-          user_id: verifyData.user_id,
-          type: verifyData.type,
-          created_at: verifyData.created_at
-        })
       }
 
       return data
@@ -3713,11 +3707,6 @@ export const db = {
       if (error) {
         console.error('❌ Error fetching notifications:', error)
         throw error
-      }
-      
-      console.log(`✅ getUserNotifications returned ${data?.length || 0} notifications for user ${userId}`)
-      if (data && data.length > 0) {
-        console.log('📋 Sample notification:', data[0])
       }
       
       return data || []
@@ -3750,8 +3739,6 @@ export const db = {
     }
     if (!userId) return null
     
-    console.log(`🔔 Setting up real-time subscription for user ${userId}`)
-    
     // Use a simpler channel name to avoid issues (not used currently, but kept for future real-time support)
     const channelName = `notif_${userId.replace(/-/g, '_')}`
     
@@ -3764,17 +3751,14 @@ export const db = {
     // Function to start polling (primary method since real-time isn't configured)
     const startPolling = () => {
       if (pollInterval || !isActive) {
-        console.log(`⚠️ Polling already active or subscription inactive for user ${userId}, skipping duplicate start`)
         return // Already polling or subscription is inactive
       }
       
-      console.log(`🔄 Starting optimized notification polling for user ${userId} (every 5 seconds)`)
       
       // Poll function - just trigger onChange, Navbar will fetch notifications
       const pollNotifications = () => {
         // Check if subscription is still active before processing
         if (!isActive) {
-          console.log(`⚠️ Polling stopped for user ${userId}, skipping callback`)
           // Clear interval if subscription is inactive
           if (pollInterval) {
             clearInterval(pollInterval)
@@ -3804,7 +3788,6 @@ export const db = {
       // Skip real-time subscription if we've already determined it's not working
       // The error "mismatch between server and client bindings" indicates real-time replication
       // is not configured on the server side, so we'll just use polling
-      console.log(`ℹ️ Real-time subscription not available (server replication not configured), using polling instead`)
       isSubscribed = false
       startPolling()
       return
@@ -3865,13 +3848,10 @@ export const db = {
     
     // Start with polling directly since real-time replication isn't configured
     // This ensures notifications are received reliably
-    console.log(`🔄 Using polling for notifications (real-time replication not configured on server)`)
     startPolling()
 
     return () => {
       try { 
-        console.log(`🔔 Unsubscribing from notifications for user ${userId}`)
-        
         // Mark subscription as inactive FIRST to prevent new callbacks
         isActive = false
         
@@ -3879,7 +3859,6 @@ export const db = {
         if (pollInterval) {
           clearInterval(pollInterval)
           pollInterval = null
-          console.log(`🔄 Stopped polling for user ${userId}`)
         }
         
         // Clear timeouts
@@ -4460,16 +4439,6 @@ export const db = {
             recipient: recipient || { id: claim.recipient_id, name: 'Unknown' }
           }
 
-          // Notify donor - ensure notification is created with correct donor ID
-          console.log('Creating volunteer request notification for donor:', {
-            donorId,
-            volunteerId: requestData.volunteer_id,
-            volunteerName: requestData.volunteer_name,
-            claimId: requestData.claim_id,
-            donationId: donation.id,
-            volunteerRequestId: volunteerRequest.id
-          })
-          
           try {
             const donorNotification = await this.createNotification({
               user_id: donorId,
@@ -4486,14 +4455,6 @@ export const db = {
                 task_type: 'approved_donation',
                 volunteer_request_id: volunteerRequest.id
               }
-            })
-            
-            console.log('✅ Volunteer request notification created for donor:', {
-              notificationId: donorNotification?.id,
-              userId: donorNotification?.user_id,
-              type: donorNotification?.type,
-              readAt: donorNotification?.read_at,
-              data: donorNotification?.data
             })
           } catch (notifError) {
             console.error('❌ Error creating volunteer request notification for donor:', notifError)
@@ -4705,15 +4666,7 @@ export const db = {
         recipient: recipient || { id: claim.recipient_id, name: 'Unknown' }
       }
 
-      console.log('📦 Delivery data retrieved:', {
-        delivery_id: delivery.id,
-        claim_id: delivery.claim.id,
-        donation_id: delivery.claim.donation_id,
-        donation_title: delivery.claim.donation?.title
-      })
-
       // AUTOMATICALLY UPDATE DONATION STATUS TO DELIVERED when volunteer marks as delivered
-      console.log('🔄 Updating donation claim to delivered:', delivery.claim.id)
       
       // Update claim status in the JSONB claims array
       const updatedClaims = donation.claims.map(c => 
@@ -4734,8 +4687,6 @@ export const db = {
         throw claimUpdateError
       }
 
-      console.log('🔄 Updating donation to delivered:', delivery.claim.donation_id || delivery.claim.donation?.id)
-      
       // Update donation status to delivered
       const donationId = delivery.claim.donation_id || delivery.claim.donation?.id
       
@@ -4753,8 +4704,6 @@ export const db = {
         console.error('❌ Error updating donation:', donationUpdateError)
         throw donationUpdateError
       }
-
-      console.log('✅ Successfully updated donation claim and donation to delivered status')
 
       // Create confirmation request notifications for both donor and recipient
       const confirmationMessage = `${delivery.volunteer.name} has delivered the items: "${delivery.claim.donation.title}". Please confirm receipt/delivery to complete the transaction.`
@@ -8192,7 +8141,6 @@ export const db = {
           for (const backupToDelete of backupsToDelete) {
             try {
               await this.deleteDatabaseBackup(backupToDelete.id)
-              console.log(`Deleted duplicate backup: ${backupToDelete.id}`)
             } catch (deleteError) {
               console.error(`Error deleting duplicate backup ${backupToDelete.id}:`, deleteError)
               // Continue deleting other duplicates even if one fails
@@ -8213,7 +8161,6 @@ export const db = {
         for (const backupToDelete of backupsToDelete) {
           try {
             await this.deleteDatabaseBackup(backupToDelete.id)
-            console.log(`Deleted duplicate backup: ${backupToDelete.id}`)
           } catch (deleteError) {
             console.error(`Error deleting duplicate backup ${backupToDelete.id}:`, deleteError)
             // Continue deleting other duplicates even if one fails
@@ -8510,7 +8457,6 @@ export const db = {
           }
         } else {
           storageUploaded = true
-          console.log('✅ Backup uploaded to storage successfully:', uploadData?.path)
         }
       } catch (storageError) {
         // Catch any unexpected errors

@@ -16,7 +16,7 @@ app.use(helmet())
 app.use(compression())
 app.use(cors({
   origin: process.env.NODE_ENV === 'production' 
-    ? ['https://your-domain.com'] 
+    ? ['https://hopelink-seven.vercel.app', 'https://www.hopelink-seven.vercel.app'] 
     : ['http://localhost:3000'],
   credentials: true
 }))

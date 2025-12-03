@@ -2,10 +2,17 @@ import React, { createContext, useContext, useEffect, useState, useRef } from 'r
 import { supabase, db } from '../lib/supabase'
 import { authDebug } from '../lib/devUtils'
 
-// Global flag to track profile creation status across auth flows
-let profileCreationInProgress = false
-
 const AuthContext = createContext({})
+
+// Production detection (module level for use in authLog)
+const isProductionEnv = import.meta.env.PROD || import.meta.env.MODE === 'production'
+const enableVerboseAuthLogs = false
+const authLog = (...args) => {
+  // Only log in development, never in production
+  if (!isProductionEnv && enableVerboseAuthLogs) {
+    console.log(...args)
+  }
+}
 
 export const useAuth = () => {
   const context = useContext(AuthContext)
@@ -15,6 +22,7 @@ export const useAuth = () => {
   return context
 }
 
+// Fast Refresh: This component is compatible with Fast Refresh
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [profile, setProfile] = useState(null)
@@ -26,32 +34,48 @@ export const AuthProvider = ({ children }) => {
   
   // Simple cache to prevent repeated profile loading
   const profileCacheRef = useRef(new Map())
+  // Flag to track profile creation status across auth flows (moved from module level for Fast Refresh compatibility)
+  const profileCreationInProgressRef = useRef(false)
 
-  // Failsafe: Force stop loading after 5 seconds to prevent infinite loading (optimized)
+  // Production: More aggressive timeout to prevent infinite loading
+  const isProduction = import.meta.env.PROD || import.meta.env.MODE === 'production'
+  const loadingTimeout = isProduction ? 3000 : 5000 // 3 seconds in production, 5 in dev
+  
+  // Failsafe: Force stop loading after timeout to prevent infinite loading
   useEffect(() => {
     const failsafeTimeout = setTimeout(() => {
-      console.log('🔒 Auth initialization timeout reached - completing authentication flow')
-      setLoading(false)
-    }, 5000)
+      if (isProduction) {
+        // In production, silently complete loading to prevent skeleton screens
+        setLoading(false)
+      } else {
+        authLog('🔒 Auth initialization timeout reached - completing authentication flow')
+        setLoading(false)
+      }
+    }, loadingTimeout)
 
     return () => clearTimeout(failsafeTimeout)
-  }, [])
+  }, [loadingTimeout, isProduction])
 
-  // Additional safeguard: prevent loading state from lasting too long (optimized)
+  // Additional safeguard: prevent loading state from lasting too long
   useEffect(() => {
     if (loading) {
       const maxLoadingTimeout = setTimeout(() => {
-        console.warn('⚠️ Loading state lasted too long, forcing completion')
+        // In production, silently resolve loading state to prevent skeleton screens
+        // Only log warnings in development
+        if (!isProduction) {
+          console.warn('⚠️ Loading state lasted too long, forcing completion')
+        }
         setLoading(false)
-      }, 6000)
+      }, loadingTimeout + 1000)
 
       return () => clearTimeout(maxLoadingTimeout)
     }
-  }, [loading])
+  }, [loading, loadingTimeout, isProduction])
 
   useEffect(() => {
     let mounted = true
     let accountStatusCheckInterval = null
+    let sessionRefreshInterval = null
     
     const initializeAuth = async () => {
       try {
@@ -64,8 +88,60 @@ export const AuthProvider = ({ children }) => {
           return
         }
 
-        // Get initial session
-        const { data: { session } } = await supabase.auth.getSession()
+        // Get initial session and refresh if expired
+        let { data: { session }, error: sessionError } = await supabase.auth.getSession()
+        
+        // Check if session is expired or invalid
+        if (session && session.expires_at) {
+          const expiresAt = session.expires_at * 1000 // Convert to milliseconds
+          const now = Date.now()
+          const timeUntilExpiry = expiresAt - now
+          
+          // If session expires in less than 5 minutes, refresh it proactively
+          if (timeUntilExpiry < 5 * 60 * 1000) {
+            authLog('⚠️ Session expiring soon, refreshing proactively')
+            try {
+              const refreshResult = await supabase.auth.refreshSession()
+              if (!refreshResult.error && refreshResult.data?.session) {
+                session = refreshResult.data.session
+                authLog('✅ Session refreshed successfully')
+              }
+            } catch (refreshErr) {
+              console.warn('Error refreshing session during init:', refreshErr)
+            }
+          }
+        }
+        
+        // If session is invalid or expired, try to refresh
+        if (sessionError || !session || (session.expires_at && session.expires_at * 1000 < Date.now())) {
+          authLog('⚠️ Initial session expired or invalid, attempting refresh')
+          try {
+            const refreshResult = await supabase.auth.refreshSession()
+            if (!refreshResult.error && refreshResult.data?.session) {
+              session = refreshResult.data.session
+              authLog('✅ Session refreshed successfully')
+            } else {
+              // Session refresh failed, user needs to login again
+              authLog('❌ Session refresh failed, clearing state')
+              if (mounted) {
+                setSession(null)
+                setUser(null)
+                setProfile(null)
+                setLoading(false)
+              }
+              return
+            }
+          } catch (refreshErr) {
+            console.error('Error refreshing initial session:', refreshErr)
+            if (mounted) {
+              setSession(null)
+              setUser(null)
+              setProfile(null)
+              setLoading(false)
+            }
+            return
+          }
+        }
         
         if (!mounted) return
 
@@ -80,12 +156,13 @@ export const AuthProvider = ({ children }) => {
             // (user signed out, state cleared, event dispatched)
             // Just set loading to false and let the error propagate if needed
             if (profileError?.message?.includes('ACCOUNT_SUSPENDED')) {
-              console.log('Account suspended during initialization - already handled')
+              authLog('Account suspended during initialization - already handled')
               setLoading(false)
               // Don't re-throw - the suspension has been handled
               return
             }
-            // For other errors, set loading to false
+            // For other errors, ensure loading is cleared
+            console.error('Error loading profile during initialization:', profileError)
             setLoading(false)
           }
         } else {
@@ -98,12 +175,18 @@ export const AuthProvider = ({ children }) => {
         } = supabase.auth.onAuthStateChange(async (event, session) => {
           if (!mounted) return
           
-          console.log('Auth state changed:', event, session?.user?.email)
+          authLog('Auth state changed:', event, session?.user?.email)
           
-          // Clear existing interval if user logs out
-          if (!session?.user && accountStatusCheckInterval) {
-            clearInterval(accountStatusCheckInterval)
-            accountStatusCheckInterval = null
+          // Clear existing intervals if user logs out
+          if (!session?.user) {
+            if (accountStatusCheckInterval) {
+              clearInterval(accountStatusCheckInterval)
+              accountStatusCheckInterval = null
+            }
+            if (sessionRefreshInterval) {
+              clearInterval(sessionRefreshInterval)
+              sessionRefreshInterval = null
+            }
             setSession(null)
             setUser(null)
             setProfile(null)
@@ -113,7 +196,7 @@ export const AuthProvider = ({ children }) => {
           if (session?.user) {
             // Skip profile loading if we're handling Google callback
             if (isHandlingGoogleCallback) {
-              console.log('Skipping profile loading during Google callback')
+              authLog('Skipping profile loading during Google callback')
               setSession(session)
               setUser(session.user)
               setLoading(false)
@@ -125,7 +208,7 @@ export const AuthProvider = ({ children }) => {
             let accountIsSuspended = false
             try {
               const userProfile = await db.getProfile(session.user.id)
-              console.log('🔍 Auth listener checking account status for:', session.user.id, 'is_active:', userProfile?.is_active, 'type:', typeof userProfile?.is_active)
+              authLog('🔍 Auth listener checking account status for:', session.user.id, 'is_active:', userProfile?.is_active, 'type:', typeof userProfile?.is_active)
               if (userProfile) {
                 // Check explicitly for false (suspended) - also check for string "false" or 0
                 const isSuspended = userProfile.is_active === false || userProfile.is_active === 'false' || userProfile.is_active === 0
@@ -133,7 +216,7 @@ export const AuthProvider = ({ children }) => {
                   accountIsSuspended = true
                   console.error('🚨 Suspended account detected in auth state listener - blocking access')
                 } else if (userProfile.is_active === null || userProfile.is_active === undefined) {
-                  console.log('⚠️ is_active is null/undefined in auth listener, treating as active')
+                  authLog('⚠️ is_active is null/undefined in auth listener, treating as active')
                 }
               }
             } catch (suspendCheckErr) {
@@ -145,7 +228,7 @@ export const AuthProvider = ({ children }) => {
                   .eq('id', session.user.id)
                   .single()
                 
-                console.log('🔍 Auth listener direct query for:', session.user.id, 'is_active:', userData?.is_active, 'type:', typeof userData?.is_active, 'error:', userError)
+                authLog('🔍 Auth listener direct query for:', session.user.id, 'is_active:', userData?.is_active, 'type:', typeof userData?.is_active, 'error:', userError)
                 if (!userError && userData) {
                   // Check explicitly for false (suspended) - also check for string "false" or 0
                   const isSuspended = userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0
@@ -153,7 +236,7 @@ export const AuthProvider = ({ children }) => {
                     accountIsSuspended = true
                     console.error('🚨 Suspended account detected via direct query in auth listener - blocking access')
                   } else if (userData.is_active === null || userData.is_active === undefined) {
-                    console.log('⚠️ is_active is null/undefined in direct query (auth listener), treating as active')
+                    authLog('⚠️ is_active is null/undefined in direct query (auth listener), treating as active')
                   }
                 }
               } catch (directErr) {
@@ -186,6 +269,65 @@ export const AuthProvider = ({ children }) => {
             try {
               await loadUserProfile(session.user.id)
               
+              // Set up periodic session refresh to prevent idle timeout (every 10 minutes)
+              // Clear any existing session refresh interval first
+              if (sessionRefreshInterval) {
+                clearInterval(sessionRefreshInterval)
+              }
+              
+              sessionRefreshInterval = setInterval(async () => {
+                if (!mounted) {
+                  clearInterval(sessionRefreshInterval)
+                  return
+                }
+                
+                try {
+                  const { data: { session: currentSession } } = await supabase.auth.getSession()
+                  if (currentSession && currentSession.expires_at) {
+                    const expiresAt = currentSession.expires_at * 1000
+                    const now = Date.now()
+                    const timeUntilExpiry = expiresAt - now
+                    
+                    // Refresh session if it expires in less than 5 minutes
+                    if (timeUntilExpiry < 5 * 60 * 1000) {
+                      if (!isProduction) {
+                        authLog('🔄 Refreshing session proactively before expiry')
+                      }
+                      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+                      if (!refreshError && refreshedSession) {
+                        setSession(refreshedSession)
+                        setUser(refreshedSession.user)
+                        if (!isProduction) {
+                          authLog('✅ Session refreshed successfully')
+                        }
+                      } else {
+                        // Only log in development
+                        if (!isProduction) {
+                          console.warn('Failed to refresh session:', refreshError)
+                        }
+                        // If refresh fails, clear intervals and sign out
+                        clearInterval(sessionRefreshInterval)
+                        if (accountStatusCheckInterval) {
+                          clearInterval(accountStatusCheckInterval)
+                        }
+                        await supabase.auth.signOut()
+                        setProfile(null)
+                        setUser(null)
+                        setSession(null)
+                      }
+                    }
+                  } else if (!currentSession) {
+                    // No session, clear intervals
+                    clearInterval(sessionRefreshInterval)
+                    if (accountStatusCheckInterval) {
+                      clearInterval(accountStatusCheckInterval)
+                    }
+                  }
+                } catch (refreshErr) {
+                  console.warn('Error during session refresh interval:', refreshErr)
+                }
+              }, 10 * 60 * 1000) // Check every 10 minutes
+              
               // Set up periodic account status check for logged-in users
               // Clear any existing interval first
               if (accountStatusCheckInterval) {
@@ -212,13 +354,38 @@ export const AuthProvider = ({ children }) => {
                     // Account was suspended - sign out immediately
                     console.error('🚨 Account status check: Account is suspended - signing out')
                     clearInterval(accountStatusCheckInterval)
+                    clearInterval(sessionRefreshInterval)
                     await supabase.auth.signOut()
                     setProfile(null)
                     setUser(null)
                     setSession(null)
                   }
                 } catch (checkError) {
-                  // Ignore errors during status check
+                  // Handle expired session errors
+                  if (checkError.status === 401 || checkError.status === 403 || 
+                      checkError.message?.includes('JWT') || checkError.message?.includes('token') ||
+                      checkError.message?.includes('expired') || checkError.message?.includes('invalid')) {
+                    authLog('⚠️ Session expired during status check, attempting refresh')
+                    try {
+                      const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+                      if (!refreshError && refreshedSession) {
+                        setSession(refreshedSession)
+                        setUser(refreshedSession.user)
+                      } else {
+                        // Refresh failed, sign out
+                        clearInterval(accountStatusCheckInterval)
+                        clearInterval(sessionRefreshInterval)
+                        await supabase.auth.signOut()
+                        setProfile(null)
+                        setUser(null)
+                        setSession(null)
+                      }
+                    } catch (refreshErr) {
+                      console.error('Error refreshing session during status check:', refreshErr)
+                    }
+                    return
+                  }
+                  // Ignore other errors during status check
                   if (!checkError.message?.includes('Failed to fetch') && 
                       !checkError.message?.includes('NetworkError')) {
                     console.warn('Error checking account status:', checkError)
@@ -229,16 +396,60 @@ export const AuthProvider = ({ children }) => {
               // Check if error is about account suspension
               if (profileError?.message?.includes('ACCOUNT_SUSPENDED')) {
                 console.error('Account suspended during auth state change:', profileError.message)
-                // Clear interval if account is suspended
+                // Clear intervals if account is suspended
                 if (accountStatusCheckInterval) {
                   clearInterval(accountStatusCheckInterval)
                   accountStatusCheckInterval = null
+                }
+                if (sessionRefreshInterval) {
+                  clearInterval(sessionRefreshInterval)
+                  sessionRefreshInterval = null
                 }
                 // User has already been signed out by loadUserProfile
                 // Set loading to false since suspension is handled
                 setLoading(false)
                 return
               }
+              
+              // Handle expired session errors
+              if (profileError.status === 401 || profileError.status === 403 || 
+                  profileError.message?.includes('JWT') || profileError.message?.includes('token') ||
+                  profileError.message?.includes('expired') || profileError.message?.includes('invalid')) {
+                console.warn('⚠️ Session expired during auth state change, attempting refresh')
+                try {
+                  const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+                  if (!refreshError && refreshedSession) {
+                    setSession(refreshedSession)
+                    setUser(refreshedSession.user)
+                    // Retry loading profile with refreshed session
+                    try {
+                      await loadUserProfile(refreshedSession.user.id)
+                      return
+                    } catch (retryErr) {
+                      console.error('Error loading profile after session refresh:', retryErr)
+                      setLoading(false)
+                      return
+                    }
+                  } else {
+                    // Refresh failed, sign out
+                    await supabase.auth.signOut()
+                    setProfile(null)
+                    setUser(null)
+                    setSession(null)
+                    setLoading(false)
+                    return
+                  }
+                } catch (refreshErr) {
+                  console.error('Error refreshing session during auth state change:', refreshErr)
+                  await supabase.auth.signOut()
+                  setProfile(null)
+                  setUser(null)
+                  setSession(null)
+                  setLoading(false)
+                  return
+                }
+              }
+              
               console.error('Error loading profile after auth change:', profileError)
               // Don't block the auth flow if profile loading fails
               // Just set profile to null and let the user continue
@@ -272,21 +483,68 @@ export const AuthProvider = ({ children }) => {
       if (accountStatusCheckInterval) {
         clearInterval(accountStatusCheckInterval)
       }
+      if (sessionRefreshInterval) {
+        clearInterval(sessionRefreshInterval)
+      }
       cleanup?.then(unsubscribe => unsubscribe?.())
     }
   }, [])
 
   const loadUserProfile = async (userId) => {
     if (!userId) {
-      console.log('🔒 No user ID provided, stopping loading')
+      authLog('🔒 No user ID provided, stopping loading')
       setLoading(false)
       return
     }
     
     // Check if profile creation is already in progress elsewhere (like in Google callback)
-    if (profileCreationInProgress) {
-      console.log('⚠️ Profile creation already in progress elsewhere, skipping duplicate attempt')
+    if (profileCreationInProgressRef.current) {
+      authLog('⚠️ Profile creation already in progress elsewhere, skipping duplicate attempt')
       authDebug.logProfileLoading(userId, 'SKIPPED_DUPLICATE_ATTEMPT')
+      setLoading(false)
+      return
+    }
+
+    // Refresh session before loading profile to handle expired sessions
+    try {
+      const { data: { session: currentSession }, error: sessionError } = await supabase.auth.getSession()
+      
+      // If session is expired or invalid, try to refresh it
+      if (sessionError || !currentSession) {
+        authLog('⚠️ Session expired or invalid, attempting refresh')
+        try {
+          const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+          if (refreshError || !refreshedSession) {
+            console.warn('Failed to refresh session:', refreshError)
+            // If refresh fails, sign out and clear state
+            await supabase.auth.signOut()
+            setProfile(null)
+            setUser(null)
+            setSession(null)
+            setLoading(false)
+            return
+          }
+          // Update session state
+          setSession(refreshedSession)
+          setUser(refreshedSession.user)
+        } catch (refreshErr) {
+          console.error('Error refreshing session:', refreshErr)
+          // If refresh fails, sign out and clear state
+          await supabase.auth.signOut()
+          setProfile(null)
+          setUser(null)
+          setSession(null)
+          setLoading(false)
+          return
+        }
+      } else {
+        // Session is valid, update state
+        setSession(currentSession)
+        setUser(currentSession.user)
+      }
+    } catch (sessionCheckErr) {
+      console.error('Error checking session:', sessionCheckErr)
+      // If we can't check session, try to continue but ensure loading is cleared
       setLoading(false)
       return
     }
@@ -295,7 +553,7 @@ export const AuthProvider = ({ children }) => {
     // This ensures suspended accounts are detected even if profile is cached
     const cachedProfile = profileCacheRef.current.get(userId)
     if (cachedProfile) {
-      console.log('📋 Found cached profile for user:', userId)
+      authLog('📋 Found cached profile for user:', userId)
       // Always verify is_active status from database to catch suspensions
       try {
         const { data: userData, error: userError } = await supabase
@@ -328,7 +586,7 @@ export const AuthProvider = ({ children }) => {
         console.warn('Could not verify account status for cached profile:', verifyErr)
       }
       
-      console.log('✅ Using cached profile for user:', userId)
+      authLog('✅ Using cached profile for user:', userId)
       setProfile(cachedProfile)
       setLoading(false)
       return
@@ -358,7 +616,7 @@ export const AuthProvider = ({ children }) => {
               if (currentUser) {
                 // User exists in auth but profile is null - might be timing issue, retry
                 const delay = baseDelay * Math.pow(2, attempt) // Exponential backoff: 500ms, 1000ms, 2000ms
-                console.log(`Profile not found but user exists in auth, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`)
+                authLog(`Profile not found but user exists in auth, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`)
                 await new Promise(resolve => setTimeout(resolve, delay))
                 continue
               }
@@ -370,6 +628,42 @@ export const AuthProvider = ({ children }) => {
           // If profile is null and user doesn't exist or we're out of retries, break
           break
         } catch (retryError) {
+          // Handle expired/invalid session errors
+          if (retryError.status === 401 || retryError.status === 403 || 
+              retryError.message?.includes('JWT') || retryError.message?.includes('token') ||
+              retryError.message?.includes('expired') || retryError.message?.includes('invalid')) {
+            authLog('⚠️ Session expired or invalid during profile load, attempting refresh')
+            try {
+              const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+              if (refreshError || !refreshedSession) {
+                console.error('Failed to refresh expired session:', refreshError)
+                await supabase.auth.signOut()
+                setProfile(null)
+                setUser(null)
+                setSession(null)
+                setLoading(false)
+                return
+              }
+              // Session refreshed, update state and retry
+              setSession(refreshedSession)
+              setUser(refreshedSession.user)
+              // Retry profile load with refreshed session
+              if (attempt < maxRetries) {
+                const delay = baseDelay * Math.pow(2, attempt)
+                await new Promise(resolve => setTimeout(resolve, delay))
+                continue
+              }
+            } catch (refreshErr) {
+              console.error('Error refreshing session:', refreshErr)
+              await supabase.auth.signOut()
+              setProfile(null)
+              setUser(null)
+              setSession(null)
+              setLoading(false)
+              return
+            }
+          }
+          
           // If it's a network error and we have retries left, retry
           if (attempt < maxRetries && (
             retryError.message?.includes('Failed to fetch') || 
@@ -379,7 +673,7 @@ export const AuthProvider = ({ children }) => {
             retryError.message?.includes('TypeError: Failed to fetch')
           )) {
             const delay = baseDelay * Math.pow(2, attempt)
-            console.log(`Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`)
+            authLog(`Network error, retrying in ${delay}ms (attempt ${attempt + 1}/${maxRetries + 1})`)
             await new Promise(resolve => setTimeout(resolve, delay))
             continue
           }
@@ -446,7 +740,7 @@ export const AuthProvider = ({ children }) => {
         
         // Check if user account is suspended
         // Also check for string "false" or 0 in case it's stored differently
-        console.log('🔍 loadUserProfile checking account status for:', userId, 'is_active:', userProfile.is_active, 'type:', typeof userProfile.is_active)
+        authLog('🔍 loadUserProfile checking account status for:', userId, 'is_active:', userProfile.is_active, 'type:', typeof userProfile.is_active)
         const isSuspended = userProfile.is_active === false || userProfile.is_active === 'false' || userProfile.is_active === 0
         if (isSuspended) {
           console.error('🚨 Account is suspended - signing out user')
@@ -532,7 +826,7 @@ export const AuthProvider = ({ children }) => {
         }
         
         // If we get here, user doesn't exist in auth either, so profile truly doesn't exist
-        console.log('Profile is null, user may need to be created from metadata')
+        authLog('Profile is null, user may need to be created from metadata')
         throw new Error('Profile not found - needs creation from metadata')
       }
     } catch (error) {
@@ -544,6 +838,51 @@ export const AuthProvider = ({ children }) => {
       if (!isExpectedError) {
         authDebug.logProfileLoading(userId, 'ERROR', { error: error.message, code: error.code })
         console.error('Error loading user profile:', error)
+        
+        // Handle expired/invalid session errors
+        if (error.status === 401 || error.status === 403 || 
+            error.message?.includes('JWT') || error.message?.includes('token') ||
+            error.message?.includes('expired') || error.message?.includes('invalid') ||
+            error.message?.includes('Forbidden')) {
+          console.warn('⚠️ Session expired or invalid, attempting refresh')
+          try {
+            const { data: { session: refreshedSession }, error: refreshError } = await supabase.auth.refreshSession()
+            if (refreshError || !refreshedSession) {
+              console.error('Failed to refresh expired session:', refreshError)
+              await supabase.auth.signOut()
+              setProfile(null)
+              setUser(null)
+              setSession(null)
+              setLoading(false)
+              return
+            }
+            // Session refreshed, update state
+            setSession(refreshedSession)
+            setUser(refreshedSession.user)
+            // Try loading profile again with refreshed session
+            try {
+              const refreshedProfile = await db.getProfile(userId)
+              if (refreshedProfile) {
+                profileCacheRef.current.set(userId, refreshedProfile)
+                setProfile(refreshedProfile)
+                setLoading(false)
+                return
+              }
+            } catch (retryErr) {
+              console.error('Error loading profile after session refresh:', retryErr)
+            }
+          } catch (refreshErr) {
+            console.error('Error refreshing session:', refreshErr)
+          }
+          // If refresh or retry fails, sign out
+          await supabase.auth.signOut()
+          setProfile(null)
+          setUser(null)
+          setSession(null)
+          setLoading(false)
+          return
+        }
+        
         // For network errors, set profile to null and continue
         if (error.message?.includes('Failed to fetch') || 
             error.message?.includes('CORS') || 
@@ -555,6 +894,9 @@ export const AuthProvider = ({ children }) => {
           setLoading(false)
           return
         }
+        
+        // For any other error, ensure loading is cleared
+        setLoading(false)
       } else {
         authDebug.logProfileLoading(userId, 'NOT_FOUND')
       }
@@ -583,9 +925,9 @@ export const AuthProvider = ({ children }) => {
             }
           }
           
-          console.log('Current user metadata:', currentUser?.user_metadata)
-          console.log('Current user email:', currentUser?.email)
-          console.log('User metadata keys:', currentUser?.user_metadata ? Object.keys(currentUser.user_metadata) : 'none')
+          authLog('Current user metadata:', currentUser?.user_metadata)
+          authLog('Current user email:', currentUser?.email)
+          authLog('User metadata keys:', currentUser?.user_metadata ? Object.keys(currentUser.user_metadata) : 'none')
           
           // Check for pending Google signup role data first
           // IMPORTANT: Don't create profile here during Google signup flow
@@ -595,7 +937,7 @@ export const AuthProvider = ({ children }) => {
           // Skip profile creation if there's pending Google signup data
           // The callback handler will create the profile after verifying no existing account
           if (pendingRoleData) {
-            console.log('⏭️ Skipping profile creation in loadUserProfile - pending Google signup detected')
+            authLog('⏭️ Skipping profile creation in loadUserProfile - pending Google signup detected')
             authDebug.logProfileLoading(userId, 'SKIPPED_PENDING_GOOGLE_SIGNUP')
             setProfile(null)
             setLoading(false)
@@ -625,8 +967,8 @@ export const AuthProvider = ({ children }) => {
           
           if (currentUser?.user_metadata && userName) {
             // Set flag to prevent duplicate profile creation
-            profileCreationInProgress = true
-            console.log('🔄 Profile creation from metadata started in loadUserProfile, flag set')
+            profileCreationInProgressRef.current = true
+            authLog('🔄 Profile creation from metadata started in loadUserProfile, flag set')
             
             // Try to create profile from user metadata
             const profileData = {
@@ -688,10 +1030,10 @@ export const AuthProvider = ({ children }) => {
               // No additional fields required for admins
             }
             
-            console.log('Creating profile from metadata:', profileData)
+            authLog('Creating profile from metadata:', profileData)
             authDebug.logProfileLoading(userId, 'CREATING_FROM_METADATA', profileData)
             const newProfile = await db.createProfile(userId, profileData)
-            console.log('Created profile:', newProfile)
+            authLog('Created profile:', newProfile)
             authDebug.logProfileLoading(userId, 'CREATED_FROM_METADATA', newProfile)
             // Cache the new profile
             profileCacheRef.current.set(userId, newProfile)
@@ -699,19 +1041,19 @@ export const AuthProvider = ({ children }) => {
             setLoading(false)
             
             // Reset flag after successful profile creation
-            profileCreationInProgress = false
-            console.log('🔄 Profile creation from metadata completed, flag cleared')
+            profileCreationInProgressRef.current = false
+            authLog('🔄 Profile creation from metadata completed, flag cleared')
             return
           } else {
-            console.log('No user metadata found or name missing, user might need to complete signup')
+            authLog('No user metadata found or name missing, user might need to complete signup')
             authDebug.logProfileLoading(userId, 'NO_METADATA')
           }
         } catch (createError) {
           console.error('Error creating profile from metadata:', createError)
           authDebug.logProfileLoading(userId, 'METADATA_ERROR', { error: createError.message })
           // Reset flag in case of error
-          profileCreationInProgress = false
-          console.log('🔄 Profile creation from metadata failed, flag cleared')
+          profileCreationInProgressRef.current = false
+          authLog('🔄 Profile creation from metadata failed, flag cleared')
           
           // If it's a network error, don't give up - the profile might still be created
           // Let the user try refreshing or logging in again
@@ -749,8 +1091,8 @@ export const AuthProvider = ({ children }) => {
       // Set signing in flag for smooth transition
       setIsSigningIn(true)
       
-      console.log('AUTHCONTEXT SIGNUP - USERDATA:', userData)
-      console.log('AUTHCONTEXT SIGNUP - ROLE FIELD:', userData.role)
+      authLog('AUTHCONTEXT SIGNUP - USERDATA:', userData)
+      authLog('AUTHCONTEXT SIGNUP - ROLE FIELD:', userData.role)
       
       // Validate that role is correctly set
       if (!userData.role || !['donor', 'recipient', 'volunteer', 'admin'].includes(userData.role)) {
@@ -779,8 +1121,8 @@ export const AuthProvider = ({ children }) => {
         }
       })
       
-      console.log('SUPABASE SIGNUP RESPONSE:', data)
-      console.log('SUPABASE USER METADATA:', data?.user?.user_metadata)
+      authLog('SUPABASE SIGNUP RESPONSE:', data)
+      authLog('SUPABASE USER METADATA:', data?.user?.user_metadata)
       
       if (error) {
         // Check if error is about existing user
@@ -796,7 +1138,7 @@ export const AuthProvider = ({ children }) => {
       // If user was created successfully, the profile will be created automatically
       // by the auth state change listener calling loadUserProfile
       if (data.user && !data.session) {
-        console.log('Email confirmation required for:', email)
+        authLog('Email confirmation required for:', email)
       }
       
       // Keep signing in flag active for smooth transition
@@ -923,7 +1265,7 @@ export const AuthProvider = ({ children }) => {
           // If profile exists and is suspended, block login immediately
           // Check explicitly for false (not null or undefined)
           // Also check for null/undefined and treat as active (default)
-          console.log('🔍 Checking account status for user:', data.user.id, 'is_active:', userProfile?.is_active, 'type:', typeof userProfile?.is_active)
+          authLog('🔍 Checking account status for user:', data.user.id, 'is_active:', userProfile?.is_active, 'type:', typeof userProfile?.is_active)
           if (userProfile) {
             // Check if is_active is explicitly false (suspended)
             // Also check for string "false" in case it's stored as string
@@ -934,7 +1276,7 @@ export const AuthProvider = ({ children }) => {
               suspensionError = new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
             } else if (userProfile.is_active === null || userProfile.is_active === undefined) {
               // If is_active is null/undefined, treat as active (default behavior)
-              console.log('⚠️ is_active is null/undefined for user, treating as active')
+              authLog('⚠️ is_active is null/undefined for user, treating as active')
             }
           }
         } catch (profileErr) {
@@ -957,7 +1299,7 @@ export const AuthProvider = ({ children }) => {
               if (!userError && userData) {
                 // We got user data - check if suspended
                 // Check explicitly for false (not null or undefined)
-                console.log('🔍 Direct query result for user:', data.user.id, 'is_active:', userData.is_active, 'type:', typeof userData.is_active)
+                authLog('🔍 Direct query result for user:', data.user.id, 'is_active:', userData.is_active, 'type:', typeof userData.is_active)
                 // Check for false, string "false", or 0
                 const isSuspended = userData.is_active === false || userData.is_active === 'false' || userData.is_active === 0
                 if (isSuspended) {
@@ -965,7 +1307,7 @@ export const AuthProvider = ({ children }) => {
                   accountIsSuspended = true
                   suspensionError = new Error('ACCOUNT_SUSPENDED: Your account has been suspended. Please contact the administrator for assistance.')
                 } else if (userData.is_active === null || userData.is_active === undefined) {
-                  console.log('⚠️ is_active is null/undefined in direct query, treating as active')
+                  authLog('⚠️ is_active is null/undefined in direct query, treating as active')
                 }
               } else if (userError && userError.code !== 'PGRST116') {
                 // If it's not a "not found" error, log it
@@ -1050,12 +1392,12 @@ export const AuthProvider = ({ children }) => {
       
       // Store role data in localStorage temporarily for the callback
       if (roleData) {
-        console.log('Storing role data for Google signup:', roleData)
+        authLog('Storing role data for Google signup:', roleData)
         localStorage.setItem('pendingGoogleSignupRole', JSON.stringify(roleData))
         
         // Verify storage was successful
         const storedData = localStorage.getItem('pendingGoogleSignupRole')
-        console.log('Verified stored role data:', storedData)
+        authLog('Verified stored role data:', storedData)
       } else {
         console.error('No role data provided for Google signup')
       }
@@ -1083,9 +1425,9 @@ export const AuthProvider = ({ children }) => {
     // Set flag to prevent auth state listener conflicts
     setIsHandlingGoogleCallback(true)
     
-    // Set global flag to indicate we're handling profile creation here
-    profileCreationInProgress = true
-    console.log('🔄 Google callback started, profile creation flag set')
+            // Set flag to indicate we're handling profile creation here
+            profileCreationInProgressRef.current = true
+            authLog('🔄 Google callback started, profile creation flag set')
 
     try {
       // Minimal delay for session establishment (100ms for maximum speed)
@@ -1111,7 +1453,7 @@ export const AuthProvider = ({ children }) => {
         
         try {
           existingProfile = await db.getProfile(session.user.id)
-          console.log('👤 Profile check result:', existingProfile ? 'Found existing profile' : 'No profile found')
+          authLog('👤 Profile check result:', existingProfile ? 'Found existing profile' : 'No profile found')
           
           // Check if account is suspended BEFORE processing the callback
           // This prevents the "No session found" error that occurs when loadUserProfile signs out the user
@@ -1141,7 +1483,7 @@ export const AuthProvider = ({ children }) => {
             if (existingProfile) {
               // If we found an existing profile during signup flow, this means the account already exists
               // We should NOT allow signup to proceed - sign out and show error
-              console.log('⛔ Existing profile found during signup flow - account already exists')
+              authLog('⛔ Existing profile found during signup flow - account already exists')
               await supabase.auth.signOut()
               // Clear the pending role data
               localStorage.removeItem('pendingGoogleSignupRole')
@@ -1150,13 +1492,13 @@ export const AuthProvider = ({ children }) => {
             
             // Get stored role data for signup
             const storedRoleData = localStorage.getItem('pendingGoogleSignupRole')
-            console.log('Retrieved stored role data:', storedRoleData)
+            authLog('Retrieved stored role data:', storedRoleData)
             let roleData = null
             
             if (storedRoleData) {
               try {
                 roleData = JSON.parse(storedRoleData)
-                console.log('Parsed role data:', roleData)
+                authLog('Parsed role data:', roleData)
                 // Only remove after successful profile creation
               } catch (parseError) {
                 console.error('Error parsing role data:', parseError)
@@ -1191,7 +1533,7 @@ export const AuthProvider = ({ children }) => {
               zip_code: '9000'
             }
             
-            console.log('Creating Google profile with data:', profileData)
+            authLog('Creating Google profile with data:', profileData)
             
             // Add role-specific fields
             if (roleData.role === 'donor') {
@@ -1221,7 +1563,7 @@ export const AuthProvider = ({ children }) => {
             }
             
             const newProfile = await db.createProfile(session.user.id, profileData)
-            console.log('✅ Successfully created new profile for Google signup:', newProfile)
+            authLog('✅ Successfully created new profile for Google signup:', newProfile)
             
             // Check if account is suspended (shouldn't happen for new accounts, but check anyway)
             const isSuspended = newProfile.is_active === false || newProfile.is_active === 'false' || newProfile.is_active === 0
@@ -1266,7 +1608,7 @@ export const AuthProvider = ({ children }) => {
             
             // Cache the existing profile for login flow
             profileCacheRef.current.set(session.user.id, existingProfile)
-            console.log('✅ Existing profile cached for Google login')
+            authLog('✅ Existing profile cached for Google login')
             
             // Set the profile state immediately so dashboard can load
             setProfile(existingProfile)
@@ -1306,8 +1648,8 @@ export const AuthProvider = ({ children }) => {
     } finally {
       // Clear flags regardless of success or failure
       setIsHandlingGoogleCallback(false)
-      profileCreationInProgress = false
-      console.log('🔄 Google callback completed, profile creation flag cleared')
+      profileCreationInProgressRef.current = false
+      authLog('🔄 Google callback completed, profile creation flag cleared')
     }
   }
 
@@ -1329,7 +1671,7 @@ export const AuthProvider = ({ children }) => {
       
       if (!supabase) {
         // If no Supabase, local state is already cleared
-        console.log('Sign out completed (no Supabase connection)')
+        authLog('Sign out completed (no Supabase connection)')
         authDebug.logSignOut('COMPLETED_NO_SUPABASE')
         return
       }
@@ -1343,7 +1685,7 @@ export const AuthProvider = ({ children }) => {
         // Even if Supabase sign out fails, we've already cleared local state
         // This ensures the user can still "sign out" from the UI perspective
       } else {
-        console.log('Successfully signed out from Supabase')
+        authLog('Successfully signed out from Supabase')
         authDebug.logSignOut('SUPABASE_SUCCESS')
       }
     } catch (error) {
@@ -1367,7 +1709,7 @@ export const AuthProvider = ({ children }) => {
   // Provide fallback signOut function when supabase is not configured
   const signOutFallback = async () => {
     setIsSigningOut(true)
-    console.log('Sign out completed (no authentication service)')
+    authLog('Sign out completed (no authentication service)')
     setUser(null)
     setProfile(null)
     setSession(null)

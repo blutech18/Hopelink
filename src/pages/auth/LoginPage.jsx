@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { useForm } from 'react-hook-form'
-import { Eye, EyeOff, Heart, LogIn, AlertTriangle, Shield } from 'lucide-react'
+import { Eye, EyeOff, Heart, LogIn } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { supabase, db } from '../../lib/supabase'
@@ -16,7 +16,6 @@ const LoginPage = () => {
   const [captchaOpen, setCaptchaOpen] = useState(false)
   const [captchaEmail, setCaptchaEmail] = useState('')
   const [failedAttempts, setFailedAttempts] = useState(0)
-  const [suspensionError, setSuspensionError] = useState(null)
   const { signIn: emailSignIn, signInWithGoogle, isSigningIn } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
@@ -39,12 +38,8 @@ const LoginPage = () => {
   React.useEffect(() => {
     if (location.state?.error) {
       const errorMsg = location.state.error
-      // Check if it's a suspension error
-      if (errorMsg.includes('suspended') || errorMsg.includes('Suspended')) {
-        setSuspensionError(errorMsg)
-      } else {
+      // Show error as toast notification
         error(errorMsg)
-      }
       // Clear the error from location state
       window.history.replaceState({}, document.title)
     }
@@ -54,7 +49,6 @@ const LoginPage = () => {
   useEffect(() => {
     const handleSuspension = (event) => {
       if (event.detail?.message) {
-        setSuspensionError(event.detail.message)
         error(event.detail.message, 'Account Suspended')
       }
     }
@@ -71,15 +65,44 @@ const LoginPage = () => {
 
   const onSubmit = async (data) => {
     setIsLoading(true)
-    // Clear any previous suspension error
-    setSuspensionError(null)
     
     try {
       if (typeof emailSignIn !== 'function') {
         throw new Error('Email sign-in is temporarily unavailable. Please try again later.')
       }
       
-      // Attempt to sign in - this will throw if account is suspended
+      // Check if account is registered before attempting login
+      try {
+        const { data: userData, error: userError } = await supabase
+          .from('users')
+          .select('id, email, is_active')
+          .eq('email', data.email.toLowerCase())
+          .maybeSingle()
+        
+        // If account doesn't exist, show specific message
+        if (userError && userError.code === 'PGRST116') {
+          setIsLoading(false)
+          error('This email is not registered. Please sign up first or use "Continue with Google" if you signed up with Google.', 'Account Not Found')
+          return
+        }
+        
+        // If query failed for other reasons, continue with login attempt
+        if (userError && userError.code !== 'PGRST116') {
+          console.warn('Error checking if account exists:', userError)
+        }
+        
+        // If no user found (null data and no error), account doesn't exist
+        if (!userData && !userError) {
+          setIsLoading(false)
+          error('This email is not registered. Please sign up first or use "Continue with Google" if you signed up with Google.', 'Account Not Found')
+          return
+        }
+      } catch (checkErr) {
+        // If check fails, continue with login attempt (don't block)
+        console.warn('Error checking account registration:', checkErr)
+      }
+      
+      // Attempt to sign in - this will throw if account is suspended or credentials are wrong
       await emailSignIn(data.email, data.password)
       
       // If we reach here, login was successful and account is NOT suspended
@@ -181,9 +204,7 @@ const LoginPage = () => {
       // Handle account suspension error
       if (err.message?.includes('ACCOUNT_SUSPENDED')) {
         const suspendMessage = err.message.replace('ACCOUNT_SUSPENDED: ', '')
-        // Set persistent suspension error banner
-        setSuspensionError(suspendMessage)
-        // Also show toast notification
+        // Show toast notification
         error(suspendMessage, 'Account Suspended')
       } else if (err.message?.toLowerCase().includes('too many failed attempts')) {
         error(err.message, 'Temporarily Locked')
@@ -196,8 +217,12 @@ const LoginPage = () => {
         }
       } else if (err.message?.toLowerCase().includes('multiple failed attempts detected')) {
         error(err.message, 'Security Warning')
+      } else if (err.message?.toLowerCase().includes('not registered') || err.message?.toLowerCase().includes('account not found')) {
+        // Account not registered - don't increment failed attempts
+        error(err.message, 'Account Not Found')
       } else {
         // CRITICAL: Automatically suspend account after 7 failed attempts
+        // Only suspend if account exists (we already checked earlier)
         if (newAttempts >= 7) {
           try {
             // Find user by email and suspend them
@@ -216,8 +241,7 @@ const LoginPage = () => {
               
               if (!suspendError) {
                 console.error('🚨 Account automatically suspended after 7 failed login attempts:', data.email)
-                const suspendMessage = 'Your account has been automatically suspended after 7 failed login attempts. Please contact the administrator for assistance.'
-                setSuspensionError(suspendMessage)
+                const suspendMessage = 'Your account has been suspended for security reasons. Please contact the administrator for assistance.'
                 error(suspendMessage, 'Account Suspended')
                 // Dispatch event to notify admin page to refresh
                 window.dispatchEvent(new CustomEvent('user_suspended', { 
@@ -241,9 +265,9 @@ const LoginPage = () => {
           }
           
           // If suspension failed, still show warning
-          error('Your account has been suspended after 7 failed login attempts. Please contact support for assistance.', 'Account Suspended')
+          error('Your account has been suspended for security reasons. Please contact support for assistance.', 'Account Suspended')
         } else if (newAttempts >= 5) {
-          error(`Warning: ${newAttempts} failed login attempts detected. Your account will be suspended after 7 failed attempts. Please verify your credentials or use "Forgot Password" if needed.`, 'Security Warning')
+          error('Multiple failed login attempts detected. Please verify your credentials or use "Forgot Password" to reset your password.', 'Security Warning')
         } else {
           error(err.message || 'Failed to sign in. Please check your credentials.')
         }
@@ -331,69 +355,6 @@ const LoginPage = () => {
             </div>
 
             <div className="py-6 px-6 shadow-xl rounded-2xl" style={{backgroundColor: '#001a5c'}}>
-              {/* Account Suspension Error Banner - Most Important */}
-              {suspensionError && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-4 p-4 bg-red-900/40 border-2 border-red-500 rounded-lg"
-                >
-                  <div className="flex items-start gap-3">
-                    <Shield className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold text-red-300 mb-1">Account Suspended</h3>
-                      <p className="text-xs text-red-200 mb-2">
-                        {suspensionError}
-                      </p>
-                      <button
-                        onClick={() => setSuspensionError(null)}
-                        className="text-xs text-red-300 hover:text-red-200 underline"
-                      >
-                        Dismiss
-                      </button>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
-              {/* Security Warnings */}
-              {!suspensionError && failedAttempts >= 7 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-4 p-4 bg-red-900/30 border-2 border-red-600 rounded-lg"
-                >
-                  <div className="flex items-start gap-3">
-                    <Shield className="h-5 w-5 text-red-400 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold text-red-300 mb-1">Account Suspension Warning</h3>
-                      <p className="text-xs text-red-200">
-                        You have reached 7 failed login attempts. Your account may be suspended for security purposes. 
-                        Please use "Forgot Password" to reset your password or contact support for assistance.
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-              {!suspensionError && failedAttempts >= 5 && failedAttempts < 7 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="mb-4 p-4 bg-yellow-900/30 border-2 border-yellow-600 rounded-lg"
-                >
-                  <div className="flex items-start gap-3">
-                    <AlertTriangle className="h-5 w-5 text-yellow-400 flex-shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <h3 className="text-sm font-semibold text-yellow-300 mb-1">Security Warning</h3>
-                      <p className="text-xs text-yellow-200">
-                        {failedAttempts} failed login attempt{failedAttempts > 1 ? 's' : ''} detected. 
-                        Your account will be suspended after 7 failed attempts. Please verify your credentials or use "Forgot Password" if needed.
-                      </p>
-                    </div>
-                  </div>
-                </motion.div>
-              )}
-
               <form className="space-y-4" onSubmit={handleSubmit(onSubmit)}>
                 <div>
                   <label htmlFor="email" className="block text-sm font-medium text-white">
