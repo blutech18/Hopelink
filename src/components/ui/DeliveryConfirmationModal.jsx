@@ -8,7 +8,8 @@ import {
   Truck,
   User,
   Package,
-  Flag
+  Flag,
+  Star
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -28,6 +29,12 @@ const DeliveryConfirmationModal = ({
   const [feedback, setFeedback] = useState('')
   const [showReportModal, setShowReportModal] = useState(false)
   const [reportedUser, setReportedUser] = useState(null)
+  // Enhanced feedback for recipients
+  const [rating, setRating] = useState(0)
+  const [hoveredRating, setHoveredRating] = useState(0)
+  const [itemQualityRating, setItemQualityRating] = useState(0)
+  const [deliveryExperienceRating, setDeliveryExperienceRating] = useState(0)
+  const [showDetailedFeedback, setShowDetailedFeedback] = useState(false)
 
   if (!isOpen || !notification) return null
 
@@ -44,14 +51,60 @@ const DeliveryConfirmationModal = ({
       
       let result
       if (isRecipient) {
+        // Enhanced feedback data for recipients
+        const feedbackData = {
+          overall_rating: confirmed ? rating : null,
+          item_quality_rating: confirmed ? itemQualityRating : null,
+          delivery_experience_rating: confirmed ? deliveryExperienceRating : null,
+          feedback_text: confirmed ? feedback : feedback || 'Delivery disputed'
+        }
+        
         // Use the new recipient confirmation function
         result = await db.confirmReceipt(
           data.delivery_id,
           user.id,
           confirmed,
-          null, // No rating
-          confirmed ? feedback : feedback || 'Delivery disputed'
+          confirmed ? rating : null, // Overall rating
+          JSON.stringify(feedbackData) // Enhanced feedback data
         )
+        
+        // If confirmed and ratings provided, submit detailed feedback
+        if (confirmed && (rating > 0 || itemQualityRating > 0 || deliveryExperienceRating > 0)) {
+          try {
+            // Submit feedback to feedback_ratings table
+            const volunteerId = data.volunteer_id
+            const donorId = data.donor_id || data.donation?.donor_id
+            
+            // Rate volunteer if available
+            if (volunteerId && deliveryExperienceRating > 0) {
+              await db.submitFeedback({
+                transaction_id: data.delivery_id,
+                transaction_type: 'delivery',
+                rater_id: user.id,
+                rated_user_id: volunteerId,
+                rating: deliveryExperienceRating,
+                feedback: `Delivery experience: ${feedback || 'Good delivery service'}`,
+                created_at: new Date().toISOString()
+              })
+            }
+            
+            // Rate donor if available
+            if (donorId && itemQualityRating > 0) {
+              await db.submitFeedback({
+                transaction_id: data.delivery_id,
+                transaction_type: 'donation',
+                rater_id: user.id,
+                rated_user_id: donorId,
+                rating: itemQualityRating,
+                feedback: `Item quality: ${feedback || 'Items were helpful'}`,
+                created_at: new Date().toISOString()
+              })
+            }
+          } catch (feedbackErr) {
+            console.error('Error submitting detailed feedback:', feedbackErr)
+            // Don't block confirmation if feedback submission fails
+          }
+        }
       } else {
         // Fallback to old function for other roles (volunteers, donors, etc.)
         result = await db.confirmDeliveryByUser(
@@ -66,7 +119,12 @@ const DeliveryConfirmationModal = ({
 
       if (confirmed) {
         if (isRecipient) {
-          success('Receipt confirmed! Waiting for donor confirmation to complete transaction.')
+          // Show feedback prompt message if ratings were provided
+          if (rating > 0 || itemQualityRating > 0 || deliveryExperienceRating > 0) {
+            success('Receipt confirmed and feedback submitted! Thank you for sharing your experience. Waiting for donor confirmation to complete transaction.')
+          } else {
+            success('Receipt confirmed! Waiting for donor confirmation to complete transaction. You can provide feedback later from your approved donations page.')
+          }
         } else {
           success('Delivery confirmed!')
         }
@@ -163,15 +221,124 @@ const DeliveryConfirmationModal = ({
           </div>
         </div>
 
-        {/* Feedback Section */}
+        {/* Enhanced Feedback Section for Recipients */}
+        {isRecipient && (
+          <div className="mb-6 space-y-4">
+            {/* Overall Rating */}
+            <div>
+              <label className="block text-sm font-medium text-yellow-300 mb-2">
+                Overall Experience Rating {rating > 0 && <span className="text-yellow-400">({rating}/5)</span>}
+              </label>
+              <div className="flex items-center gap-2">
+                {[1, 2, 3, 4, 5].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setRating(star)}
+                    onMouseEnter={() => setHoveredRating(star)}
+                    onMouseLeave={() => setHoveredRating(0)}
+                    className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
+                  >
+                    <Star
+                      className={`h-8 w-8 ${
+                        star <= (hoveredRating || rating)
+                          ? 'text-yellow-400 fill-yellow-400'
+                          : 'text-gray-500'
+                      }`}
+                    />
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Toggle for Detailed Feedback */}
+            <button
+              type="button"
+              onClick={() => setShowDetailedFeedback(!showDetailedFeedback)}
+              className="text-sm text-yellow-400 hover:text-yellow-300 underline"
+            >
+              {showDetailedFeedback ? 'Hide' : 'Show'} detailed feedback options
+            </button>
+
+            {/* Detailed Feedback Questions */}
+            {showDetailedFeedback && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="space-y-4 bg-navy-800/50 p-4 rounded-lg border border-yellow-500/20"
+              >
+                {/* Item Quality Rating */}
+                <div>
+                  <label className="block text-sm font-medium text-yellow-300 mb-2">
+                    Item Quality {itemQualityRating > 0 && <span className="text-yellow-400">({itemQualityRating}/5)</span>}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setItemQualityRating(star)}
+                        className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
+                      >
+                        <Star
+                          className={`h-6 w-6 ${
+                            star <= itemQualityRating
+                              ? 'text-yellow-400 fill-yellow-400'
+                              : 'text-gray-500'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                    <span className="text-xs text-gray-400 ml-2">Were the items helpful and in good condition?</span>
+                  </div>
+                </div>
+
+                {/* Delivery Experience Rating */}
+                {data.volunteer_id && (
+                  <div>
+                    <label className="block text-sm font-medium text-yellow-300 mb-2">
+                      Delivery Experience {deliveryExperienceRating > 0 && <span className="text-yellow-400">({deliveryExperienceRating}/5)</span>}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          key={star}
+                          type="button"
+                          onClick={() => setDeliveryExperienceRating(star)}
+                          className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
+                        >
+                          <Star
+                            className={`h-6 w-6 ${
+                              star <= deliveryExperienceRating
+                                ? 'text-yellow-400 fill-yellow-400'
+                                : 'text-gray-500'
+                            }`}
+                          />
+                        </button>
+                      ))}
+                      <span className="text-xs text-gray-400 ml-2">How was your delivery/pickup experience?</span>
+                    </div>
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </div>
+        )}
+
+        {/* Feedback Text Section */}
         <div className="mb-6">
           <label className="block text-sm font-medium text-yellow-300 mb-2">
-            Additional feedback (optional)
+            Additional feedback {isRecipient && rating > 0 && '(optional)'}
           </label>
           <textarea
             value={feedback}
             onChange={(e) => setFeedback(e.target.value)}
-            placeholder={`Share your experience with ${data.volunteer_name || 'the volunteer'}...`}
+            placeholder={
+              isRecipient && rating > 0
+                ? 'Share more details about your experience (optional)...'
+                : `Share your experience with ${data.volunteer_name || 'the volunteer'}...`
+            }
             className="w-full px-3 py-2 bg-navy-800 border border-yellow-500/30 rounded-lg text-white placeholder-yellow-400/50 focus:border-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/20 resize-none"
             rows={3}
           />

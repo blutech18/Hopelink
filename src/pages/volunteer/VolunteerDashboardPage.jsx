@@ -22,7 +22,9 @@ import {
   Percent,
   ArrowUpRight,
   Star,
-  Zap
+  Zap,
+  Gauge,
+  Info
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -30,6 +32,7 @@ import { db, supabase } from '../../lib/supabase'
 import { DashboardSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import ProfileCompletionPrompt from '../../components/ui/ProfileCompletionPrompt'
+import WorkflowGuideModal from '../../components/ui/WorkflowGuideModal'
 
 const VolunteerDashboardPage = () => {
   const { profile, user } = useAuth()
@@ -39,6 +42,7 @@ const VolunteerDashboardPage = () => {
   const [deliveries, setDeliveries] = useState([])
   const [pendingActions, setPendingActions] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showWorkflowGuide, setShowWorkflowGuide] = useState(false)
 
 
   const loadVolunteerData = async () => {
@@ -63,6 +67,25 @@ const VolunteerDashboardPage = () => {
       const totalProcessed = totalDeliveries
       const completionRate = totalProcessed > 0 ? Math.round((completedDeliveries / totalProcessed) * 100) : 0
       
+      // Calculate weekly capacity utilization
+      const now = new Date()
+      const startOfWeek = new Date(now)
+      startOfWeek.setDate(now.getDate() - now.getDay() + 1) // Monday
+      startOfWeek.setHours(0, 0, 0, 0)
+      
+      const thisWeekDeliveries = deliveriesData.filter(d => {
+        const deliveryDate = new Date(d.created_at || d.assigned_at)
+        return deliveryDate >= startOfWeek
+      })
+      
+      const activeThisWeek = thisWeekDeliveries.filter(d => 
+        ['assigned', 'accepted', 'picked_up', 'in_transit'].includes(d.status)
+      ).length
+      
+      const maxCapacity = profile?.max_deliveries_per_week || 10
+      const capacityUtilization = maxCapacity > 0 ? Math.round((activeThisWeek / maxCapacity) * 100) : 0
+      const remainingCapacity = Math.max(0, maxCapacity - activeThisWeek)
+      
       // Get pending actions from notifications
       const pending = (notifications || [])
         .filter(n => !n.read_at && [
@@ -80,7 +103,11 @@ const VolunteerDashboardPage = () => {
         inProgressDeliveries,
         completedDeliveries,
         completionRate,
-        pendingDeliveries: assignedDeliveries
+        pendingDeliveries: assignedDeliveries,
+        activeThisWeek,
+        maxCapacity,
+        capacityUtilization,
+        remainingCapacity
       })
       setRecentDeliveries(deliveriesData.slice(0, 5))
     } catch (error) {
@@ -246,6 +273,17 @@ const VolunteerDashboardPage = () => {
                 Thank you for helping connect our community through volunteer deliveries.
               </p>
             </div>
+            <div className="flex items-center justify-start sm:justify-end flex-shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setShowWorkflowGuide(true)}
+                className="inline-flex items-center justify-center h-8 sm:h-9 px-1 text-yellow-300 hover:text-yellow-200 transition-colors"
+                title="How the workflow works"
+                aria-label="How the workflow works"
+              >
+                <Info className="h-5 w-5 sm:h-6 sm:w-6" />
+              </button>
+            </div>
           </div>
         </motion.div>
 
@@ -259,8 +297,8 @@ const VolunteerDashboardPage = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"
         >
-          {statsCards.map((stat, index) => (
-            <div key={index} className="card p-6 border border-gray-600 hover:border-yellow-400/50 transition-colors" style={{backgroundColor: '#001a5c'}}>
+          {statsCards.map((stat) => (
+            <div key={stat.label} className="card p-6 border border-gray-600 hover:border-yellow-400/50 transition-colors" style={{backgroundColor: '#001a5c'}}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
                   <div className={`flex-shrink-0 p-3 rounded-lg ${stat.bgColor || 'bg-yellow-500/20'}`}>
@@ -274,7 +312,87 @@ const VolunteerDashboardPage = () => {
               </div>
             </div>
           ))}
+          
+          {/* Capacity Utilization Card */}
+          {stats.maxCapacity !== undefined && (
+            <div className="card p-6 border border-gray-600 hover:border-yellow-400/50 transition-colors" style={{backgroundColor: '#001a5c'}}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <div className={`flex-shrink-0 p-3 rounded-lg ${
+                    stats.capacityUtilization >= 90 ? 'bg-red-500/20' :
+                    stats.capacityUtilization >= 75 ? 'bg-orange-500/20' :
+                    stats.capacityUtilization >= 50 ? 'bg-yellow-500/20' :
+                    'bg-green-500/20'
+                  }`}>
+                    <Gauge className={`h-6 w-6 ${
+                      stats.capacityUtilization >= 90 ? 'text-red-400' :
+                      stats.capacityUtilization >= 75 ? 'text-orange-400' :
+                      stats.capacityUtilization >= 50 ? 'text-yellow-400' :
+                      'text-green-400'
+                    }`} />
+                  </div>
+                  <div className="ml-4">
+                    <p className="text-sm font-medium text-yellow-200">Weekly Capacity</p>
+                    <p className="text-2xl font-bold text-white mt-1">
+                      {stats.activeThisWeek || 0} / {stats.maxCapacity}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-1">
+                      {stats.capacityUtilization || 0}% utilized
+                    </p>
+                  </div>
+                </div>
+              </div>
+              {/* Capacity Progress Bar */}
+              <div className="mt-4">
+                <div className="w-full bg-gray-700 rounded-full h-2">
+                  <div
+                    className={`h-2 rounded-full transition-all duration-500 ${
+                      stats.capacityUtilization >= 90 ? 'bg-red-500' :
+                      stats.capacityUtilization >= 75 ? 'bg-orange-500' :
+                      stats.capacityUtilization >= 50 ? 'bg-yellow-500' :
+                      'bg-green-500'
+                    }`}
+                    style={{ width: `${Math.min(stats.capacityUtilization || 0, 100)}%` }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
         </motion.div>
+        
+        {/* Capacity Warning Banner */}
+        {stats.capacityUtilization !== undefined && stats.capacityUtilization >= 75 && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`mb-6 p-4 rounded-lg border ${
+              stats.capacityUtilization >= 90 ? 'border-red-500/30 bg-red-500/10' :
+              'border-orange-500/30 bg-orange-500/10'
+            }`}
+          >
+            <div className="flex items-start gap-3">
+              <AlertCircle className={`h-5 w-5 flex-shrink-0 mt-0.5 ${
+                stats.capacityUtilization >= 90 ? 'text-red-400' : 'text-orange-400'
+              }`} />
+              <div className="flex-1">
+                <h3 className={`font-semibold mb-1 ${
+                  stats.capacityUtilization >= 90 ? 'text-red-300' : 'text-orange-300'
+                }`}>
+                  {stats.capacityUtilization >= 90 ? 'Capacity Limit Reached!' : 'Approaching Capacity Limit'}
+                </h3>
+                <p className={`text-sm ${
+                  stats.capacityUtilization >= 90 ? 'text-red-200' : 'text-orange-200'
+                }`}>
+                  {stats.capacityUtilization >= 90 ? (
+                    <>You've reached your weekly capacity limit of {stats.maxCapacity} deliveries. Complete some deliveries or increase your capacity in <Link to="/volunteer-schedule" className="underline font-medium">Schedule Settings</Link>.</>
+                  ) : (
+                    <>You're at {stats.capacityUtilization}% of your weekly capacity ({stats.activeThisWeek}/{stats.maxCapacity}). Only {stats.remainingCapacity} delivery{stats.remainingCapacity === 1 ? '' : 's'} remaining this week.</>
+                  )}
+                </p>
+              </div>
+            </div>
+          </motion.div>
+        )}
 
         {/* Quick Actions */}
         <motion.div
@@ -608,7 +726,12 @@ const VolunteerDashboardPage = () => {
           </div>
         </motion.div>
 
-
+        {/* Workflow Guide Modal */}
+        <WorkflowGuideModal
+          isOpen={showWorkflowGuide}
+          onClose={() => setShowWorkflowGuide(false)}
+          userRole="volunteer"
+        />
       </div>
     </div>
   )

@@ -192,6 +192,12 @@ const HomePage = () => {
                   Get Started
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Link>
+                <Link
+                  to="/how-it-works"
+                  className="inline-flex items-center justify-center px-8 py-3 border-2 border-yellow-400 text-yellow-400 font-semibold rounded-lg hover:bg-yellow-400 hover:text-navy-950 transition-colors"
+                >
+                  How It Works
+                </Link>
                 <button
                   onClick={() => document.getElementById('about')?.scrollIntoView({ behavior: 'smooth' })}
                   className="inline-flex items-center justify-center px-8 py-3 border-2 border-yellow-400 text-yellow-400 font-semibold rounded-lg hover:bg-yellow-400 hover:text-navy-950 transition-colors"
@@ -230,9 +236,16 @@ const HomePage = () => {
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-4">
               How HopeLink Works
             </h2>
-            <p className="text-xl text-yellow-300 max-w-3xl mx-auto">
+            <p className="text-xl text-yellow-300 max-w-3xl mx-auto mb-6">
               Our platform makes it simple to give, receive, and volunteer in your community.
             </p>
+            <Link
+              to="/how-it-works"
+              className="inline-flex items-center gap-2 text-yellow-400 hover:text-yellow-300 font-semibold transition-colors"
+            >
+              Learn more about our process
+              <ArrowRight className="h-5 w-5" />
+            </Link>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">

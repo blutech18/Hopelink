@@ -680,22 +680,22 @@ const AdminEventsPage = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Event
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Category
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Date
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Status
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Location
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Participants
                   </th>
-                  <th className="px-6 py-3 text-right text-xs font-medium text-yellow-300 uppercase tracking-wider">
+                  <th className="px-6 py-3 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">
                     Actions
                   </th>
                 </tr>
@@ -722,25 +722,25 @@ const AdminEventsPage = () => {
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
                         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-navy-800 text-yellow-300">
                           {event.target_goal || 'General'}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-white">
                         {new Date(event.start_date).toLocaleDateString()}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(event.status)}`}>
                           <StatusIcon className="h-3 w-3 mr-1" />
                           {event.status}
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-yellow-400">
+                      <td className="px-6 py-4 whitespace-nowrap text-center text-sm text-yellow-400">
                         {getLocationDisplay(event.location)}
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center gap-2">
+                      <td className="px-6 py-4 whitespace-nowrap text-center">
+                        <div className="flex items-center justify-center gap-2">
                           <Users className="h-4 w-4 text-yellow-400 flex-shrink-0" />
                           <span className="text-sm text-white font-medium">
                             {event.participants?.[0]?.count || 0}
@@ -748,8 +748,8 @@ const AdminEventsPage = () => {
                           </span>
                         </div>
                       </td>
-                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                         <div className="flex items-center justify-end space-x-2">
+                       <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                         <div className="flex items-center justify-center space-x-2">
                            <button
                              onClick={() => handleViewEvent(event)}
                              className="text-yellow-400 hover:text-yellow-300 transition-all active:scale-95 p-1"

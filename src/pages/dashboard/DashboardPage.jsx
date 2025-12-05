@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { 
   Gift, 
@@ -13,9 +13,7 @@ import {
   Package,
   Clock,
   CheckCircle,
-  AlertCircle,
   Award,
-  MapPin,
   BarChart3,
   PieChart,
   Activity,
@@ -23,13 +21,17 @@ import {
   Bell,
   ArrowUpRight,
   Percent,
-  Layers
+  Layers,
+  Info
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { db, supabase } from '../../lib/supabase'
 import { DashboardSkeleton } from '../../components/ui/Skeleton'
 import ProfileCompletionPrompt from '../../components/ui/ProfileCompletionPrompt'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
+import OnboardingTour from '../../components/ui/OnboardingTour'
+import RealTimeWorkflowStatus from '../../components/ui/RealTimeWorkflowStatus'
+import WorkflowGuideModal from '../../components/ui/WorkflowGuideModal'
 
 const DashboardPage = () => {
   const { profile, isDonor, isRecipient, isVolunteer, isAdmin } = useAuth()
@@ -40,7 +42,10 @@ const DashboardPage = () => {
   const [categoryBreakdown, setCategoryBreakdown] = useState([])
   const [pendingActions, setPendingActions] = useState([])
   const [loading, setLoading] = useState(true)
+  const [showOnboardingTour, setShowOnboardingTour] = useState(false)
+  const [showWorkflowGuide, setShowWorkflowGuide] = useState(false)
   const navigate = useNavigate()
+  const location = useLocation()
 
   // CRITICAL: Check if account is suspended - redirect to login immediately
   useEffect(() => {
@@ -151,12 +156,12 @@ const DashboardPage = () => {
           
           if (!donationsError && donations) {
             // Count claims where recipient_id matches and status is in the allowed list
-            const validStatuses = ['claimed', 'delivered', 'completed']
+            const validStatuses = new Set(['claimed', 'delivered', 'completed'])
             donations.forEach(donation => {
               if (Array.isArray(donation.claims)) {
                 donation.claims.forEach(claim => {
                   if (claim.recipient_id === profile.id && 
-                      validStatuses.includes(claim.status)) {
+                      validStatuses.has(claim.status)) {
                     approvedDonationsCount++
                   }
                 })
@@ -241,6 +246,16 @@ const DashboardPage = () => {
       return
     }
     
+    // Check if onboarding tour should be shown
+    if (profile.role && !isAdmin) {
+      const tourCompleted = localStorage.getItem(`onboarding_tour_completed_${profile.role}`)
+      const tourSkipped = localStorage.getItem(`onboarding_tour_skipped_${profile.role}`)
+      if (!tourCompleted && !tourSkipped) {
+        // Show tour after a short delay to let page load
+        setTimeout(() => setShowOnboardingTour(true), 1000)
+      }
+    }
+    
     // Log profile info for debugging
     console.log('Dashboard - Profile role:', profile.role)
     console.log('Dashboard - Role checks:', { isDonor, isRecipient, isVolunteer, isAdmin })
@@ -301,6 +316,13 @@ const DashboardPage = () => {
       }
     }
   }, [profile, isVolunteer, navigate, loadDashboardData, isDonor, isRecipient])
+
+  // Refresh data when navigating to this page
+  useEffect(() => {
+    if (profile && location.pathname === '/dashboard') {
+      loadDashboardData()
+    }
+  }, [location.pathname, profile, loadDashboardData])
 
   const getDashboardCards = () => {
     if (isDonor) {
@@ -494,6 +516,17 @@ const DashboardPage = () => {
   const dashboardCards = getDashboardCards()
   const statsCards = getStatsCards()
 
+  // Pre-compute impact percentages for donor "Your Impact" donut-style charts
+  const donorCompletionPercent = isDonor ? (stats.completionRate || 0) : 0
+  const donorConversionPercent = isDonor
+    ? (stats.totalDonations > 0
+        ? Math.round(((stats.completedDonations || 0) / stats.totalDonations) * 100)
+        : 0)
+    : 0
+  const donorEventsPercent = isDonor
+    ? Math.max(0, Math.min(100, (stats.completedEvents || 0) * 20))
+    : 0
+
   // Handle case where user has unexpected role or no role-specific content
   if (!isDonor && !isRecipient && !isAdmin && profile) {
     return (
@@ -543,8 +576,8 @@ const DashboardPage = () => {
                 {isAdmin && "Manage the HopeLink platform."}
               </p>
             </div>
-            {/* ID Verification Status Badge */}
-            <div className="flex items-center justify-start sm:justify-end flex-shrink-0">
+            {/* ID Verification Status Badge + Workflow Info */}
+            <div className="flex items-center justify-start sm:justify-end flex-shrink-0 gap-2">
               <IDVerificationBadge
                 idStatus={profile?.id_verification_status}
                 hasIdUploaded={profile?.primary_id_type && profile?.primary_id_number}
@@ -552,6 +585,17 @@ const DashboardPage = () => {
                 showText={true}
                 showDescription={false}
               />
+              {(isDonor || isRecipient) && (
+                <button
+                  type="button"
+                  onClick={() => setShowWorkflowGuide(true)}
+                  className="inline-flex items-center justify-center h-8 sm:h-9 px-1 text-yellow-300 hover:text-yellow-200 transition-colors"
+                  title="How the workflow works"
+                  aria-label="How the workflow works"
+                >
+                  <Info className="h-5 w-5 sm:h-6 sm:w-6" />
+                </button>
+              )}
             </div>
           </div>
         </motion.div>
@@ -566,8 +610,8 @@ const DashboardPage = () => {
           transition={{ duration: 0.6, delay: 0.1 }}
           className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8"
         >
-          {statsCards.map((stat, index) => (
-            <div key={index} className="card p-6 border border-gray-600 hover:border-yellow-400/50 transition-colors" style={{backgroundColor: '#001a5c'}}>
+          {statsCards.map((stat) => (
+            <div key={stat.label || stat.title || `stat-${stat.value}`} className="card p-6 border border-gray-600 hover:border-yellow-400/50 transition-colors" style={{backgroundColor: '#001a5c'}}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center">
                   <div className={`flex-shrink-0 p-3 rounded-lg ${stat.bgColor || 'bg-yellow-500/20'}`}>
@@ -592,10 +636,10 @@ const DashboardPage = () => {
         >
           <h2 className="text-xl font-semibold text-white mb-4">Quick Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {dashboardCards.map((card, index) => (
-              <Link
-                key={index}
-                to={card.link}
+          {dashboardCards.map((card) => (
+            <Link
+              key={card.title}
+              to={card.link}
                 className="card p-6 hover:shadow-lg transition-shadow group border border-gray-600"
                 style={{backgroundColor: '#001a5c'}}
               >
@@ -627,7 +671,11 @@ const DashboardPage = () => {
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-semibold text-white flex items-center gap-2">
                 <Activity className="h-5 w-5 text-yellow-400" />
-                {isDonor ? 'Recent Donations' : isRecipient ? 'Recent Requests' : 'Recent Activity'}
+                {(() => {
+                  if (isDonor) return 'Recent Donations'
+                  if (isRecipient) return 'Recent Requests'
+                  return 'Recent Activity'
+                })()}
               </h2>
               {isDonor && (
                 <Link to="/my-donations" className="text-sm text-yellow-300 hover:text-yellow-200 flex items-center gap-1">
@@ -644,7 +692,8 @@ const DashboardPage = () => {
             </div>
             {recentActivity.length > 0 ? (
               <div className="space-y-3">
-                {recentActivity.map((activity, index) => {
+                {recentActivity.map((activity) => {
+                  const activityIndex = recentActivity.indexOf(activity)
                   const getStatusConfig = (status) => {
                     const statusConfig = {
                       available: { label: 'Available', color: 'bg-green-500/20 text-green-400 border-green-500/40' },
@@ -663,12 +712,21 @@ const DashboardPage = () => {
                   }
                   
                   const statusConfig = getStatusConfig(activity.status)
-                  const Icon = isDonor ? Gift : isRecipient ? Heart : Activity
-                  const linkTo = isDonor ? '/my-donations' : isRecipient ? '/my-requests' : '#'
+                  let Icon = Activity
+                  let linkTo = '#'
+                  if (isDonor) {
+                    Icon = Gift
+                    linkTo = '/my-donations'
+                  } else if (isRecipient) {
+                    Icon = Heart
+                    linkTo = '/my-requests'
+                  }
+                  
+                  const activityId = activity.id || activity.request_id || `activity-${activity.title}-${activityIndex}`
                   
                   return (
                     <Link
-                      key={index}
+                      key={activityId}
                       to={linkTo}
                       className="flex items-center space-x-3 p-3 rounded-lg border border-gray-600 hover:border-yellow-400/50 transition-all group"
                       style={{backgroundColor: '#001a5c'}}
@@ -700,31 +758,39 @@ const DashboardPage = () => {
               </div>
             ) : (
               <div className="text-center py-8">
-                {isDonor ? (
-                  <>
-                    <Gift className="h-12 w-12 text-gray-600 mx-auto mb-3" />
-                    <p className="text-yellow-300">No recent donations</p>
-                    <p className="text-sm text-yellow-200 mt-1">Get started by posting your first donation!</p>
-                    <Link to="/post-donation" className="mt-4 inline-block text-yellow-400 hover:text-yellow-300 text-sm font-medium">
-                      Post Donation →
-                    </Link>
-                  </>
-                ) : isRecipient ? (
-                  <>
-                    <Heart className="h-12 w-12 text-gray-600 mx-auto mb-3" />
-                    <p className="text-yellow-300">No recent requests</p>
-                    <p className="text-sm text-yellow-200 mt-1">Get started by creating your first request!</p>
-                    <Link to="/create-request" className="mt-4 inline-block text-yellow-400 hover:text-yellow-300 text-sm font-medium">
-                      Create Request →
-                    </Link>
-                  </>
-                ) : (
-                  <>
-                    <Activity className="h-12 w-12 text-gray-600 mx-auto mb-3" />
-                    <p className="text-yellow-300">No recent activity</p>
-                    <p className="text-sm text-yellow-200 mt-1">Get started with the quick actions above!</p>
-                  </>
-                )}
+                {(() => {
+                  if (isDonor) {
+                    return (
+                      <>
+                        <Gift className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+                        <p className="text-yellow-300">No recent donations</p>
+                        <p className="text-sm text-yellow-200 mt-1">Get started by posting your first donation!</p>
+                        <Link to="/post-donation" className="mt-4 inline-block text-yellow-400 hover:text-yellow-300 text-sm font-medium">
+                          Post Donation →
+                        </Link>
+                      </>
+                    )
+                  }
+                  if (isRecipient) {
+                    return (
+                      <>
+                        <Heart className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+                        <p className="text-yellow-300">No recent requests</p>
+                        <p className="text-sm text-yellow-200 mt-1">Get started by creating your first request!</p>
+                        <Link to="/create-request" className="mt-4 inline-block text-yellow-400 hover:text-yellow-300 text-sm font-medium">
+                          Create Request →
+                        </Link>
+                      </>
+                    )
+                  }
+                  return (
+                    <>
+                      <Activity className="h-12 w-12 text-gray-600 mx-auto mb-3" />
+                      <p className="text-yellow-300">No recent activity</p>
+                      <p className="text-sm text-yellow-200 mt-1">Get started with the quick actions above!</p>
+                    </>
+                  )
+                })()}
               </div>
             )}
           </div>
@@ -745,16 +811,17 @@ const DashboardPage = () => {
               </div>
               {pendingActions.length > 0 ? (
                 <div className="space-y-3 max-h-96 overflow-y-auto custom-scrollbar">
-                  {pendingActions.map((action, index) => {
+                  {pendingActions.map((action) => {
                     const getActionType = (type) => {
+                      const approvedLink = isRecipient ? '/my-approved-donations' : '/my-donations'
                       const types = {
                         donation_request: { label: 'Donation Request', icon: Heart, color: 'text-pink-400', link: '/my-donations' },
                         volunteer_request: { label: 'Volunteer Request', icon: Truck, color: 'text-blue-400', link: '/my-donations' },
-                        delivery_completed: { label: 'Confirm Delivery', icon: CheckCircle, color: 'text-green-400', link: isRecipient ? '/my-approved-donations' : '/my-donations' },
-                        pickup_scheduled: { label: 'Pickup Scheduled', icon: Calendar, color: 'text-purple-400', link: isRecipient ? '/my-approved-donations' : '/my-donations' },
-                        pickup_completed: { label: 'Confirm Pickup', icon: Package, color: 'text-yellow-400', link: isRecipient ? '/my-approved-donations' : '/my-donations' },
+                        delivery_completed: { label: 'Confirm Delivery', icon: CheckCircle, color: 'text-green-400', link: approvedLink },
+                        pickup_scheduled: { label: 'Pickup Scheduled', icon: Calendar, color: 'text-purple-400', link: approvedLink },
+                        pickup_completed: { label: 'Confirm Pickup', icon: Package, color: 'text-yellow-400', link: approvedLink },
                         direct_delivery_request: { label: 'Direct Delivery', icon: Truck, color: 'text-blue-400', link: '/my-donations' },
-                        direct_delivery_completed: { label: 'Confirm Delivery', icon: CheckCircle, color: 'text-green-400', link: isRecipient ? '/my-approved-donations' : '/my-donations' },
+                        direct_delivery_completed: { label: 'Confirm Delivery', icon: CheckCircle, color: 'text-green-400', link: approvedLink },
                         donation_approved: { label: 'Donation Approved', icon: Gift, color: 'text-green-400', link: '/my-approved-donations' },
                         rating_reminder: { label: 'Rate Donation', icon: Award, color: 'text-yellow-400', link: '/my-approved-donations' }
                       }
@@ -762,10 +829,11 @@ const DashboardPage = () => {
                     }
                     const actionType = getActionType(action.type)
                     const ActionIcon = actionType.icon
+                    const actionId = action.id || `action-${action.type}-${action.created_at || Date.now()}`
                     
                     return (
                       <Link
-                        key={index}
+                        key={actionId}
                         to={actionType.link}
                         className="flex items-start space-x-3 p-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10 hover:bg-yellow-500/20 transition-all group"
                       >
@@ -804,7 +872,7 @@ const DashboardPage = () => {
             transition={{ duration: 0.6, delay: 0.4 }}
             className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8"
           >
-            {/* Category Breakdown */}
+            {/* Donations / Requests by Category – accurate horizontal bar chart */}
             <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-white flex items-center gap-2">
@@ -815,29 +883,33 @@ const DashboardPage = () => {
               </div>
               {categoryBreakdown.length > 0 ? (
                 <div className="space-y-4">
-                  {categoryBreakdown.map((item, index) => {
-                    const total = donations.length
-                    const percentage = total > 0 ? Math.round((item.count / total) * 100) : 0
+                  {categoryBreakdown.map((item, itemIndex) => {
+                    const total = categoryBreakdown.reduce((sum, c) => sum + (c.count || 0), 0) || 1
+                    const percentage = Math.round((item.count / total) * 100)
                     const colors = [
-                      'bg-blue-500',
-                      'bg-green-500',
-                      'bg-yellow-500',
-                      'bg-purple-500',
-                      'bg-pink-500',
-                      'bg-emerald-500'
+                      'from-fuchsia-500 to-purple-500',
+                      'from-sky-500 to-blue-500',
+                      'from-emerald-400 to-green-500',
+                      'from-amber-400 to-orange-500',
+                      'from-pink-500 to-rose-500',
+                      'from-cyan-400 to-sky-500'
                     ]
-                    const color = colors[index % colors.length]
-                    
+                    const color = colors[itemIndex % colors.length]
+
                     return (
-                      <div key={index} className="space-y-2">
+                      <div key={`category-${item.category}`} className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-white">{item.category}</span>
-                          <span className="text-sm text-yellow-300">{item.count} ({percentage}%)</span>
+                          <span className="text-xs sm:text-sm font-semibold text-white uppercase tracking-wide">
+                            {item.category}
+                          </span>
+                          <span className="text-xs sm:text-sm text-yellow-300 font-semibold">
+                            {item.count} ({percentage}%)
+                          </span>
                         </div>
-                        <div className="w-full bg-gray-700 rounded-full h-2">
+                        <div className="w-full bg-slate-800 rounded-full h-3 sm:h-3.5 overflow-hidden">
                           <div
-                            className={`${color} h-2 rounded-full transition-all duration-500`}
-                            style={{ width: `${percentage}%` }}
+                            className={`h-full rounded-full bg-gradient-to-r ${color} transition-all duration-500`}
+                            style={{ width: `${Math.max(4, percentage)}%` }}
                           />
                         </div>
                       </div>
@@ -855,7 +927,7 @@ const DashboardPage = () => {
               )}
             </div>
 
-            {/* Status Distribution */}
+            {/* Status Distribution – accurate horizontal bar chart */}
             <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-semibold text-white flex items-center gap-2">
@@ -867,33 +939,42 @@ const DashboardPage = () => {
               {donations.length > 0 ? (
                 <div className="space-y-4">
                   {(isDonor ? [
-                    { status: 'available', label: 'Available', color: 'bg-green-500', count: stats.activeDonations || 0 },
-                    { status: 'in_progress', label: 'In Progress', color: 'bg-yellow-500', count: stats.inProgressDonations || 0 },
-                    { status: 'completed', label: 'Completed', color: 'bg-emerald-500', count: stats.completedDonations || 0 },
-                    { status: 'cancelled', label: 'Cancelled', color: 'bg-red-500', count: stats.cancelledDonations || 0 },
-                    { status: 'expired', label: 'Expired', color: 'bg-gray-500', count: stats.expiredDonations || 0 }
+                    { status: 'available', label: 'Available', color: 'from-sky-400 to-blue-500', count: stats.activeDonations || 0 },
+                    { status: 'in_progress', label: 'In Progress', color: 'from-amber-400 to-orange-500', count: stats.inProgressDonations || 0 },
+                    { status: 'completed', label: 'Completed', color: 'from-emerald-400 to-green-500', count: stats.completedDonations || 0 },
+                    { status: 'cancelled', label: 'Cancelled', color: 'from-rose-500 to-red-500', count: stats.cancelledDonations || 0 },
+                    { status: 'expired', label: 'Expired', color: 'from-slate-400 to-slate-500', count: stats.expiredDonations || 0 }
                   ] : [
-                    { status: 'open', label: 'Open', color: 'bg-blue-500', count: stats.openRequests || 0 },
-                    { status: 'fulfilled', label: 'Fulfilled', color: 'bg-green-500', count: stats.fulfilledRequests || 0 },
-                    { status: 'closed', label: 'Closed', color: 'bg-gray-500', count: stats.closedRequests || 0 }
-                  ]).map((item, index) => {
-                    const total = donations.length
-                    const percentage = total > 0 ? Math.round((item.count / total) * 100) : 0
-                    
+                    { status: 'open', label: 'Open', color: 'from-sky-400 to-blue-500', count: stats.openRequests || 0 },
+                    { status: 'fulfilled', label: 'Fulfilled', color: 'from-emerald-400 to-green-500', count: stats.fulfilledRequests || 0 },
+                    { status: 'closed', label: 'Closed', color: 'from-slate-400 to-slate-500', count: stats.closedRequests || 0 }
+                  ]).map((item) => {
+                    const total = isDonor
+                      ? (stats.activeDonations || 0) +
+                        (stats.inProgressDonations || 0) +
+                        (stats.completedDonations || 0) +
+                        (stats.cancelledDonations || 0) +
+                        (stats.expiredDonations || 0) || 1
+                      : (stats.openRequests || 0) +
+                        (stats.fulfilledRequests || 0) +
+                        (stats.closedRequests || 0) || 1
+                    const percentage = Math.round((item.count / total) * 100)
+
                     return (
-                      <div key={index} className="flex items-center space-x-3">
-                        <div className={`w-3 h-3 rounded ${item.color} flex-shrink-0`} />
-                        <div className="flex-1">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium text-white">{item.label}</span>
-                            <span className="text-sm text-yellow-300">{item.count}</span>
-                          </div>
-                          <div className="w-full bg-gray-700 rounded-full h-2">
-                            <div
-                              className={`${item.color} h-2 rounded-full transition-all duration-500`}
-                              style={{ width: `${percentage}%` }}
-                            />
-                          </div>
+                      <div key={`legend-${item.label}`} className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs sm:text-sm font-semibold text-white uppercase tracking-wide">
+                            {item.label}
+                          </span>
+                          <span className="text-xs sm:text-sm text-yellow-300 font-semibold">
+                            {item.count} ({percentage}%)
+                          </span>
+                        </div>
+                        <div className="w-full bg-slate-800 rounded-full h-3 sm:h-3.5 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full bg-gradient-to-r ${item.color} transition-all duration-500`}
+                            style={{ width: `${Math.max(4, percentage)}%` }}
+                          />
                         </div>
                       </div>
                     )
@@ -912,13 +993,13 @@ const DashboardPage = () => {
           </motion.div>
         )}
 
-        {/* Impact Metrics and Quick Insights */}
+        {/* Impact Metrics and Visual Insights */}
         {(isDonor || isRecipient) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.5 }}
-            className="grid grid-cols-1 lg:grid-cols-2 gap-8"
+            className="grid grid-cols-1 lg:grid-cols-1 gap-8"
           >
             {/* Impact Metrics */}
             <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
@@ -929,36 +1010,64 @@ const DashboardPage = () => {
               <div className="space-y-4">
                 {isDonor ? (
                   <>
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-yellow-500/20 rounded-lg">
-                          <Package className="h-6 w-6 text-yellow-400" />
+                    {/* Donor Impact – visual donut graphs only */}
+                    <div>
+                      <div className="grid grid-cols-3 gap-4">
+                        {/* Completion Rate */}
+                        <div className="flex flex-col items-center">
+                          <div
+                            className="relative flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-800"
+                            style={{
+                              background: `conic-gradient(#22c55e ${donorCompletionPercent}%, rgba(30,41,59,1) 0)`
+                            }}
+                          >
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-navy-900 flex items-center justify-center">
+                              <span className="text-xs sm:text-sm font-semibold text-white">
+                                {donorCompletionPercent}%
+                              </span>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-[11px] sm:text-xs text-yellow-200 text-center font-medium">
+                            Completion Rate
+                          </p>
                         </div>
-                        <div>
-                          <p className="text-sm text-yellow-200">Items Delivered</p>
-                          <p className="text-2xl font-bold text-white">{stats.completedDonations || 0}</p>
+
+                        {/* Donations Completed */}
+                        <div className="flex flex-col items-center">
+                          <div
+                            className="relative flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-800"
+                            style={{
+                              background: `conic-gradient(#e11d48 ${donorConversionPercent}%, rgba(30,41,59,1) 0)`
+                            }}
+                          >
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-navy-900 flex items-center justify-center">
+                              <span className="text-xs sm:text-sm font-semibold text-white">
+                                {donorConversionPercent}%
+                              </span>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-[11px] sm:text-xs text-yellow-200 text-center font-medium">
+                            Donations Completed
+                          </p>
                         </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-green-500/20 bg-green-500/10">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-green-500/20 rounded-lg">
-                          <TrendingUp className="h-6 w-6 text-green-400" />
-                        </div>
-                        <div>
-                          <p className="text-sm text-green-200">Completion Rate</p>
-                          <p className="text-2xl font-bold text-white">{stats.completionRate || 0}%</p>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-blue-500/20 bg-blue-500/10">
-                      <div className="flex items-center space-x-3">
-                        <div className="p-2 bg-blue-500/20 rounded-lg">
-                          <Calendar className="h-6 w-6 text-blue-400" />
-                        </div>
-                        <div>
-                          <p className="text-sm text-blue-200">Events Completed</p>
-                          <p className="text-2xl font-bold text-white">{stats.completedEvents || 0}</p>
+
+                        {/* Events Participation */}
+                        <div className="flex flex-col items-center">
+                          <div
+                            className="relative flex items-center justify-center w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-slate-800"
+                            style={{
+                              background: `conic-gradient(#3b82f6 ${donorEventsPercent}%, rgba(30,41,59,1) 0)`
+                            }}
+                          >
+                            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-navy-900 flex items-center justify-center">
+                              <span className="text-xs sm:text-sm font-semibold text-white">
+                                {donorEventsPercent}%
+                              </span>
+                            </div>
+                          </div>
+                          <p className="mt-2 text-[11px] sm:text-xs text-yellow-200 text-center font-medium">
+                            Events Participation
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -970,9 +1079,12 @@ const DashboardPage = () => {
                         <div className="p-2 bg-green-500/20 rounded-lg">
                           <Gift className="h-6 w-6 text-green-400" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-green-200">Items Received</p>
                           <p className="text-2xl font-bold text-white">{stats.itemsReceived || 0}</p>
+                          <p className="text-xs text-green-300/70 mt-1">
+                            Saved ~{Math.max(1, (stats.itemsReceived || 0) * 2)} hours of searching
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -981,9 +1093,12 @@ const DashboardPage = () => {
                         <div className="p-2 bg-yellow-500/20 rounded-lg">
                           <Package className="h-6 w-6 text-yellow-400" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-yellow-200">Approved Donations</p>
                           <p className="text-2xl font-bold text-white">{stats.approvedDonations || 0}</p>
+                          <p className="text-xs text-yellow-300/70 mt-1">
+                            Help on the way
+                          </p>
                         </div>
                       </div>
                     </div>
@@ -992,116 +1107,23 @@ const DashboardPage = () => {
                         <div className="p-2 bg-purple-500/20 rounded-lg">
                           <Percent className="h-6 w-6 text-purple-400" />
                         </div>
-                        <div>
+                        <div className="flex-1">
                           <p className="text-sm text-purple-200">Fulfillment Rate</p>
                           <p className="text-2xl font-bold text-white">{stats.fulfillmentRate || 0}%</p>
+                          <p className="text-xs text-purple-300/70 mt-1">
+                            {stats.fulfillmentRate >= 80 ? 'Strong community support!' : 'Community is responding'}
+                          </p>
                         </div>
                       </div>
                     </div>
+                    {stats.itemsReceived > 0 && (
+                      <div className="mt-4 p-4 rounded-lg border border-blue-500/20 bg-blue-500/10">
+                        <p className="text-sm text-blue-200">
+                          <span className="font-semibold text-white">Estimated Savings:</span> You've saved approximately <span className="font-bold text-white">₱{((stats.itemsReceived || 0) * 1000).toLocaleString()}</span> and <span className="font-bold text-white">{Math.max(1, (stats.itemsReceived || 0) * 2)} hours</span> of time.
+                        </p>
+                      </div>
+                    )}
                   </>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Insights */}
-            <div className="card p-6 border border-gray-600" style={{backgroundColor: '#001a5c'}}>
-              <h2 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-                <TrendingUp className="h-5 w-5 text-yellow-400" />
-                Quick Insights
-              </h2>
-              <div className="space-y-4">
-                {isDonor ? (
-                  stats.totalDonations === 0 ? (
-                    <div className="p-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10">
-                      <p className="text-sm text-yellow-200">
-                        <span className="font-semibold text-white">Get Started!</span> Post your first donation to begin making an impact in your community.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      {stats.activeDonations > 0 && (
-                        <div className="p-4 rounded-lg border border-green-500/20 bg-green-500/10">
-                          <p className="text-sm text-green-200">
-                            <span className="font-semibold text-white">{stats.activeDonations}</span> donation{stats.activeDonations !== 1 ? 's' : ''} {stats.activeDonations === 1 ? 'is' : 'are'} currently available for recipients.
-                          </p>
-                        </div>
-                      )}
-                      {stats.inProgressDonations > 0 && (
-                        <div className="p-4 rounded-lg border border-blue-500/20 bg-blue-500/10">
-                          <p className="text-sm text-blue-200">
-                            <span className="font-semibold text-white">{stats.inProgressDonations}</span> donation{stats.inProgressDonations !== 1 ? 's' : ''} {stats.inProgressDonations === 1 ? 'is' : 'are'} in progress.
-                          </p>
-                        </div>
-                      )}
-                      {stats.completedDonations > 0 && (
-                        <div className="p-4 rounded-lg border border-emerald-500/20 bg-emerald-500/10">
-                          <p className="text-sm text-emerald-200">
-                            <span className="font-semibold text-white">Great job!</span> You've successfully delivered {stats.completedDonations} donation{stats.completedDonations !== 1 ? 's' : ''}.
-                          </p>
-                        </div>
-                      )}
-                      {stats.completionRate >= 80 && stats.completedDonations > 0 && (
-                        <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/10">
-                          <p className="text-sm text-purple-200">
-                            <span className="font-semibold text-white">Excellent!</span> Your {stats.completionRate}% completion rate shows your commitment to helping others.
-                          </p>
-                        </div>
-                      )}
-                      {pendingActions.length > 0 && (
-                        <div className="p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/20">
-                          <p className="text-sm text-yellow-200">
-                            <span className="font-semibold text-white">Action Required:</span> You have {pendingActions.length} pending action{pendingActions.length !== 1 ? 's' : ''} that need your attention.
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  )
-                ) : (
-                  stats.totalRequests === 0 ? (
-                    <div className="p-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10">
-                      <p className="text-sm text-yellow-200">
-                        <span className="font-semibold text-white">Get Started!</span> Create your first request to receive help from the community.
-                      </p>
-                    </div>
-                  ) : (
-                    <>
-                      {stats.openRequests > 0 && (
-                        <div className="p-4 rounded-lg border border-blue-500/20 bg-blue-500/10">
-                          <p className="text-sm text-blue-200">
-                            <span className="font-semibold text-white">{stats.openRequests}</span> request{stats.openRequests !== 1 ? 's' : ''} {stats.openRequests === 1 ? 'is' : 'are'} currently open and waiting for donors.
-                          </p>
-                        </div>
-                      )}
-                      {stats.fulfilledRequests > 0 && (
-                        <div className="p-4 rounded-lg border border-green-500/20 bg-green-500/10">
-                          <p className="text-sm text-green-200">
-                            <span className="font-semibold text-white">Great news!</span> {stats.fulfilledRequests} of your request{stats.fulfilledRequests !== 1 ? 's have' : ' has'} been fulfilled.
-                          </p>
-                        </div>
-                      )}
-                      {stats.approvedDonations > 0 && (
-                        <div className="p-4 rounded-lg border border-yellow-500/20 bg-yellow-500/10">
-                          <p className="text-sm text-yellow-200">
-                            <span className="font-semibold text-white">{stats.approvedDonations}</span> donation{stats.approvedDonations !== 1 ? 's' : ''} {stats.approvedDonations === 1 ? 'has' : 'have'} been approved and {stats.approvedDonations === 1 ? 'is' : 'are'} on the way.
-                          </p>
-                        </div>
-                      )}
-                      {stats.fulfillmentRate >= 80 && stats.fulfilledRequests > 0 && (
-                        <div className="p-4 rounded-lg border border-purple-500/20 bg-purple-500/10">
-                          <p className="text-sm text-purple-200">
-                            <span className="font-semibold text-white">Excellent!</span> Your {stats.fulfillmentRate}% fulfillment rate shows great community support.
-                          </p>
-                        </div>
-                      )}
-                      {pendingActions.length > 0 && (
-                        <div className="p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/20">
-                          <p className="text-sm text-yellow-200">
-                            <span className="font-semibold text-white">Action Required:</span> You have {pendingActions.length} pending action{pendingActions.length !== 1 ? 's' : ''} that need your attention.
-                          </p>
-                        </div>
-                      )}
-                    </>
-                  )
                 )}
               </div>
             </div>
@@ -1227,8 +1249,26 @@ const DashboardPage = () => {
         )}
 
       </div>
+
+      {/* Onboarding Tour */}
+      {profile?.role && (
+        <OnboardingTour
+          isOpen={showOnboardingTour}
+          onClose={() => setShowOnboardingTour(false)}
+          userRole={profile.role}
+        />
+      )}
+
+      {/* Workflow Guide Modal (How the workflow works) */}
+      {profile?.role && (isDonor || isRecipient) && (
+        <WorkflowGuideModal
+          isOpen={showWorkflowGuide}
+          onClose={() => setShowWorkflowGuide(false)}
+          userRole={isDonor ? 'donor' : 'recipient'}
+        />
+      )}
     </div>
   )
 }
 
-export default DashboardPage 
+export default DashboardPage

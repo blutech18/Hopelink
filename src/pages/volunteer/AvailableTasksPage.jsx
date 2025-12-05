@@ -610,20 +610,24 @@ const AvailableTasksPage = () => {
           transition={{ duration: 0.6 }}
           className="mb-6 sm:mb-8"
         >
-          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Available Tasks</h1>
-          <p className="text-yellow-300 mt-2 text-sm sm:text-base">
-            Help connect donors and recipients by volunteering for delivery tasks
-          </p>
-          
-          {/* Result Count Badge */}
-          {filteredTasks.length > 0 && (
-            <div className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-600/20 to-yellow-500/20 border border-yellow-500/30 rounded-full">
-              <Truck className="h-4 w-4 text-yellow-400" />
-              <span className="text-yellow-300 font-semibold text-sm">
-                {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'} Available
-              </span>
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+            <div className="flex-1">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">Available Tasks</h1>
+              <p className="text-yellow-300 mt-2 text-sm sm:text-base">
+                Help connect donors and recipients by volunteering for delivery tasks
+              </p>
             </div>
-          )}
+            
+            {/* Result Count Badge */}
+            {filteredTasks.length > 0 && (
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-yellow-600/20 to-yellow-500/20 border border-yellow-500/30 rounded-full flex-shrink-0">
+                <Truck className="h-4 w-4 text-yellow-400" />
+                <span className="text-yellow-300 font-semibold text-sm">
+                  {filteredTasks.length} {filteredTasks.length === 1 ? 'Task' : 'Tasks'} Available
+                </span>
+              </div>
+            )}
+          </div>
         </motion.div>
 
         {/* Search and Filters */}

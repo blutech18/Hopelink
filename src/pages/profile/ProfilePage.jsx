@@ -26,7 +26,8 @@ import {
   Trash2,
   Navigation,
   Award,
-  Settings
+  Settings,
+  Clock
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -130,6 +131,8 @@ const ProfilePage = () => {
       has_insurance: false,
       insurance_provider: '',
       insurance_policy_number: '',
+      vehicle_type: '',
+      vehicle_capacity: '',
       // Granular address fields
       address_house: '',
       address_street: '',
@@ -288,6 +291,8 @@ const ProfilePage = () => {
           has_insurance: profile.has_insurance || false,
           insurance_provider: profile.insurance_provider || '',
           insurance_policy_number: profile.insurance_policy_number || '',
+          vehicle_type: profile.vehicle_type || '',
+          vehicle_capacity: profile.vehicle_capacity || '',
           donation_types: Array.isArray(profile.donation_types) ? profile.donation_types : [],
           assistance_needs: Array.isArray(profile.assistance_needs) ? profile.assistance_needs : [],
           account_type: profile.account_type || 'individual',
@@ -914,6 +919,24 @@ const ProfilePage = () => {
         if (typeof data.has_insurance === 'boolean') processedData.has_insurance = data.has_insurance
         addFieldIfValid('insurance_provider', data.insurance_provider)
         addFieldIfValid('insurance_policy_number', data.insurance_policy_number)
+        // Vehicle fields - always include if they exist
+        if (data.vehicle_type !== undefined) {
+          processedData.vehicle_type = data.vehicle_type || ''
+        }
+        if (data.vehicle_capacity !== undefined) {
+          // Convert to number if it's a string, or keep as number
+          if (data.vehicle_capacity !== '' && data.vehicle_capacity !== null) {
+            const capacity = typeof data.vehicle_capacity === 'string' 
+              ? parseFloat(data.vehicle_capacity) 
+              : data.vehicle_capacity
+            if (!isNaN(capacity) && capacity > 0) {
+              processedData.vehicle_capacity = capacity
+            }
+          } else {
+            // Set to empty string to clear the field
+            processedData.vehicle_capacity = ''
+          }
+        }
       }
       
       // Emergency contact (for recipients only, not volunteers)
@@ -993,7 +1016,9 @@ const ProfilePage = () => {
           delivery_notes: profile.delivery_notes || '',
           has_insurance: profile.has_insurance || false,
           insurance_provider: profile.insurance_provider || '',
-          insurance_policy_number: profile.insurance_policy_number || ''
+          insurance_policy_number: profile.insurance_policy_number || '',
+          vehicle_type: profile.vehicle_type || '',
+          vehicle_capacity: profile.vehicle_capacity || ''
         }
         Object.entries(formData).forEach(([key, value]) => {
           setValue(key, value, { shouldDirty: false })
@@ -1422,13 +1447,19 @@ const ProfilePage = () => {
               </div>
             )}
 
-            {/* Volunteer stats: delivered items and completed events */}
+            {/* Volunteer stats: delivered items, completed events, and volunteer hours */}
             {profile.role === 'volunteer' && volunteerStats && (
               <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
                   <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400" />
                   <span className="text-xs sm:text-sm font-medium text-yellow-200">
                     {volunteerStats.completedDeliveries || 0} Deliveries
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3 py-1 rounded-full bg-navy-800 border border-navy-700">
+                  <Clock className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-yellow-400" />
+                  <span className="text-xs sm:text-sm font-medium text-yellow-200">
+                    {volunteerStats.totalHours || 0} Hours Volunteered
                   </span>
                 </div>
                 <div
@@ -3365,12 +3396,8 @@ const ProfilePage = () => {
                       ref={volunteerSettingsRef}
                       profileData={profile}
                       onUpdate={(currentData, originalValues) => {
-                        // Update form data when volunteer component changes
-                        Object.entries(currentData).forEach(([key, value]) => {
-                          setValue(key, value, { shouldDirty: true, shouldValidate: true })
-                        })
-                        
-                        // Compare current data with original values to determine if dirty
+                        // Compare current data with original values to determine if dirty BEFORE updating
+                        let hasChanges = false
                         if (originalValues) {
                           const volunteerFields = [
                             'volunteer_experience',
@@ -3385,10 +3412,12 @@ const ProfilePage = () => {
                             'insurance_policy_number',
                             'preferred_delivery_types',
                             'delivery_notes',
-                            'communication_preferences'
+                            'communication_preferences',
+                            'vehicle_type',
+                            'vehicle_capacity'
                           ]
                           
-                          const hasChanges = volunteerFields.some(key => {
+                          hasChanges = volunteerFields.some(key => {
                             const currentValue = currentData[key]
                             const originalValue = originalValues[key]
                             
@@ -3398,18 +3427,27 @@ const ProfilePage = () => {
                               return currentValue.some((val, idx) => val !== originalValue[idx])
                             }
                             
+                            // Normalize empty strings and null/undefined for comparison
+                            const normalizedCurrent = (currentValue === '' || currentValue === null || currentValue === undefined) ? '' : currentValue
+                            const normalizedOriginal = (originalValue === '' || originalValue === null || originalValue === undefined) ? '' : originalValue
+                            
                             // Handle other types
-                            return currentValue !== originalValue
+                            return normalizedCurrent !== normalizedOriginal
                           })
-                          
-                          // Only mark form as dirty if there are actual changes
-                          // Note: react-hook-form's isDirty will handle this, but we can also manually control it
-                          if (!hasChanges) {
+                        }
+                        
+                        // Update form data when volunteer component changes
+                        // Only mark as dirty if there are actual changes
+                        Object.entries(currentData).forEach(([key, value]) => {
+                          setValue(key, value, { shouldDirty: hasChanges, shouldValidate: true })
+                        })
+                        
+                        // Only mark form as dirty if there are actual changes
+                        if (!hasChanges && originalValues) {
                             // Reset the specific fields to their original values to clear dirty state
                             Object.entries(originalValues).forEach(([key, value]) => {
                               setValue(key, value, { shouldDirty: false })
                             })
-                          }
                         }
                       }}
                       isEditing={isEditing}

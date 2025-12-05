@@ -147,10 +147,58 @@ const normalizationFunctions = {
    * @param {string} urgency2 - Second urgency level
    * @returns {number} Alignment score (0-1)
    */
-  normalizeUrgencyAlignment(urgency1, urgency2) {
+  normalizeUrgencyAlignment(urgency1, urgency2, recipientProfile = null, requestContext = null) {
     const urgencyLevels = { 'low': 1, 'medium': 2, 'high': 3, 'critical': 4 }
-    const level1 = urgencyLevels[urgency1] || 2
+    let level1 = urgencyLevels[urgency1] || 2
     const level2 = urgencyLevels[urgency2] || 2
+    
+    // ENHANCEMENT 1: Financial need assessment → urgency boost
+    if (recipientProfile) {
+      // Check for financial need indicators
+      // This could be from a financial_need field, income level, or ID type (4Ps, etc.)
+      const idType = recipientProfile.primary_id_type || ''
+      const normalizedIdType = idType.toLowerCase()
+      
+      // 4Ps beneficiaries, PhilSys (low income), etc. indicate financial need
+      if (normalizedIdType.includes('fourps') || normalizedIdType.includes('philsys')) {
+        level1 = Math.min(4, level1 + 0.5) // Boost urgency by 0.5 levels
+      }
+      
+      // Check for very low income indicators
+      // This would ideally come from a financial_need field in the profile
+      // For now, we'll use household size as a proxy (larger households = higher need)
+      if (recipientProfile.household_size && recipientProfile.household_size >= 5) {
+        level1 = Math.min(4, level1 + 0.3) // Boost for large households
+      }
+    }
+    
+    // ENHANCEMENT 2: Previous request frequency → urgency multiplier
+    if (requestContext?.requestFrequency) {
+      const recentRequests = requestContext.requestFrequency
+      // Frequent requests (5+ in last month) indicate sustained need
+      if (recentRequests >= 5) {
+        level1 = Math.min(4, level1 + 0.4) // Significant boost
+      } else if (recentRequests >= 3) {
+        level1 = Math.min(4, level1 + 0.2) // Moderate boost
+      }
+    }
+    
+    // ENHANCEMENT 3: Special circumstances → automatic urgency level adjustment
+    if (requestContext) {
+      const description = (requestContext.description || '').toLowerCase()
+      const assistanceNeeds = recipientProfile?.assistance_needs || []
+      
+      // Check for emergency keywords
+      const emergencyKeywords = ['emergency', 'disaster', 'crisis', 'urgent', 'immediate', 'critical']
+      const hasEmergencyKeyword = emergencyKeywords.some(keyword => description.includes(keyword))
+      
+      // Check for medical emergency
+      const hasMedicalNeed = assistanceNeeds.some(need => need.toLowerCase().includes('medical'))
+      
+      if (hasEmergencyKeyword || hasMedicalNeed) {
+        level1 = 4 // Automatic critical urgency
+      }
+    }
     
     const difference = Math.abs(level1 - level2)
     // Exponential decay penalizes larger gaps more strongly
@@ -410,17 +458,42 @@ class IntelligentMatcher {
       request.title, donation.title,
       request.quantity_needed, donation.quantity,
       donorPreferences,
-      recipientPreferences
+      recipientPreferences,
+      request.requester || null,
+      null // No volunteer in donor-recipient matching
     )
 
+    // Get recipient profile and request context for enhanced urgency alignment
+    const recipientProfile = request.requester || null
+    const requestContext = {
+      description: request.description || request.title || '',
+      requestFrequency: null // TODO: Calculate from request history
+    }
+    
+    // Calculate request frequency if recipient profile is available
+    if (recipientProfile?.id) {
+      try {
+        const recipientRequests = await db.getRequests({ requester_id: recipientProfile.id, limit: 100 }).catch(() => [])
+        const oneMonthAgo = new Date()
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
+        const recentRequests = recipientRequests.filter(r => new Date(r.created_at) >= oneMonthAgo)
+        requestContext.requestFrequency = recentRequests.length
+      } catch (err) {
+        // Ignore errors, use null
+      }
+    }
+
     const urgency_alignment = this.normalize.normalizeUrgencyAlignment(
-      request.urgency, donation.is_urgent ? 'high' : 'medium'
+      request.urgency, donation.is_urgent ? 'high' : 'medium',
+      recipientProfile,
+      requestContext
     )
 
     const user_reliability = await this.getCachedReliability(donation.donor_id, 'donor')
 
     const delivery_compatibility = this.calculateDeliveryCompatibility(
-      request.delivery_mode, donation.delivery_mode
+      request.delivery_mode, donation.delivery_mode,
+      null // No volunteer in donor-recipient matching
     )
 
     return {
@@ -523,10 +596,10 @@ class IntelligentMatcher {
       for (const volunteer of availableVolunteers) {
         const scores = {
           geographic_proximity: this.calculateVolunteerProximity(task, volunteer),
-          item_compatibility: await this.calculateVolunteerItemCompatibility(task, volunteer), // Use volunteer's preferred delivery types
+          item_compatibility: await this.calculateVolunteerItemCompatibility(task, volunteer, volunteer), // Pass volunteer profile for vehicle capacity check
           urgency_alignment: this.calculateUrgencyResponse(task, volunteer), // Map urgency_response to urgency_alignment
           user_reliability: await this.calculateUserReliability(volunteer.id, 'volunteer'),
-          delivery_compatibility: await this.calculateAvailabilityMatch(task, volunteer) // Map availability to delivery compatibility
+          delivery_compatibility: await this.calculateAvailabilityMatch(task, volunteer) // Map availability to delivery compatibility (includes vehicle and certification checks)
         }
 
         // Calculate total score with precision control
@@ -723,15 +796,79 @@ class IntelligentMatcher {
     return this.normalize.normalizeDistance(distance)
   }
 
-  calculateItemCompatibility(category1, category2, title1, title2, needed, available, donorPreferences = null, recipientPreferences = null) {
+  calculateItemCompatibility(category1, category2, title1, title2, needed, available, donorPreferences = null, recipientPreferences = null, recipientProfile = null, volunteerProfile = null) {
     const categoryScore = this.normalize.normalizeCategoryMatch(category1, category2)
-    const quantityScore = this.normalize.normalizeQuantityMatch(available, needed)
+    
+    // ENHANCEMENT 1: Adjust quantity matching based on household size
+    let adjustedNeeded = needed
+    if (recipientProfile?.household_size) {
+      // Larger households need more quantity
+      // Base multiplier: household_size / 2 (assuming 2 is average)
+      const householdMultiplier = Math.max(1.0, recipientProfile.household_size / 2.0)
+      adjustedNeeded = Math.ceil(needed * householdMultiplier)
+    }
+    
+    const quantityScore = this.normalize.normalizeQuantityMatch(available, adjustedNeeded)
     
     // Improved text similarity (Jaccard)
     const titleSimilarity = this.calculateTextSimilarity(title1, title2)
     
     // Base compatibility score
     let baseScore = (categoryScore * 0.5) + (quantityScore * 0.3) + (titleSimilarity * 0.2)
+    
+    // ENHANCEMENT 2: Special circumstances boost
+    let specialCircumstancesBoost = 0
+    if (recipientProfile) {
+      // Check for emergency situations, medical needs, disasters
+      const assistanceNeeds = recipientProfile.assistance_needs || []
+      const categoryLower = (category1 || category2 || '').toLowerCase()
+      
+      // Medical emergency boost
+      if (assistanceNeeds.some(need => need.toLowerCase().includes('medical')) && 
+          (categoryLower.includes('medical') || categoryLower.includes('medicine'))) {
+        specialCircumstancesBoost += 0.2
+      }
+      
+      // Emergency supplies boost
+      if (assistanceNeeds.some(need => need.toLowerCase().includes('emergency')) && 
+          categoryLower.includes('emergency')) {
+        specialCircumstancesBoost += 0.15
+      }
+      
+      // Check request description for special circumstances
+      const requestDescription = (title1 || title2 || '').toLowerCase()
+      if (requestDescription.includes('emergency') || requestDescription.includes('urgent') || 
+          requestDescription.includes('disaster') || requestDescription.includes('crisis')) {
+        specialCircumstancesBoost += 0.1
+      }
+    }
+    
+    // ENHANCEMENT 3: Vehicle capacity check for volunteers
+    let vehicleCapacityBoost = 0
+    if (volunteerProfile) {
+      const vehicleType = volunteerProfile.vehicle_type || ''
+      const normalizedType = vehicleType.toLowerCase()
+      const categoryLower = (category1 || category2 || '').toLowerCase()
+      
+      // Large items require larger vehicles
+      const largeItemCategories = ['furniture', 'appliance', 'large', 'bulk']
+      const isLargeItem = largeItemCategories.some(cat => categoryLower.includes(cat))
+      
+      if (isLargeItem) {
+        if (normalizedType.includes('truck') || normalizedType.includes('van')) {
+          vehicleCapacityBoost += 0.15 // Perfect match for large items
+        } else if (normalizedType.includes('car') || normalizedType.includes('suv')) {
+          vehicleCapacityBoost += 0.05 // Partial match
+        } else if (normalizedType.includes('motorcycle') || normalizedType.includes('bike')) {
+          vehicleCapacityBoost -= 0.2 // Penalty - cannot handle large items
+        }
+      } else {
+        // Small items - motorcycles are fine
+        if (normalizedType.includes('motorcycle') || normalizedType.includes('bike')) {
+          vehicleCapacityBoost += 0.05 // Small boost for small items
+        }
+      }
+    }
     
     // Apply preference-based adjustments if preferences are available
     let preferenceBoost = 0
@@ -800,8 +937,9 @@ class IntelligentMatcher {
       }
     }
     
-    // Apply preference boost (capped at 0.3 to prevent score from exceeding 1.0)
-    const finalScore = Math.min(1.0, baseScore + preferenceBoost)
+    // Apply all boosts (capped to prevent score from exceeding 1.0)
+    const totalBoost = preferenceBoost + specialCircumstancesBoost + vehicleCapacityBoost
+    const finalScore = Math.min(1.0, baseScore + totalBoost)
     // Clamp to [0, 1] and round to 4 decimal places for precision
     const clampedScore = Math.max(0, Math.min(1, finalScore))
     return Math.round(clampedScore * 10000) / 10000
@@ -818,8 +956,23 @@ class IntelligentMatcher {
     return intersection / union
   }
 
-  calculateDeliveryCompatibility(mode1, mode2) {
-    if (mode1 === mode2) return 1.0
+  calculateDeliveryCompatibility(mode1, mode2, volunteerProfile = null) {
+    if (mode1 === mode2) {
+      // ENHANCEMENT 1: Vehicle type check for volunteer delivery mode
+      if (mode1 === 'volunteer' && volunteerProfile) {
+        const hasVehicle = volunteerProfile.has_vehicle || volunteerProfile.hasVehicle || false
+        if (!hasVehicle) {
+          return 0.2 // Penalty - no vehicle for volunteer delivery
+        }
+        
+        // Additional boost for appropriate vehicle type
+        const vehicleType = volunteerProfile.vehicle_type || volunteerProfile.vehicleType || ''
+        if (vehicleType) {
+          return 1.0 // Perfect match with vehicle
+        }
+      }
+      return 1.0
+    }
     
     // Compatible modes
     const compatibleModes = {
@@ -828,7 +981,17 @@ class IntelligentMatcher {
       'direct': ['volunteer']
     }
     
-    return compatibleModes[mode1]?.includes(mode2) ? 0.7 : 0.3
+    let compatibilityScore = compatibleModes[mode1]?.includes(mode2) ? 0.7 : 0.3
+    
+    // ENHANCEMENT 1: Vehicle type check
+    if ((mode1 === 'volunteer' || mode2 === 'volunteer') && volunteerProfile) {
+      const hasVehicle = volunteerProfile.has_vehicle || volunteerProfile.hasVehicle || false
+      if (!hasVehicle) {
+        compatibilityScore *= 0.5 // Penalty for no vehicle
+      }
+    }
+    
+    return compatibilityScore
   }
 
   async calculateUserReliability(userId, userType) {
@@ -918,20 +1081,132 @@ class IntelligentMatcher {
     const distances = [pickupDistance, deliveryDistance].filter(d => d !== null && d !== undefined)
     if (distances.length === 0) return 0.5 // Neutral score if no location data
     const averageDistance = distances.reduce((a, b) => a + b, 0) / distances.length
-    return this.normalize.normalizeDistance(averageDistance)
+    
+    // Calculate base proximity score
+    let proximityScore = this.normalize.normalizeDistance(averageDistance)
+    
+    // ENHANCEMENT 1: Vehicle type/capacity adjustment
+    // Larger vehicles can handle longer distances more efficiently
+    const vehicleType = volunteer.vehicle_type || volunteer.vehicleType || ''
+    const vehicleEfficiencyFactor = this.getVehicleEfficiencyFactor(vehicleType, averageDistance)
+    proximityScore = Math.min(1.0, proximityScore * vehicleEfficiencyFactor)
+    
+    // ENHANCEMENT 2: Availability patterns adjustment
+    // If volunteer is available during task time, boost proximity score
+    const availabilityBoost = this.calculateAvailabilityProximityBoost(task, volunteer)
+    proximityScore = Math.min(1.0, proximityScore + availabilityBoost)
+    
+    return Math.max(0, Math.min(1, proximityScore))
+  }
+
+  /**
+   * Get vehicle efficiency factor based on vehicle type and distance
+   * Larger vehicles can handle longer distances more efficiently
+   */
+  getVehicleEfficiencyFactor(vehicleType, distance) {
+    if (!vehicleType) return 1.0 // No vehicle = no adjustment
+    
+    const normalizedType = vehicleType.toLowerCase()
+    
+    // Vehicle efficiency factors (multiplier for distance score)
+    // Higher factor = better at handling longer distances
+    if (normalizedType.includes('truck') || normalizedType.includes('van')) {
+      // Trucks/vans can handle longer distances efficiently
+      return distance > 20 ? 1.15 : 1.05 // Boost for longer distances
+    } else if (normalizedType.includes('car') || normalizedType.includes('sedan') || normalizedType.includes('suv')) {
+      // Cars are good for medium distances
+      return distance > 15 ? 1.08 : 1.0
+    } else if (normalizedType.includes('motorcycle') || normalizedType.includes('bike')) {
+      // Motorcycles prefer shorter distances
+      return distance > 10 ? 0.9 : 1.0 // Penalty for longer distances
+    }
+    
+    return 1.0 // Default: no adjustment
+  }
+
+  /**
+   * Calculate availability-based proximity boost
+   * If volunteer is available during task time, they can handle closer locations better
+   */
+  calculateAvailabilityProximityBoost(task, volunteer) {
+    const availabilityDays = volunteer.availability_days || volunteer.availabilityDays || []
+    const availabilityTimes = volunteer.availability_times || volunteer.availabilityTimes || []
+    
+    if (availabilityDays.length === 0 || availabilityTimes.length === 0) {
+      return 0 // No availability data = no boost
+    }
+    
+    // Check if task time aligns with volunteer availability
+    // For now, assume peak hours (morning, afternoon) are more feasible for closer locations
+    const peakTimeSlots = ['morning', 'afternoon', 'late_afternoon']
+    const hasPeakAvailability = availabilityTimes.some(time => peakTimeSlots.includes(time))
+    
+    if (hasPeakAvailability) {
+      return 0.05 // Small boost for peak-time availability
+    }
+    
+    return 0
   }
 
   async calculateAvailabilityMatch(task, volunteer) {
-    // This would integrate with volunteer scheduling system
-    // For now, return a default score based on volunteer activity
+    // ENHANCEMENT 2: Enhanced availability pattern matching
+    const availabilityDays = volunteer.availability_days || volunteer.availabilityDays || []
+    const availabilityTimes = volunteer.availability_times || volunteer.availabilityTimes || []
+    
+    // Base availability score from active deliveries
     const recentDeliveries = await db.getDeliveries({ 
       volunteer_id: volunteer.id,
-      status: 'assigned'
+      status: ['assigned', 'accepted', 'picked_up', 'in_transit']
     })
     
     // Volunteers with fewer active deliveries are more available
-    const availabilityScore = Math.max(0, 1 - (recentDeliveries.length * 0.2))
-    return availabilityScore
+    let availabilityScore = Math.max(0, 1 - (recentDeliveries.length * 0.2))
+    
+    // ENHANCEMENT 2: Time slot matching
+    if (availabilityTimes.length > 0) {
+      // Check if task time aligns with volunteer availability
+      // For now, assume tasks are during peak hours (morning, afternoon)
+      const peakTimeSlots = ['morning', 'afternoon', 'late_afternoon']
+      const hasPeakAvailability = availabilityTimes.some(time => peakTimeSlots.includes(time))
+      
+      if (hasPeakAvailability) {
+        availabilityScore = Math.min(1.0, availabilityScore + 0.15) // Boost for peak-time availability
+      }
+    }
+    
+    // ENHANCEMENT 2: Day preference matching
+    if (availabilityDays.length > 0) {
+      // Check if task day aligns with volunteer availability
+      // For now, assume tasks are on weekdays
+      const weekdayDays = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+      const hasWeekdayAvailability = availabilityDays.some(day => weekdayDays.includes(day))
+      
+      if (hasWeekdayAvailability) {
+        availabilityScore = Math.min(1.0, availabilityScore + 0.1) // Boost for weekday availability
+      }
+    }
+    
+    // ENHANCEMENT 3: Special certifications matching
+    // Check for certifications that affect delivery capability
+    const profile = await db.getProfile(volunteer.id).catch(() => volunteer)
+    const certifications = profile?.certifications || profile?.special_certifications || []
+    
+    if (certifications.length > 0) {
+      // Check if certifications match task requirements
+      const taskCategory = (task.donation?.category || task.request?.category || '').toLowerCase()
+      
+      // Medical delivery certification for medical items
+      if (taskCategory.includes('medical') && certifications.some(c => c.toLowerCase().includes('medical'))) {
+        availabilityScore = Math.min(1.0, availabilityScore + 0.1)
+      }
+      
+      // Food handling certification for food items
+      if (taskCategory.includes('food') && certifications.some(c => c.toLowerCase().includes('food'))) {
+        availabilityScore = Math.min(1.0, availabilityScore + 0.1)
+      }
+    }
+    
+    return Math.max(0, Math.min(1, availabilityScore))
   }
 
   async calculateSkillCompatibility(task, volunteer) {
@@ -1050,16 +1325,34 @@ class IntelligentMatcher {
         return []
       }
       
-      // Filter out overloaded volunteers
+      // Filter out overloaded volunteers based on configurable capacity
       const availableVolunteers = []
       for (const volunteer of volunteers) {
+        // Get volunteer's full profile to access max_deliveries_per_week
+        const volunteerProfile = await db.getProfile(volunteer.id).catch(() => volunteer)
+        
+        // Get active deliveries for this week
+        const now = new Date()
+        const startOfWeek = new Date(now)
+        startOfWeek.setDate(now.getDate() - now.getDay() + 1) // Monday
+        startOfWeek.setHours(0, 0, 0, 0)
+        
         const activeDeliveries = await db.getDeliveries({
           volunteer_id: volunteer.id,
-          status: 'assigned'
+          status: ['assigned', 'accepted', 'picked_up', 'in_transit']
         })
         
-        // Volunteers with less than 3 active deliveries are considered available
-        if (activeDeliveries.length < 3) {
+        // Count deliveries from this week
+        const thisWeekDeliveries = activeDeliveries.filter(d => {
+          const deliveryDate = new Date(d.created_at || d.assigned_at)
+          return deliveryDate >= startOfWeek
+        })
+        
+        // Get volunteer's capacity limit (default to 10 if not set, fallback to 3 for backward compatibility)
+        const maxCapacity = volunteerProfile?.max_deliveries_per_week || volunteer?.max_deliveries_per_week || 10
+        
+        // Check if volunteer has capacity (less than max capacity)
+        if (thisWeekDeliveries.length < maxCapacity) {
           availableVolunteers.push(volunteer)
         }
       }
@@ -1226,22 +1519,49 @@ class IntelligentMatcher {
     
     const geographic_proximity = this.normalize.normalizeDistance(dist, maxDistance)
 
+    // Get recipient profile for enhanced compatibility calculation
+    const recipientProfile = request.requester || null
+    
     const item_compatibility = this.calculateItemCompatibility(
       request.category, donation.category,
       request.title, donation.title,
       request.quantity_needed, donation.quantity,
       donorPreferences, // Pass donor preferences (donation_types)
-      recipientPreferences // Pass recipient preferences (assistance_needs)
+      recipientPreferences, // Pass recipient preferences (assistance_needs)
+      recipientProfile,
+      null // No volunteer in donor-recipient matching
     )
 
+    // Get request context for enhanced urgency alignment
+    const requestContext = {
+      description: request.description || request.title || '',
+      requestFrequency: null // TODO: Calculate from request history
+    }
+    
+    // Calculate request frequency if recipient profile is available
+    if (recipientProfile?.id) {
+      try {
+        const recipientRequests = await db.getRequests({ requester_id: recipientProfile.id, limit: 100 }).catch(() => [])
+        const oneMonthAgo = new Date()
+        oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1)
+        const recentRequests = recipientRequests.filter(r => new Date(r.created_at) >= oneMonthAgo)
+        requestContext.requestFrequency = recentRequests.length
+      } catch (err) {
+        // Ignore errors, use null
+      }
+    }
+
     const urgency_alignment = this.normalize.normalizeUrgencyAlignment(
-      request.urgency, donation.is_urgent ? 'high' : 'medium'
+      request.urgency, donation.is_urgent ? 'high' : 'medium',
+      recipientProfile,
+      requestContext
     )
 
     const user_reliability = await this.getCachedReliability(donation.donor_id, 'donor')
 
     const delivery_compatibility = this.calculateDeliveryCompatibility(
-      request.delivery_mode, donation.delivery_mode
+      request.delivery_mode, donation.delivery_mode,
+      null // No volunteer in donor-recipient matching
     )
 
     return {

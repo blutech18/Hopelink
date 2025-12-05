@@ -76,6 +76,23 @@ const PendingRequestsPage = () => {
     
     return idTypeMap[idType] || idType
   }
+
+  // Helper function to format vehicle type to readable label
+  const getVehicleTypeLabel = (vehicleType) => {
+    if (!vehicleType) return 'N/A'
+    
+    const vehicleTypeMap = {
+      'motorcycle': 'Motorcycle',
+      'car': 'Car / Sedan',
+      'suv': 'SUV',
+      'van': 'Van',
+      'pickup_truck': 'Pickup Truck',
+      'truck': 'Truck',
+      'other': 'Other'
+    }
+    
+    return vehicleTypeMap[vehicleType] || vehicleType
+  }
   
   const [loading, setLoading] = useState(true)
   const [donationRequests, setDonationRequests] = useState([])
@@ -1193,6 +1210,8 @@ const PendingRequestsPage = () => {
                 <tr>
                   <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Donation</th>
                   <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Volunteer</th>
+                  <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Vehicle Type</th>
+                  <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Max Weight Capacity</th>
                   <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Location</th>
                   <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Date</th>
                   <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Actions</th>
@@ -1201,7 +1220,7 @@ const PendingRequestsPage = () => {
               <tbody className="divide-y divide-navy-700">
                 {filteredVolunteerRequests.length === 0 ? (
                   <tr>
-                    <td colSpan="5" className="px-4 sm:px-6 py-12 text-center">
+                    <td colSpan="7" className="px-4 sm:px-6 py-12 text-center">
                       <Truck className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
                       <p className="text-yellow-300">No volunteer requests found</p>
                       <p className="text-yellow-400 text-sm mt-1">
@@ -1242,6 +1261,21 @@ const PendingRequestsPage = () => {
                         >
                           {request.data?.volunteer_name || 'Unknown'}
                         </button>
+                      </td>
+                      <td className="px-4 sm:px-6 py-4">
+                        <div className="flex items-center justify-center gap-2 text-sm text-gray-300">
+                          <Truck className="h-4 w-4 text-yellow-400 flex-shrink-0" />
+                          <span className="text-center">
+                            {getVehicleTypeLabel(request.volunteerProfile?.vehicle_type)}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-4 sm:px-6 py-4">
+                        <div className="text-sm text-gray-300 text-center">
+                          {request.volunteerProfile?.vehicle_capacity 
+                            ? `${request.volunteerProfile.vehicle_capacity} kg`
+                            : 'N/A'}
+                        </div>
                       </td>
                       <td className="px-4 sm:px-6 py-4">
                         <div className="flex items-start gap-2 text-sm text-gray-300 max-w-[200px]">

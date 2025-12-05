@@ -1,4 +1,4 @@
-import React, { useState, useEffect, forwardRef, useImperativeHandle } from 'react'
+import React, { useState, useEffect, useRef, forwardRef, useImperativeHandle } from 'react'
 import { motion } from 'framer-motion'
 import { useForm, Controller } from 'react-hook-form'
 import { 
@@ -11,7 +11,8 @@ import {
   Mail,
   Camera,
   Upload,
-  Trash2
+  Trash2,
+  Truck
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -45,6 +46,10 @@ const VolunteerProfileSettings = forwardRef(({ profileData, onUpdate, isEditing 
       primary_id_expiry: '',
       primary_id_image_url: '',
       
+      // Vehicle Information
+      vehicle_type: '',
+      vehicle_capacity: '',
+      
       // Insurance Information
       has_insurance: false,
       insurance_provider: '',
@@ -61,8 +66,16 @@ const VolunteerProfileSettings = forwardRef(({ profileData, onUpdate, isEditing 
   const watchedIdType = watch('primary_id_type')
 
   // Sync form changes with parent component
+  // Only trigger onUpdate when form values actually change (not on initial load)
+  const isInitialMount = useRef(true)
   useEffect(() => {
     const subscription = watch((data) => {
+      // Skip the first update (initial mount) to prevent false dirty state
+      if (isInitialMount.current) {
+        isInitialMount.current = false
+        return
+      }
+      
       if (onUpdate && typeof onUpdate === 'function') {
         // Pass both current data and original values for comparison
         onUpdate(data, originalValues)
@@ -82,6 +95,8 @@ const VolunteerProfileSettings = forwardRef(({ profileData, onUpdate, isEditing 
         primary_id_number: profileData?.primary_id_number || '',
         primary_id_expiry: profileData?.primary_id_expiry || '',
         primary_id_image_url: profileData?.primary_id_image_url || '',
+        vehicle_type: profileData?.vehicle_type || '',
+        vehicle_capacity: profileData?.vehicle_capacity || '',
         has_insurance: profileData?.has_insurance || false,
         insurance_provider: profileData?.insurance_provider || '',
         insurance_policy_number: profileData?.insurance_policy_number || '',
@@ -123,6 +138,8 @@ const VolunteerProfileSettings = forwardRef(({ profileData, onUpdate, isEditing 
           primary_id_number: profileData?.primary_id_number || '',
           primary_id_expiry: profileData?.primary_id_expiry || '',
           primary_id_image_url: profileData?.primary_id_image_url || '',
+          vehicle_type: profileData?.vehicle_type || '',
+          vehicle_capacity: profileData?.vehicle_capacity || '',
           has_insurance: profileData?.has_insurance || false,
           insurance_provider: profileData?.insurance_provider || '',
           insurance_policy_number: profileData?.insurance_policy_number || '',
@@ -627,6 +644,76 @@ const VolunteerProfileSettings = forwardRef(({ profileData, onUpdate, isEditing 
                 </div>
               )}
             />
+          </div>
+        </div>
+      </motion.div>
+
+      {/* Vehicle Information Section */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.25 }}
+        className="card p-6"
+      >
+        <div className="border-b border-navy-700 pb-4 mb-6">
+          <h3 className="text-xl font-semibold text-white flex items-center">
+            <Truck className="h-5 w-5 text-yellow-400 mr-2" />
+            Vehicle Information
+          </h3>
+          <p className="text-sm text-yellow-300 mt-1">Provide details about your vehicle for delivery tasks</p>
+        </div>
+
+        <div className="space-y-6">
+          {/* Vehicle Type and Capacity */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm text-yellow-300 mb-2">
+                Vehicle Type *
+              </label>
+              <select
+                {...register('vehicle_type', {
+                  required: 'Vehicle type is required'
+                })}
+                className="w-full px-3 py-2 h-[42px] bg-navy-800 border border-navy-600 rounded-lg text-white focus:border-yellow-400 focus:outline-none"
+              >
+                <option value="">Select vehicle type</option>
+                <option value="motorcycle">Motorcycle</option>
+                <option value="car">Car / Sedan</option>
+                <option value="suv">SUV</option>
+                <option value="van">Van</option>
+                <option value="pickup_truck">Pickup Truck</option>
+                <option value="truck">Truck</option>
+                <option value="other">Other</option>
+              </select>
+              {errors.vehicle_type && (
+                <p className="mt-1 text-sm text-red-400">{errors.vehicle_type.message}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm text-yellow-300 mb-2">
+                Maximum Weight Capacity (kg) *
+              </label>
+              <input
+                {...register('vehicle_capacity', {
+                  required: 'Weight capacity is required',
+                  min: { value: 1, message: 'Capacity must be at least 1 kg' },
+                  max: { value: 10000, message: 'Capacity must be less than 10,000 kg' },
+                  valueAsNumber: true
+                })}
+                type="number"
+                placeholder="e.g., 500"
+                min="1"
+                max="10000"
+                className="w-full px-3 py-2 h-[42px] bg-navy-800 border border-navy-600 rounded-lg text-white placeholder-gray-400 focus:border-yellow-400 focus:outline-none"
+              />
+              {errors.vehicle_capacity && (
+                <p className="mt-1 text-sm text-red-400">{errors.vehicle_capacity.message}</p>
+              )}
+              <p className="mt-1 text-xs text-yellow-400">
+                Enter the maximum weight your vehicle can carry in kilograms
+              </p>
+            </div>
           </div>
         </div>
       </motion.div>

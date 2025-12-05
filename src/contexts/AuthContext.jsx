@@ -716,6 +716,7 @@ export const AuthProvider = ({ children }) => {
               userProfile.availability_days = currentUser.user_metadata.availabilityDays || userProfile.availability_days || []
               userProfile.availability_times = currentUser.user_metadata.availabilityTimes || userProfile.availability_times || []
               userProfile.max_delivery_distance = currentUser.user_metadata.maxDeliveryDistance || userProfile.max_delivery_distance || 20
+              userProfile.max_deliveries_per_week = currentUser.user_metadata.maxDeliveriesPerWeek || userProfile.max_deliveries_per_week || 10
               userProfile.delivery_preferences = currentUser.user_metadata.deliveryPreferences || userProfile.delivery_preferences || []
             }
           } catch (metadataError) {
@@ -1724,7 +1725,7 @@ export const AuthProvider = ({ children }) => {
     
     try {
       // Check if updates contain volunteer schedule fields that should be stored in user_metadata
-      const volunteerScheduleFields = ['availability_days', 'availability_times', 'max_delivery_distance', 'delivery_preferences']
+      const volunteerScheduleFields = ['availability_days', 'availability_times', 'max_delivery_distance', 'max_deliveries_per_week', 'delivery_preferences']
       const hasVolunteerScheduleFields = volunteerScheduleFields.some(field => updates.hasOwnProperty(field))
       
       if (hasVolunteerScheduleFields && !supabase) {
@@ -1746,6 +1747,9 @@ export const AuthProvider = ({ children }) => {
         }
         if (updates.hasOwnProperty('max_delivery_distance')) {
           metadataUpdates.maxDeliveryDistance = updates.max_delivery_distance
+        }
+        if (updates.hasOwnProperty('max_deliveries_per_week')) {
+          metadataUpdates.maxDeliveriesPerWeek = updates.max_deliveries_per_week
         }
         if (updates.hasOwnProperty('delivery_preferences')) {
           metadataUpdates.deliveryPreferences = updates.delivery_preferences
@@ -1787,8 +1791,14 @@ export const AuthProvider = ({ children }) => {
           updatedProfile.availability_days = updatedUser.user_metadata.availabilityDays || []
           updatedProfile.availability_times = updatedUser.user_metadata.availabilityTimes || []
           updatedProfile.max_delivery_distance = updatedUser.user_metadata.maxDeliveryDistance || 20
+          updatedProfile.max_deliveries_per_week = updatedUser.user_metadata.maxDeliveriesPerWeek || 10
           updatedProfile.delivery_preferences = updatedUser.user_metadata.deliveryPreferences || []
         }
+      }
+      
+      // Sync vehicle_capacity if it was updated (it goes through db.updateProfile, not user_metadata)
+      if (updates.hasOwnProperty('vehicle_capacity')) {
+        updatedProfile.vehicle_capacity = updates.vehicle_capacity
       }
       
       // Update cache with new profile data

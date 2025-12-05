@@ -574,7 +574,7 @@ const AdminCFCDonationsPage = () => {
           className="card overflow-hidden"
         >
           <div className="overflow-x-auto custom-scrollbar">
-            <div className="min-w-[800px]">
+            <div className="min-w-[900px]">
             <table className="w-full">
               <thead className="bg-navy-800">
                 <tr>
@@ -621,9 +621,9 @@ const AdminCFCDonationsPage = () => {
                       </td>
                       
                       <td className="px-4 py-2.5 text-center">
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs bg-blue-500/20 text-blue-400 truncate max-w-[120px]">
+                        <div className="text-xs bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded whitespace-normal break-words max-w-[250px] mx-auto">
                           {getDeliveryModeLabel(donation.delivery_mode)}
-                        </span>
+                        </div>
                       </td>
                       
                       <td className="px-4 py-2.5 text-center">

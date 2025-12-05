@@ -21,12 +21,15 @@ import {
   X,
   Plus
 } from 'lucide-react'
+import { Info } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
 import { db } from '../../lib/supabase'
 import { FormSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import LocationPicker from '../../components/ui/LocationPicker'
+import { HelpIcon } from '../../components/ui/HelpTooltip'
+import WorkflowGuideModal from '../../components/ui/WorkflowGuideModal'
 
 const PostDonationPage = () => {
   const { user, profile } = useAuth()
@@ -41,6 +44,7 @@ const PostDonationPage = () => {
   const [selectedLocation, setSelectedLocation] = useState(null)
   const [donationDestination, setDonationDestination] = useState('recipients') // 'organization' or 'recipients'
   const formTopRef = useRef(null)
+  const [showWorkflowGuide, setShowWorkflowGuide] = useState(false)
 
   const {
     register,
@@ -120,8 +124,19 @@ const PostDonationPage = () => {
     if (isValid && currentStep < 3) {
       console.log('Moving to step:', currentStep + 1)
       setCurrentStep(currentStep + 1)
-      // Scroll to top of form smoothly
-      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // Scroll to top of form smoothly after state update
+      setTimeout(() => {
+        if (formTopRef.current) {
+          const headerOffset = 80 // Account for sticky header
+          const elementPosition = formTopRef.current.getBoundingClientRect().top
+          const offsetPosition = elementPosition + window.pageYOffset - headerOffset
+
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          })
+        }
+      }, 100)
     } else if (!isValid) {
       console.log('Validation failed, staying on current step')
     }
@@ -130,8 +145,19 @@ const PostDonationPage = () => {
   const prevStep = () => {
     if (currentStep > 1) {
       setCurrentStep(currentStep - 1)
-      // Scroll to top of form smoothly
-      formTopRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      // Scroll to top of form smoothly after state update
+      setTimeout(() => {
+        if (formTopRef.current) {
+          const headerOffset = 80 // Account for sticky header
+          const elementPosition = formTopRef.current.getBoundingClientRect().top
+          const offsetPosition = elementPosition + window.pageYOffset - headerOffset
+
+          window.scrollTo({
+            top: offsetPosition,
+            behavior: 'smooth'
+          })
+        }
+      }, 100)
     }
   }
 
@@ -208,94 +234,141 @@ const PostDonationPage = () => {
   }
 
   return (
-    <div className="min-h-screen py-2 sm:py-3" style={{backgroundColor: '#00237d'}}>
-      <div className="w-full sm:w-[90%] max-w-7xl mx-auto px-3 sm:px-4 md:px-6 lg:px-8">
+    <div className="min-h-screen py-4 sm:py-6 md:py-8" style={{backgroundColor: '#00237d'}}>
+      <div className="w-full max-w-[1400px] mx-auto px-4 sm:px-6 md:px-8 lg:px-10">
+
         {/* Header - Removed title, subtitle, and logo */}
         {location.state?.fromRequestId && (
           <motion.div
             ref={formTopRef}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-center mb-3 sm:mb-4"
+            className="text-center mb-6"
           >
-            <div className="mt-2 bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-3 py-2 inline-block text-left">
-              <p className="text-[10px] sm:text-xs text-yellow-300">
+            <div className="mt-2 bg-yellow-900/20 border border-yellow-500/30 rounded-lg px-4 py-3 inline-block text-left">
+              <p className="text-sm text-yellow-300">
                 You are fulfilling a recipient's request. You can adjust the details if needed.
               </p>
-              <div className="text-[10px] sm:text-xs text-yellow-400 mt-0.5">
+              <div className="text-sm text-yellow-400 mt-2">
                 <Link to="/browse-requests" className="underline hover:text-yellow-300">Back to Browse Requests</Link>
               </div>
             </div>
           </motion.div>
         )}
 
-        {/* Progress Steps */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="mb-3 sm:mb-4"
-        >
-          <div className="card p-2 sm:p-3 md:p-4 lg:p-5 border-2 border-yellow-500/20 shadow-2xl overflow-visible" style={{backgroundColor: '#001a5c'}}>
-            <div className="w-full flex justify-center overflow-x-auto overflow-y-visible -mx-1 sm:mx-0">
-              <div className="flex items-center justify-center w-full min-w-fit py-2 px-1 sm:px-0">
+        {/* Main Layout: Steps on Left, Form on Right */}
+        <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+          {/* Vertical Progress Steps - Left Side */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.1 }}
+            className="lg:w-80 xl:w-96 flex-shrink-0"
+          >
+            <div className="card px-6 py-10 sm:py-11 lg:px-8 lg:py-12 xl:py-14 border-2 border-yellow-500/20 shadow-2xl lg:sticky lg:top-20 rounded-xl" style={{backgroundColor: '#001a5c'}}>
+              {/* Header */}
+              <div className="flex items-center justify-between mb-10 sm:mb-11 lg:mb-12 pb-7 sm:pb-8 lg:pb-9 border-b border-navy-700">
+                <h3 className="text-xl font-bold text-white">Progress</h3>
+                <button
+                  type="button"
+                  onClick={() => setShowWorkflowGuide(true)}
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-navy-800 hover:bg-navy-700 text-yellow-400 hover:text-yellow-300 transition-all"
+                  title="How the workflow works"
+                  aria-label="How the workflow works"
+                >
+                  <Info className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Steps */}
+              <div className="relative">
                 {steps.map((step, index) => {
                   const StepIcon = step.icon
                   const isActive = currentStep === step.number
                   const isCompleted = currentStep > step.number
-                  // Shortened titles for very small screens
-                  const shortTitle = step.title === 'Basic Information' ? 'Basic Info' : 
-                                    step.title === 'Details & Location' ? 'Details' : 
-                                    step.title === 'Availability & Review' ? 'Review' : step.title
+                  const isUpcoming = currentStep < step.number
+                  
                   return (
-                    <React.Fragment key={step.number}>
-                      <div className="flex flex-col items-center flex-shrink-0 py-2 min-w-[55px] sm:min-w-[70px] md:min-w-0">
-                        <motion.div
-                          animate={{
-                            scale: isActive ? 1.1 : 1
-                          }}
-                          transition={{ duration: 0.3 }}
-                          style={{
-                            boxShadow: isActive ? '0 0 20px rgba(251, 191, 36, 0.5)' : 'none'
-                          }}
-                          className={`flex items-center justify-center w-7 h-7 sm:w-8 sm:h-8 md:w-9 md:h-9 lg:w-10 lg:h-10 rounded-full border-2 transition-all relative z-10 ${
-                            isActive || isCompleted
-                              ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 border-yellow-400 text-white shadow-lg'
-                              : 'bg-navy-800 border-navy-600 text-yellow-400'
-                          }`}
-                        >
-                          <StepIcon className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
-                        </motion.div>
-                        <span className={`mt-1 sm:mt-1.5 text-[9px] sm:text-[10px] md:text-xs lg:text-sm font-medium text-center leading-tight px-0.5 ${
-                          isActive || isCompleted ? 'text-yellow-400' : 'text-gray-500'
-                        }`}>
-                          <span className="hidden sm:inline">{step.title}</span>
-                          <span className="sm:hidden">{shortTitle}</span>
-                        </span>
+                    <div key={step.number} className="relative">
+                      {/* Step Item */}
+                      <div className="flex items-start gap-4 relative z-10">
+                        {/* Icon Container */}
+                        <div className="flex-shrink-0">
+                          <motion.div
+                            animate={{
+                              scale: isActive ? 1.05 : 1
+                            }}
+                            transition={{ duration: 0.3 }}
+                            className={`relative flex items-center justify-center w-14 h-14 lg:w-16 lg:h-16 rounded-full border-2 transition-all duration-300 ${
+                              isActive
+                                ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 border-yellow-400 text-white shadow-lg shadow-yellow-500/50'
+                                : isCompleted
+                                ? 'bg-gradient-to-br from-yellow-500/80 to-yellow-600/80 border-yellow-500/50 text-white'
+                                : 'bg-navy-800/50 border-navy-600 text-gray-500'
+                            }`}
+                          >
+                            <StepIcon className={`h-7 w-7 lg:h-8 lg:w-8 transition-all relative z-10 ${
+                              isActive ? 'text-white' : isCompleted ? 'text-white' : 'text-gray-500'
+                            }`} />
+                            {/* Yellow wave/glow effect for active step */}
+                            {isActive && (
+                              <motion.div
+                                animate={{
+                                  scale: [1, 1.3, 1],
+                                  opacity: [0.5, 0.8, 0.5]
+                                }}
+                                transition={{
+                                  duration: 2,
+                                  repeat: Infinity,
+                                  ease: "easeInOut"
+                                }}
+                                className="absolute inset-0 rounded-full bg-yellow-400/30 border-2 border-yellow-400/50"
+                              />
+                            )}
+                          </motion.div>
+                        </div>
+
+                        {/* Text Content */}
+                        <div className="flex-1 pt-2 sm:pt-2.5 lg:pt-3 min-w-0">
+                          <div className={`text-xs font-semibold uppercase tracking-wider mb-1.5 sm:mb-2 ${
+                            isActive ? 'text-yellow-400' : isCompleted ? 'text-yellow-500/70' : 'text-gray-500'
+                          }`}>
+                            Step {step.number}
+                          </div>
+                          <div className={`text-sm lg:text-base font-semibold leading-tight ${
+                            isActive ? 'text-white' : isCompleted ? 'text-gray-300' : 'text-gray-500'
+                          }`}>
+                            {step.title}
+                          </div>
+                        </div>
                       </div>
+
+                      {/* Connector Line */}
                       {index < steps.length - 1 && (
-                        <div
-                          className={`flex-1 h-0.5 mx-1 sm:mx-2 md:mx-3 lg:mx-4 xl:mx-6 transition-all duration-500 min-w-[8px] sm:min-w-[12px] md:min-w-[20px] ${
-                            isCompleted ? 'bg-gradient-to-r from-yellow-500 to-yellow-600' : 'bg-navy-700'
-                          }`}
-                        />
+                        <div className="relative ml-7 lg:ml-8 my-8 sm:my-10 lg:my-12">
+                          <div className={`absolute left-0 top-0 w-0.5 transition-all duration-500 ${
+                            isCompleted 
+                              ? 'h-full bg-gradient-to-b from-yellow-500 via-yellow-500 to-yellow-600' 
+                              : 'h-full bg-navy-700'
+                          }`} />
+                        </div>
                       )}
-                    </React.Fragment>
+                    </div>
                   )
                 })}
               </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
 
-        {/* Form */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.2 }}
-          className="card p-3 sm:p-4 border-2 border-yellow-500/20 shadow-2xl"
-          style={{backgroundColor: '#001a5c'}}
-        >
+          {/* Form - Right Side */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2 }}
+            className="flex-1"
+            ref={formTopRef}
+          >
+            <div className="card p-6 sm:p-8 md:p-10 lg:p-12 border-2 border-yellow-500/20 shadow-2xl" style={{backgroundColor: '#001a5c'}}>
           <form onSubmit={(e) => {
             if (currentStep !== 3) {
               e.preventDefault()
@@ -312,11 +385,14 @@ const PostDonationPage = () => {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.3 }}
-                  className="space-y-3"
+                  className="space-y-6"
                 >
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-white mb-2">
+                      <div className="flex items-center gap-2">
                       Donation Title *
+                      <HelpIcon content="A clear title helps recipients find your donation. Your donation will be matched with recipients who need this item." />
+                    </div>
                     </label>
                     <input
                       {...register('title', {
@@ -324,43 +400,49 @@ const PostDonationPage = () => {
                         minLength: { value: 5, message: 'Title must be at least 5 characters' },
                         maxLength: { value: 100, message: 'Title must be less than 100 characters' }
                       })}
-                      className="input text-xs sm:text-sm"
+                      className="input text-sm px-4 py-3"
                       placeholder="e.g., Winter Clothes for Children"
                     />
                     {errors.title && (
-                      <p className="mt-1 text-xs sm:text-sm text-danger-600">{errors.title.message}</p>
+                      <p className="mt-2 text-sm text-danger-600">{errors.title.message}</p>
                     )}
                   </div>
 
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-1">
-                      Description
+                    <label className="block text-sm font-medium text-white mb-2">
+                      <div className="flex items-center gap-2">
+                        Description
+                        <HelpIcon content="Detailed descriptions help recipients understand what you're offering. This improves matching and helps your donation reach those who need it most." />
+                      </div>
                     </label>
                     <textarea
                       {...register('description', {
                         maxLength: { value: 1000, message: 'Description must be less than 1000 characters' }
                       })}
-                      className="input h-20 resize-none text-xs sm:text-sm"
+                      className="input h-32 sm:h-36 resize-none text-sm px-4 py-3"
                       placeholder="Describe what you're donating, its condition, and any special instructions..."
                     />
                     {errors.description && (
-                      <p className="mt-0.5 text-xs sm:text-sm text-danger-600">{errors.description.message}</p>
+                      <p className="mt-2 text-sm text-danger-600">{errors.description.message}</p>
                     )}
-                    <div className="mt-0.5 text-[10px] sm:text-xs text-yellow-400 text-right">
+                    <div className="mt-2 text-sm text-yellow-400 text-right">
                       {watch('description')?.length || 0}/1000 characters
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-xs sm:text-sm font-medium text-white mb-1">
-                        Category *
+                      <label className="block text-sm font-medium text-white mb-2">
+                        <div className="flex items-center gap-2">
+                          Category *
+                          <HelpIcon content="Selecting the right category helps our smart matching algorithm connect your donation with recipients who need this type of item." />
+                        </div>
                       </label>
                       <select
                         {...register('category', {
                           required: 'Category is required'
                         })}
-                        className="input text-xs sm:text-sm"
+                        className="input text-sm px-4 py-3"
                       >
                         <option value="">Select a category</option>
                         {categories.map((category) => (
@@ -370,12 +452,12 @@ const PostDonationPage = () => {
                         ))}
                       </select>
                       {errors.category && (
-                        <p className="mt-1 text-xs sm:text-sm text-danger-600">{errors.category.message}</p>
+                        <p className="mt-2 text-sm text-danger-600">{errors.category.message}</p>
                       )}
                     </div>
 
                     <div>
-                      <label className="block text-xs sm:text-sm font-medium text-white mb-1">
+                      <label className="block text-sm font-medium text-white mb-2">
                         Quantity *
                       </label>
                       <input
@@ -385,26 +467,26 @@ const PostDonationPage = () => {
                           max: { value: 1000, message: 'Quantity must be less than 1000' }
                         })}
                         type="number"
-                        className="input text-xs sm:text-sm"
+                        className="input text-sm px-4 py-3"
                         placeholder="1"
                         min="1"
                       />
                       {errors.quantity && (
-                        <p className="mt-1 text-xs sm:text-sm text-danger-600">{errors.quantity.message}</p>
+                        <p className="mt-2 text-sm text-danger-600">{errors.quantity.message}</p>
                       )}
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-2">
+                    <label className="block text-sm font-medium text-white mb-2">
                       Tags (optional)
                     </label>
                     <input
                       {...register('tags')}
-                      className="input text-xs sm:text-sm"
+                      className="input text-sm px-4 py-3"
                       placeholder="urgent, winter, children (separate with commas)"
                     />
-                    <p className="mt-2 text-[10px] sm:text-xs text-yellow-400">
+                    <p className="mt-2 text-sm text-yellow-400">
                       Add tags to help recipients find your donation more easily
                     </p>
                   </div>
@@ -419,17 +501,17 @@ const PostDonationPage = () => {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.3 }}
-                  className="space-y-3"
+                  className="space-y-6"
                 >
                   {/* Donation Destination Selection - Moved to first */}
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-2">
+                    <label className="block text-sm font-medium text-white mb-3">
                       Where to send this donation? *
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* To Recipients with Options - Moved to first */}
                       <label
-                        className={`cursor-pointer p-2.5 sm:p-3 rounded-lg border-2 transition-all ${
+                        className={`cursor-pointer p-2 sm:p-2.5 rounded-lg border-2 transition-all ${
                           donationDestination === 'recipients'
                             ? 'border-yellow-500 bg-yellow-900/20 shadow-lg shadow-yellow-500/20'
                             : 'border-navy-700 bg-navy-800 hover:border-navy-600'
@@ -444,7 +526,7 @@ const PostDonationPage = () => {
                           className="sr-only"
                         />
                         <div className="flex items-start space-x-2">
-                          <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                          <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
                             donationDestination === 'recipients'
                               ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg'
                               : 'bg-navy-700 border-2 border-navy-600'
@@ -471,7 +553,7 @@ const PostDonationPage = () => {
 
                       {/* Direct to Organization */}
                       <label
-                        className={`cursor-pointer p-2.5 sm:p-3 rounded-lg border-2 transition-all ${
+                        className={`cursor-pointer p-2 sm:p-2.5 rounded-lg border-2 transition-all ${
                           donationDestination === 'organization'
                             ? 'border-yellow-500 bg-yellow-900/20 shadow-lg shadow-yellow-500/20'
                             : 'border-navy-700 bg-navy-800 hover:border-navy-600'
@@ -488,7 +570,7 @@ const PostDonationPage = () => {
                           className="sr-only"
                         />
                         <div className="flex items-start space-x-2">
-                          <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                          <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
                             donationDestination === 'organization'
                               ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg'
                               : 'bg-navy-700 border-2 border-navy-600'
@@ -516,14 +598,14 @@ const PostDonationPage = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-2">
+                    <label className="block text-sm font-medium text-white mb-3">
                       Condition *
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {conditions.map((condition) => (
                         <label
                           key={condition.value}
-                          className={`cursor-pointer p-2.5 sm:p-3 rounded-lg border transition-all ${
+                          className={`cursor-pointer p-2 sm:p-2.5 rounded-lg border transition-all ${
                             watchedCondition === condition.value
                               ? 'border-yellow-500 bg-yellow-900/20'
                               : 'border-navy-700 bg-navy-800 hover:border-navy-600'
@@ -544,22 +626,22 @@ const PostDonationPage = () => {
                         </label>
                       ))}
                     </div>
-                    {errors.condition && (
-                      <p className="mt-1 text-xs sm:text-sm text-danger-600">{errors.condition.message}</p>
-                    )}
+                      {errors.condition && (
+                        <p className="mt-2 text-sm text-danger-600">{errors.condition.message}</p>
+                      )}
                   </div>
 
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-white mb-2">
                       Pickup Location *
                     </label>
-                    <div className="space-y-2">
-                      <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+                    <div className="space-y-3">
+                      <div className="flex flex-col sm:flex-row gap-3">
                         <input
                           {...register('pickup_location', {
                             required: 'Pickup location is required'
                           })}
-                          className="input flex-1 text-xs sm:text-sm"
+                          className="input flex-1 text-sm px-4 py-3"
                           placeholder="Enter pickup address or location"
                           value={selectedLocation?.address || watch('pickup_location') || ''}
                           readOnly={selectedLocation !== null}
@@ -567,9 +649,9 @@ const PostDonationPage = () => {
                         <button
                           type="button"
                           onClick={() => setShowLocationPicker(true)}
-                          className="px-3 sm:px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center justify-center space-x-2 text-xs sm:text-sm whitespace-nowrap"
+                          className="px-4 sm:px-6 py-3 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm whitespace-nowrap font-medium"
                         >
-                          <MapPin className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                          <MapPin className="w-5 h-5" />
                           <span>Map</span>
                         </button>
                       </div>
@@ -582,23 +664,23 @@ const PostDonationPage = () => {
                         </div>
                       )}
                       {errors.pickup_location && (
-                        <p className="mt-1 text-xs sm:text-sm text-danger-600">{errors.pickup_location.message}</p>
+                        <p className="mt-2 text-sm text-danger-600">{errors.pickup_location.message}</p>
                       )}
                     </div>
                   </div>
 
                   {/* Mode of Delivery and Expiry Date in same row */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     {/* Mode of Delivery */}
                     <div>
-                      <label className="block text-xs sm:text-sm font-medium text-white mb-1">
+                      <label className="block text-sm font-medium text-white mb-2">
                         Mode of Delivery *
                       </label>
                       <select
                         {...register('delivery_mode', {
                           required: 'Delivery mode is required'
                         })}
-                        className="input text-xs sm:text-sm"
+                        className="input text-sm px-4 py-3 h-[42px]"
                       >
                         <option value="">Select delivery mode</option>
                         {donationDestination === 'organization' ? (
@@ -616,9 +698,9 @@ const PostDonationPage = () => {
                         )}
                       </select>
                       {errors.delivery_mode && (
-                        <p className="mt-0.5 text-xs sm:text-sm text-danger-600">{errors.delivery_mode.message}</p>
+                        <p className="mt-2 text-sm text-danger-600">{errors.delivery_mode.message}</p>
                       )}
-                      <p className="mt-0.5 text-[10px] sm:text-xs text-yellow-400">
+                      <p className="mt-2 text-sm text-yellow-400">
                         {donationDestination === 'organization' 
                           ? 'Choose how to deliver your donation to the organization' 
                           : 'Choose how recipients can receive this donation'}
@@ -627,13 +709,13 @@ const PostDonationPage = () => {
 
                     {/* Expiry Date */}
                     <div>
-                      <label className="block text-xs sm:text-sm font-medium text-white mb-1">
+                      <label className="block text-sm font-medium text-white mb-2">
                         Expiry Date (if applicable)
                       </label>
                       <input
                         {...register('expiry_date')}
                         type="date"
-                        className="input text-xs sm:text-sm"
+                        className="input text-sm px-4 py-3 h-[42px]"
                         min={new Date().toISOString().split('T')[0]}
                       />
                     </div>
@@ -641,11 +723,11 @@ const PostDonationPage = () => {
 
                   {/* Info message when organization is selected */}
                   {donationDestination === 'organization' && (
-                    <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-2 flex items-start space-x-2">
-                      <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5 text-yellow-400" />
+                    <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 flex items-start space-x-3">
+                      <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5 text-yellow-400" />
                       <div className="flex-1">
-                        <p className="text-xs font-medium text-yellow-300">Sending to Organization</p>
-                        <p className="text-xs text-yellow-400 mt-0.5">
+                        <p className="text-sm font-medium text-yellow-300">Sending to Organization</p>
+                        <p className="text-sm text-yellow-400 mt-1">
                           Your donation will be sent directly to the organization (CFC-GK) for distribution to those in need.
                         </p>
                       </div>
@@ -654,12 +736,12 @@ const PostDonationPage = () => {
 
                   {/* Pickup Instructions - Moved to last */}
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-1">
+                    <label className="block text-sm font-medium text-white mb-2">
                       Pickup Instructions (optional)
                     </label>
                     <textarea
                       {...register('pickup_instructions')}
-                      className="input h-16 resize-none text-xs sm:text-sm"
+                      className="input h-24 sm:h-28 resize-none text-sm px-4 py-3"
                       placeholder="Special instructions for pickup (e.g., gate code, best time to contact, etc.)"
                     />
                   </div>
@@ -674,30 +756,30 @@ const PostDonationPage = () => {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: -20 }}
                   transition={{ duration: 0.3 }}
-                  className="space-y-3"
+                  className="space-y-6"
                 >
                   {/* Urgent Priority Section */}
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-1.5">
+                    <label className="block text-sm font-medium text-white mb-2">
                       Priority Level *
                     </label>
-                    <p className="text-[10px] sm:text-xs text-yellow-400 mb-2">
+                    <p className="text-sm text-yellow-400 mb-4">
                       Select the urgency level for this donation
                     </p>
                     
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {/* Normal Priority Button */}
                       <button
                         type="button"
                         onClick={() => setValue('is_urgent', false)}
-                        className={`relative p-2.5 sm:p-3 rounded-lg border-2 transition-all duration-300 ${
+                        className={`relative p-2 sm:p-2.5 rounded-lg border-2 transition-all duration-300 ${
                           !watchedIsUrgent
                             ? 'border-yellow-500 bg-gradient-to-br from-yellow-900/30 to-yellow-800/20 shadow-lg shadow-yellow-500/20'
                             : 'border-navy-600 bg-navy-800 hover:border-navy-500'
                         }`}
                       >
                         <div className="flex items-start space-x-2">
-                          <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                          <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
                             !watchedIsUrgent
                               ? 'bg-gradient-to-br from-yellow-500 to-yellow-600 shadow-lg shadow-yellow-500/50'
                               : 'bg-navy-700 border-2 border-navy-600'
@@ -732,14 +814,14 @@ const PostDonationPage = () => {
                       <button
                         type="button"
                         onClick={() => setValue('is_urgent', true)}
-                        className={`relative p-2.5 sm:p-3 rounded-lg border-2 transition-all duration-300 ${
+                        className={`relative p-2 sm:p-2.5 rounded-lg border-2 transition-all duration-300 ${
                           watchedIsUrgent
                             ? 'border-red-500 bg-gradient-to-br from-red-900/30 to-red-800/20 shadow-lg shadow-red-500/20'
                             : 'border-navy-600 bg-navy-800 hover:border-navy-500'
                         }`}
                       >
                         <div className="flex items-start space-x-2">
-                          <div className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
+                          <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center transition-all flex-shrink-0 ${
                             watchedIsUrgent
                               ? 'bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/50'
                               : 'bg-navy-700 border-2 border-navy-600'
@@ -777,12 +859,12 @@ const PostDonationPage = () => {
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: 'auto' }}
                         exit={{ opacity: 0, height: 0 }}
-                        className="mt-2 flex items-start space-x-2 text-red-400 bg-red-900/20 px-2.5 py-2 rounded-lg border border-red-500/30"
+                        className="mt-4 flex items-start space-x-3 text-red-400 bg-red-900/20 px-4 py-3 rounded-lg border border-red-500/30"
                       >
-                        <AlertCircle className="h-4 w-4 flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="h-5 w-5 flex-shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-xs font-medium">Urgent Priority Enabled</p>
-                          <p className="text-xs text-red-300 mt-0.5">
+                          <p className="text-sm font-medium">Urgent Priority Enabled</p>
+                          <p className="text-sm text-red-300 mt-1">
                             This donation will be highlighted and prioritized in search results to ensure quick matching with recipients.
                           </p>
                         </div>
@@ -792,10 +874,10 @@ const PostDonationPage = () => {
 
                   {/* Image Upload Section */}
                   <div>
-                    <label className="block text-xs sm:text-sm font-medium text-white mb-1.5">
+                    <label className="block text-sm font-medium text-white mb-2">
                       Donation Photos
                     </label>
-                    <p className="text-xs text-yellow-400 mb-2">
+                    <p className="text-sm text-yellow-400 mb-4">
                       Upload photos of your donation to help recipients see what you're offering. (Max 5 images, 5MB each)
                     </p>
                     
@@ -810,22 +892,22 @@ const PostDonationPage = () => {
                           className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                           disabled={uploadedImages.length >= 5}
                         />
-                        <div className={`border-2 border-dashed rounded-lg p-3 text-center transition-all ${
+                        <div className={`border-2 border-dashed rounded-lg p-6 sm:p-8 text-center transition-all ${
                           uploadedImages.length >= 5 
                             ? 'border-navy-700 bg-navy-800/50 cursor-not-allowed' 
                             : 'border-navy-600 bg-navy-800 hover:border-yellow-500 hover:bg-navy-700 cursor-pointer'
                         }`}>
-                          <Upload className={`h-5 w-5 mx-auto mb-1 ${
+                          <Upload className={`h-8 w-8 sm:h-10 sm:w-10 mx-auto mb-3 ${
                             uploadedImages.length >= 5 ? 'text-gray-500' : 'text-yellow-400'
                           }`} />
-                          <p className={`text-[10px] sm:text-xs ${
+                          <p className={`text-sm ${
                             uploadedImages.length >= 5 ? 'text-gray-500' : 'text-white'
                           }`}>
                             {uploadedImages.length >= 5 
                               ? 'Maximum 5 images reached' 
                               : 'Click to upload images or drag and drop'}
                           </p>
-                          <p className={`text-[10px] sm:text-xs mt-0.5 ${
+                          <p className={`text-sm mt-2 ${
                             uploadedImages.length >= 5 ? 'text-gray-500' : 'text-yellow-400'
                           }`}>
                             PNG, JPG, JPEG up to 5MB each
@@ -835,7 +917,7 @@ const PostDonationPage = () => {
 
                       {/* Image Preview Grid */}
                       {uploadedImages.length > 0 && (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
                           {uploadedImages.map((image) => (
                             <div key={image.id} className="relative group">
                               <div className="aspect-square rounded-lg overflow-hidden bg-navy-800">
@@ -863,148 +945,160 @@ const PostDonationPage = () => {
                   </div>
 
                   {/* Review Section */}
-                  <div className="border-t border-navy-700 pt-4 mt-4">
-                    <div className="flex items-center gap-2 mb-4">
-                      <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-yellow-400 flex-shrink-0" />
-                      <h3 className="text-xs sm:text-sm font-semibold text-white">Review Your Donation</h3>
+                  <div className="border-t-2 border-navy-600 pt-8 mt-8">
+                    <div className="mb-8">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className="p-2 bg-yellow-500/10 rounded-lg border border-yellow-500/20">
+                          <CheckCircle className="h-6 w-6 text-yellow-400" />
+                        </div>
+                        <div>
+                          <h3 className="text-2xl font-bold text-white">Donation Review</h3>
+                          <p className="text-sm text-gray-400 mt-1">Please review all information before submitting</p>
+                        </div>
+                      </div>
                     </div>
                     
-                    <div className="bg-navy-800 rounded-lg border-2 border-navy-700 shadow-lg">
-                      {/* Title and Description Section */}
-                      <div className="p-4 sm:p-5 border-b border-navy-700">
-                        <div className="mb-4">
-                          <label className="block text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2">Donation Title</label>
-                          <h4 className="text-xs sm:text-sm font-semibold text-white">{watch('title') || 'No title provided'}</h4>
-                        </div>
-
-                        {watch('description') && (
-                          <div>
-                            <label className="block text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2">Description</label>
-                            <p className="text-xs sm:text-sm text-yellow-200 leading-relaxed">{watch('description')}</p>
+                    <div className="bg-gradient-to-br from-navy-800/50 to-navy-900/50 rounded-xl border-2 border-navy-600/50 shadow-xl overflow-hidden">
+                      {/* Header Section */}
+                      <div className="bg-navy-900/50 px-6 py-4 border-b-2 border-navy-700">
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider mb-2">Donation Information</div>
+                            <h4 className="text-xl font-bold text-white leading-tight">{watch('title') || 'Untitled Donation'}</h4>
                           </div>
-                        )}
+                          {watchedIsUrgent && (
+                            <div className="ml-4 flex-shrink-0">
+                              <span className="inline-flex items-center px-3 py-1.5 rounded-md text-xs font-bold bg-danger-900/40 text-danger-300 border border-danger-500/40 uppercase tracking-wide">
+                                <AlertCircle className="h-3.5 w-3.5 mr-1.5" />
+                                Urgent
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
 
-                      {/* Main Details Grid */}
-                      <div className="p-4 sm:p-5">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+                      {/* Description Section */}
+                      {watch('description') && (
+                        <div className="px-6 py-5 border-b border-navy-700/50">
+                          <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider mb-2">Description</div>
+                          <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">{watch('description')}</p>
+                        </div>
+                      )}
+
+                      {/* Details Grid */}
+                      <div className="px-6 py-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                           {/* Category */}
-                          <div className="pb-3 sm:pb-4 border-b border-navy-700 sm:border-b-0 sm:border-r sm:pr-4 lg:pr-5">
-                            <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 block">Category</label>
-                            <p className="text-xs sm:text-sm text-white font-medium">{watch('category') || 'Not specified'}</p>
+                          <div className="space-y-2">
+                            <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider">Category</div>
+                            <div className="text-base text-white font-medium">{watch('category') || 'Not specified'}</div>
                           </div>
 
                           {/* Quantity */}
-                          <div className="pb-3 sm:pb-4 border-b border-navy-700 sm:border-b-0 sm:border-r sm:pr-4 lg:pr-5">
-                            <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 block">Quantity</label>
-                            <p className="text-xs sm:text-sm text-white font-medium">{watch('quantity') || 1}</p>
+                          <div className="space-y-2">
+                            <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider">Quantity</div>
+                            <div className="text-base text-white font-medium">{watch('quantity') || 1} {watch('quantity') === 1 ? 'item' : 'items'}</div>
                           </div>
 
                           {/* Condition */}
-                          <div className="pb-3 sm:pb-4">
-                            <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 block">Condition</label>
-                            <div className={`inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium ${
-                              watchedCondition === 'new' ? 'bg-success-900/30 text-success-300 border border-success-500/30' :
-                              watchedCondition === 'like_new' ? 'bg-yellow-900/30 text-yellow-300 border border-yellow-500/30' :
-                              watchedCondition === 'good' ? 'bg-amber-900/30 text-amber-300 border border-amber-500/30' :
-                              'bg-orange-900/30 text-orange-300 border border-orange-500/30'
+                          <div className="space-y-2">
+                            <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider">Item Condition</div>
+                            <div className={`inline-flex items-center px-3 py-1.5 rounded-md text-sm font-medium ${
+                              watchedCondition === 'new' ? 'bg-success-900/40 text-success-300 border border-success-500/40' :
+                              watchedCondition === 'like_new' ? 'bg-yellow-900/40 text-yellow-300 border border-yellow-500/40' :
+                              watchedCondition === 'good' ? 'bg-amber-900/40 text-amber-300 border border-amber-500/40' :
+                              'bg-orange-900/40 text-orange-300 border border-orange-500/40'
                             }`}>
                               {watchedCondition && conditions.find(c => c.value === watchedCondition)?.label || 'Not specified'}
                             </div>
                           </div>
 
-                          {/* Priority */}
-                          {watchedIsUrgent && (
-                            <div className="pb-3 sm:pb-4 border-b border-navy-700 sm:border-b-0 sm:border-r sm:pr-4 lg:pr-5">
-                              <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 block">Priority</label>
-                              <span className="inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 rounded-md text-xs sm:text-sm font-medium bg-danger-900/30 text-danger-300 border border-danger-500/30">
-                                <AlertCircle className="h-3 w-3 sm:h-3.5 sm:w-3.5 mr-1.5" />
-                                Urgent
-                              </span>
-                            </div>
-                          )}
-
                           {/* Pickup Location */}
-                          <div className={`pb-3 sm:pb-4 ${watchedIsUrgent ? 'sm:border-r sm:pr-4 lg:pr-5' : 'border-b border-navy-700 sm:border-b-0 sm:border-r sm:pr-4 lg:pr-5'}`}>
-                            <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                              <MapPin className="h-3.5 w-3.5 flex-shrink-0" />
+                          <div className="space-y-2">
+                            <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                              <MapPin className="h-3.5 w-3.5" />
                               Pickup Location
-                            </label>
-                            <p className="text-xs sm:text-sm text-white font-medium break-words leading-relaxed">{watch('pickup_location') || 'Not specified'}</p>
+                            </div>
+                            <div className="text-sm text-white font-medium leading-relaxed">{watch('pickup_location') || 'Not specified'}</div>
                           </div>
                           
-                          {/* Delivery Details */}
-                          <div className={`pb-3 sm:pb-4 ${watchedIsUrgent ? '' : 'sm:border-r sm:pr-4 lg:pr-5'}`}>
-                            <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                          {/* Delivery Method */}
+                          <div className="space-y-2">
+                            <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider flex items-center gap-1.5">
                               {donationDestination === 'organization' ? (
-                                <Package className="h-3.5 w-3.5 flex-shrink-0" />
+                                <Package className="h-3.5 w-3.5" />
                               ) : (
-                                <Users className="h-3.5 w-3.5 flex-shrink-0" />
+                                <Users className="h-3.5 w-3.5" />
                               )}
-                              Delivery Details
-                            </label>
-                            <div className="text-xs sm:text-sm text-white">
-                              <p className="font-semibold mb-1">{donationDestination === 'organization' ? 'Direct to Organization' : 'To Recipients'}</p>
-                              <p className="text-yellow-300 font-medium">
+                              Delivery Method
+                            </div>
+                            <div className="space-y-1">
+                              <div className="text-sm text-white font-semibold">{donationDestination === 'organization' ? 'Direct to Organization' : 'To Recipients'}</div>
+                              <div className="text-sm text-gray-300">
                                 {watchedDeliveryMode === 'pickup' ? 'Self Pickup' : 
                                  watchedDeliveryMode === 'volunteer' ? 'Volunteer Delivery' : 
                                  watchedDeliveryMode === 'direct' ? 'Direct Delivery (by donor)' :
-                                 watchedDeliveryMode === 'donor_delivery' ? 'I will deliver to organization' :
+                                 watchedDeliveryMode === 'donor_delivery' ? 'Donor will deliver to organization' :
                                  watchedDeliveryMode === 'organization_pickup' ? 'Organization will pick up' :
                                  'Not specified'}
-                              </p>
+                              </div>
                             </div>
                           </div>
 
                           {/* Expiry Date */}
                           {watch('expiry_date') && (
-                            <div className="pb-3 sm:pb-4">
-                              <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
+                            <div className="space-y-2">
+                              <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                                <Calendar className="h-3.5 w-3.5" />
                                 Expiry Date
-                              </label>
-                              <p className="text-xs sm:text-sm text-white font-medium">
+                              </div>
+                              <div className="text-sm text-white font-medium">
                                 {new Date(watch('expiry_date')).toLocaleDateString('en-US', { 
                                   year: 'numeric', 
                                   month: 'long', 
                                   day: 'numeric' 
                                 })}
-                              </p>
+                              </div>
                             </div>
                           )}
 
                           {/* Photos */}
                           {uploadedImages.length > 0 && (
-                            <div className={`pb-3 sm:pb-4 ${watch('expiry_date') ? '' : 'sm:col-span-2 lg:col-span-1'}`}>
-                              <label className="text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                                <ImageIcon className="h-3.5 w-3.5 flex-shrink-0" />
-                                Photos ({uploadedImages.length})
-                              </label>
-                              <p className="text-xs sm:text-sm text-yellow-300 font-medium">{uploadedImages.length} photo{uploadedImages.length > 1 ? 's' : ''} uploaded</p>
+                            <div className="space-y-2">
+                              <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider flex items-center gap-1.5">
+                                <ImageIcon className="h-3.5 w-3.5" />
+                                Attachments
+                              </div>
+                              <div className="text-sm text-white font-medium">{uploadedImages.length} image{uploadedImages.length > 1 ? 's' : ''} attached</div>
                             </div>
                           )}
                         </div>
                       </div>
 
-                      {/* Pickup Instructions - Full Width */}
-                      {watch('pickup_instructions') && (
-                        <div className="p-4 sm:p-5 border-t border-navy-700">
-                          <label className="block text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2">Pickup Instructions</label>
-                          <p className="text-xs sm:text-sm text-yellow-200 leading-relaxed">{watch('pickup_instructions')}</p>
-                        </div>
-                      )}
+                      {/* Additional Information */}
+                      {(watch('pickup_instructions') || watch('tags')) && (
+                        <div className="border-t border-navy-700/50">
+                          {/* Pickup Instructions */}
+                          {watch('pickup_instructions') && (
+                            <div className="px-6 py-5 border-b border-navy-700/50">
+                              <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider mb-2">Pickup Instructions</div>
+                              <p className="text-sm text-gray-200 leading-relaxed whitespace-pre-wrap">{watch('pickup_instructions')}</p>
+                            </div>
+                          )}
 
-                      {/* Tags - Full Width */}
-                      {watch('tags') && (
-                        <div className="p-4 sm:p-5 border-t border-navy-700">
-                          <label className="block text-[10px] sm:text-xs text-yellow-400 font-semibold uppercase tracking-wider mb-2">Tags</label>
-                          <div className="flex flex-wrap gap-2">
-                            {watch('tags').split(',').map((tag, idx) => tag.trim()).filter(tag => tag).map((tag, idx) => (
-                              <span key={idx} className="inline-flex items-center px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-md text-xs sm:text-sm bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 font-medium">
-                                {tag.trim()}
-                              </span>
-                            ))}
-                          </div>
+                          {/* Tags */}
+                          {watch('tags') && (
+                            <div className="px-6 py-5">
+                              <div className="text-xs text-yellow-400/70 font-semibold uppercase tracking-wider mb-3">Tags</div>
+                              <div className="flex flex-wrap gap-2">
+                                {watch('tags').split(',').map((tag, idx) => tag.trim()).filter(tag => tag).map((tag, idx) => (
+                                  <span key={idx} className="inline-flex items-center px-3 py-1.5 rounded-md text-xs bg-yellow-900/30 text-yellow-300 border border-yellow-500/30 font-medium">
+                                    {tag.trim()}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>
@@ -1014,14 +1108,14 @@ const PostDonationPage = () => {
             </AnimatePresence>
 
             {/* Navigation Buttons */}
-            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2 mt-3 pt-3 border-t-2 border-navy-700">
+            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-4 mt-8 pt-6 border-t-2 border-navy-700">
               <button
                 type="button"
                 onClick={prevStep}
                 disabled={currentStep === 1}
-                className="w-full sm:w-auto px-3 sm:px-4 py-1.5 sm:py-2 bg-navy-700 hover:bg-navy-600 text-white rounded-lg text-[10px] sm:text-xs md:text-sm font-medium transition-all flex items-center justify-center space-x-1.5 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-navy-700 shadow-lg hover:shadow-xl order-2 sm:order-1"
+                className="w-full sm:w-auto px-6 py-3 bg-navy-700 hover:bg-navy-600 text-white rounded-lg text-sm font-medium transition-all flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-navy-700 shadow-lg hover:shadow-xl order-2 sm:order-1"
               >
-                <ArrowLeft className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
+                <ArrowLeft className="h-5 w-5" />
                 <span>Previous</span>
               </button>
 
@@ -1032,16 +1126,16 @@ const PostDonationPage = () => {
                     e.preventDefault()
                     nextStep()
                   }}
-                  className="w-full sm:w-auto px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg text-[10px] sm:text-xs md:text-sm font-semibold transition-all flex items-center justify-center space-x-1.5 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 order-1 sm:order-2"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 bg-gradient-to-r from-yellow-500 to-yellow-600 hover:from-yellow-600 hover:to-yellow-700 text-white rounded-lg text-sm font-semibold transition-all flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 order-1 sm:order-2"
                 >
                   <span>Next Step</span>
-                  <ArrowRight className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
+                  <ArrowRight className="h-5 w-5" />
                 </button>
               ) : (
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="w-full sm:w-auto px-3 sm:px-4 md:px-5 py-1.5 sm:py-2 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-[10px] sm:text-xs md:text-sm font-bold transition-all flex items-center justify-center space-x-1.5 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 order-1 sm:order-2"
+                  className="w-full sm:w-auto px-6 sm:px-8 py-3 bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white rounded-lg text-sm font-bold transition-all flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl hover:scale-105 transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 order-1 sm:order-2"
                 >
                   {isLoading ? (
                     <>
@@ -1050,7 +1144,7 @@ const PostDonationPage = () => {
                     </>
                   ) : (
                     <>
-                      <Gift className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4" />
+                      <Gift className="h-5 w-5" />
                       <span>Post Donation</span>
                     </>
                   )}
@@ -1058,7 +1152,9 @@ const PostDonationPage = () => {
               )}
             </div>
           </form>
-        </motion.div>
+            </div>
+          </motion.div>
+        </div>
 
         {/* Location Picker Modal */}
         <LocationPicker
@@ -1071,6 +1167,12 @@ const PostDonationPage = () => {
           }}
           initialLocation={selectedLocation}
           title="Select Pickup Location"
+        />
+        {/* Workflow Guide Modal */}
+        <WorkflowGuideModal
+          isOpen={showWorkflowGuide}
+          onClose={() => setShowWorkflowGuide(false)}
+          userRole="donor"
         />
       </div>
     </div>

@@ -7,6 +7,7 @@ import { DashboardSkeleton } from './components/ui/Skeleton'
 import SetupGuide from './components/ui/SetupGuide'
 import ScrollToTop from './components/ui/ScrollToTop'
 import { ErrorBoundaryWithNavigate } from './components/ui/ErrorBoundary'
+import PageRefreshHandler from './components/ui/PageRefreshHandler'
 import { useAuth } from './contexts/AuthContext'
 import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
@@ -17,6 +18,7 @@ import { preloadRoutes } from './lib/preloadRoutes'
 // Import public pages directly (avoiding lazy loading for these specific pages due to Vercel build issues)
 import HomePage from './pages/HomePage.jsx'
 import AboutPage from './pages/AboutPage.jsx'
+import HowItWorksPage from './pages/HowItWorksPage.jsx'
 
 // Lazy load other pages for better performance
 const importLoginPage = () => import('./pages/auth/LoginPage')
@@ -330,6 +332,7 @@ function AppContent() {
   
   return (
     <div className="min-h-screen flex flex-col" style={{backgroundColor: '#1e293b'}}>
+      <PageRefreshHandler />
       <Navbar />
       
       <main className={`flex-1 transition-all duration-200 ${shouldShowSidebar ? 'ml-12 sm:ml-16' : ''}`}>
@@ -350,6 +353,7 @@ function AppContent() {
               {/* Public routes */}
               <Route path="/" element={<HomePage />} />
               <Route path="/about" element={<AboutPage />} />
+              <Route path="/how-it-works" element={<HowItWorksPage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
               
@@ -379,7 +383,7 @@ function AppContent() {
               {/* Protected routes */}
               <Route path="/dashboard" element={
                 <ProtectedRoute>
-                  <DashboardPage />
+                  <DashboardPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/profile" element={
@@ -401,66 +405,66 @@ function AppContent() {
               } />
               <Route path="/my-donations" element={
                 <ProtectedRoute allowedRoles={['donor']}>
-                  <MyDonationsPage />
+                  <MyDonationsPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/browse-requests" element={
                 <ProtectedRoute allowedRoles={['donor']}>
-                  <BrowseRequestsPage />
+                  <BrowseRequestsPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/pending-requests" element={
                 <ProtectedRoute allowedRoles={['donor']}>
-                  <PendingRequestsPage />
+                  <PendingRequestsPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               
               {/* Recipient routes */}
               <Route path="/browse-donations" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
-                  <BrowseDonationsPage />
+                  <BrowseDonationsPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/create-request" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
-                  <CreateRequestPage />
+                  <CreateRequestPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/my-requests" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
-                  <MyRequestsPage />
+                  <MyRequestsPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/my-approved-requests" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
-                  <MyApprovedRequestsPage />
+                  <MyApprovedRequestsPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/my-approved-donations" element={
                 <ProtectedRoute allowedRoles={['recipient']}>
-                  <MyApprovedDonationsPage />
+                  <MyApprovedDonationsPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               
               {/* Volunteer routes */}
               <Route path="/volunteer-dashboard" element={
                 <ProtectedRoute allowedRoles={['volunteer']}>
-                  <VolunteerDashboardPage />
+                  <VolunteerDashboardPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/available-tasks" element={
                 <ProtectedRoute allowedRoles={['volunteer']}>
-                  <AvailableTasksPage />
+                  <AvailableTasksPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/my-deliveries" element={
                 <ProtectedRoute allowedRoles={['volunteer']}>
-                  <MyDeliveriesPage />
+                  <MyDeliveriesPage key={location.pathname} />
                 </ProtectedRoute>
               } />
               <Route path="/volunteer-schedule" element={
                 <ProtectedRoute allowedRoles={['volunteer']}>
-                  <VolunteerSchedulePage />
+                  <VolunteerSchedulePage key={location.pathname} />
                 </ProtectedRoute>
               } />
               

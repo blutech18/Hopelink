@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { 
   Search, 
   Filter, 
@@ -42,6 +42,7 @@ const BrowseDonationsPage = () => {
   const { user, profile } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
   const [donations, setDonations] = useState([])
   const [donationsWithScores, setDonationsWithScores] = useState([])
   const [userRequests, setUserRequests] = useState([])
@@ -114,6 +115,17 @@ const BrowseDonationsPage = () => {
         }
       }
       
+      // Set initial donations immediately without matching scores to show page faster
+      setDonationsWithScores(availableDonations.map(donation => ({
+        ...donation,
+        matchingScore: 0,
+        bestMatchingRequest: null,
+        matchReason: 'Calculating match...'
+      })))
+      
+      // Set loading to false immediately so page renders
+      setLoading(false)
+      
       // Load user's requests for matching (ONLY user's requests should be used for matching)
       let userRequestsList = []
       let recipientUser = null
@@ -127,14 +139,6 @@ const BrowseDonationsPage = () => {
         setUserRequests(userRequestsList || [])
       }
       
-      // Progressive loading: Show donations immediately, then calculate matching scores in batches
-      setDonationsWithScores(availableDonations.map(donation => ({
-        ...donation,
-        matchingScore: 0,
-        bestMatchingRequest: null,
-        matchReason: 'Calculating match...'
-      })))
-      
       // If user has no requests, show donations without scores (no matching section)
       if (!userRequestsList || userRequestsList.length === 0) {
         setDonationsWithScores(availableDonations.map(donation => ({
@@ -146,7 +150,7 @@ const BrowseDonationsPage = () => {
         return
       }
       
-      // Check if auto-matching is enabled
+      // Check if auto-matching is enabled (non-blocking)
       let autoMatchEnabled = false
       let autoClaimThreshold = 0.8 // Default 80%
       try {
@@ -160,26 +164,62 @@ const BrowseDonationsPage = () => {
         console.warn('Could not load matching parameters for auto-claim:', err)
       }
       
-      // Calculate matching scores in smaller batches for better performance
-      const batchSize = 5
-      const donationsToProcess = availableDonations || []
-      
-      // Process donations in batches to avoid blocking
-      for (let i = 0; i < donationsToProcess.length; i += batchSize) {
-        const batch = donationsToProcess.slice(i, i + batchSize)
+      // Calculate matching scores asynchronously after page loads (non-blocking)
+      const calculateMatchingScores = async () => {
+        const batchSize = 5
+        const donationsToProcess = availableDonations || []
         
-        // Process batch in parallel
-        const batchResults = await Promise.all(
-          batch.map(async (donation) => {
-            try {
-              // Use the matching algorithm to find best matches from USER'S requests only
-              const matches = await intelligentMatcher.matchDonationToRequests(donation, userRequestsList, recipientUser, 1)
-              
-              if (matches && matches.length > 0 && matches[0].score > 0) {
-                const bestMatch = matches[0]
+        // Process donations in batches to avoid blocking
+        for (let i = 0; i < donationsToProcess.length; i += batchSize) {
+          const batch = donationsToProcess.slice(i, i + batchSize)
+          
+          // Process batch in parallel
+          const batchResults = await Promise.all(
+            batch.map(async (donation) => {
+              try {
+                // Use the matching algorithm to find best matches from USER'S requests only
+                const matches = await intelligentMatcher.matchDonationToRequests(donation, userRequestsList, recipientUser, 1)
                 
-                // Ensure the matched request belongs to the current user (safety check)
-                if (bestMatch.request?.requester_id !== user?.id) {
+                if (matches && matches.length > 0 && matches[0].score > 0) {
+                  const bestMatch = matches[0]
+                  
+                  // Ensure the matched request belongs to the current user (safety check)
+                  if (bestMatch.request?.requester_id !== user?.id) {
+                    return {
+                      ...donation,
+                      matchingScore: 0,
+                      bestMatchingRequest: null,
+                      matchReason: 'No compatible requests found'
+                    }
+                  }
+                  
+                  // Auto-claim logic: If auto-match is enabled and score >= threshold
+                  if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold) {
+                    try {
+                      // Check if donation is still available and request is still open
+                      if (donation.status === 'available' && bestMatch.request.status === 'open') {
+                        // Check if already claimed
+                        const hasExistingClaim = donation.claims && Array.isArray(donation.claims) && 
+                          donation.claims.some(claim => claim.recipient_id === user.id && claim.status === 'claimed')
+                        
+                        if (!hasExistingClaim) {
+                          await db.claimDonation(donation.id, user.id)
+                          console.log(`Auto-claimed: Donation "${donation.title}" for request "${bestMatch.request.title}" (score: ${(bestMatch.score * 100).toFixed(1)}%)`)
+                        }
+                      }
+                    } catch (autoClaimErr) {
+                      console.warn(`Auto-claim failed for donation ${donation.id}:`, autoClaimErr)
+                      // Continue with normal flow even if auto-claim fails
+                    }
+                  }
+                  
+                  return {
+                    ...donation,
+                    matchingScore: bestMatch.score,
+                    bestMatchingRequest: bestMatch.request,
+                    matchReason: bestMatch.matchReason || 'Good match based on multiple criteria'
+                  }
+                } else {
                   return {
                     ...donation,
                     matchingScore: 0,
@@ -187,89 +227,62 @@ const BrowseDonationsPage = () => {
                     matchReason: 'No compatible requests found'
                   }
                 }
-                
-                // Auto-claim logic: If auto-match is enabled and score >= threshold
-                if (autoMatchEnabled && bestMatch.score >= autoClaimThreshold) {
-                  try {
-                    // Check if donation is still available and request is still open
-                    if (donation.status === 'available' && bestMatch.request.status === 'open') {
-                      // Check if already claimed
-                      const hasExistingClaim = donation.claims && Array.isArray(donation.claims) && 
-                        donation.claims.some(claim => claim.recipient_id === user.id && claim.status === 'claimed')
-                      
-                      if (!hasExistingClaim) {
-                        await db.claimDonation(donation.id, user.id)
-                        console.log(`Auto-claimed: Donation "${donation.title}" for request "${bestMatch.request.title}" (score: ${(bestMatch.score * 100).toFixed(1)}%)`)
-                      }
-                    }
-                  } catch (autoClaimErr) {
-                    console.warn(`Auto-claim failed for donation ${donation.id}:`, autoClaimErr)
-                    // Continue with normal flow even if auto-claim fails
-                  }
-                }
-                
-                return {
-                  ...donation,
-                  matchingScore: bestMatch.score,
-                  bestMatchingRequest: bestMatch.request,
-                  matchReason: bestMatch.matchReason || 'Good match based on multiple criteria'
-                }
-              } else {
+              } catch (err) {
+                console.error(`Error matching donation ${donation.id}:`, err)
                 return {
                   ...donation,
                   matchingScore: 0,
                   bestMatchingRequest: null,
-                  matchReason: 'No compatible requests found'
+                  matchReason: 'Unable to calculate match score'
                 }
               }
-            } catch (err) {
-              console.error(`Error matching donation ${donation.id}:`, err)
-              return {
-                ...donation,
-                matchingScore: 0,
-                bestMatchingRequest: null,
-                matchReason: 'Unable to calculate match score'
+            })
+          )
+          
+          // Update state progressively with batch results
+          setDonationsWithScores(prev => {
+            const updated = [...(prev || [])]
+            batchResults.forEach((result, batchIdx) => {
+              const targetIndex = i + batchIdx
+              if (targetIndex < updated.length) {
+                updated[targetIndex] = result
               }
-            }
+            })
+            return updated
           })
-        )
+        }
         
-        // Update state progressively with batch results
-        setDonationsWithScores(prev => {
-          const updated = [...(prev || [])]
-          batchResults.forEach((result, batchIdx) => {
-            const targetIndex = i + batchIdx
-            if (targetIndex < updated.length) {
-              updated[targetIndex] = result
+        // Refresh data after auto-claiming to show updated statuses (only if auto-claim happened)
+        if (autoMatchEnabled) {
+          // Small delay to allow database updates to complete
+          setTimeout(async () => {
+            try {
+              const availableDonations = await db.getAvailableDonations({ limit: 30 })
+              setDonations(availableDonations || [])
+            } catch (refreshErr) {
+              console.warn('Error refreshing donations after auto-claim:', refreshErr)
             }
-          })
-          return updated
-        })
+          }, 500)
+        }
       }
       
-      // Refresh data after auto-claiming to show updated statuses
-      if (autoMatchEnabled) {
-        // Small delay to allow database updates to complete
-        setTimeout(async () => {
-          try {
-            const availableDonations = await db.getAvailableDonations({ limit: 30 })
-            setDonations(availableDonations || [])
-          } catch (refreshErr) {
-            console.warn('Error refreshing donations after auto-claim:', refreshErr)
-          }
-        }, 1000)
-      }
+      // Start calculating matching scores asynchronously (non-blocking)
+      calculateMatchingScores().catch(err => {
+        console.error('Error calculating matching scores:', err)
+      })
     } catch (err) {
       console.error('Error loading donations:', err)
       error('Failed to load donations. Please try again.')
-    } finally {
       setLoading(false)
     }
   }, [error, user?.id])
 
+  // Refresh data when navigating to this page (single useEffect to avoid duplicate calls)
   useEffect(() => {
-    loadDonations()
-  }, [loadDonations])
+    if (user?.id && location.pathname === '/browse-donations') {
+      loadDonations()
+    }
+  }, [location.pathname, user?.id, loadDonations])
 
   const handleRequestDonation = async (donation) => {
     if (!profile) {

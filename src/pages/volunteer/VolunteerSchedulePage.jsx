@@ -8,16 +8,18 @@ import {
   User,
   Save,
   AlertCircle,
-  X
+  X,
+  Package
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
+import { db, supabase } from '../../lib/supabase'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 
 const VolunteerSchedulePage = () => {
-  const { profile, updateProfile } = useAuth()
+  const { profile, updateProfile, user } = useAuth()
   const { success, error } = useToast()
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -26,7 +28,8 @@ const VolunteerSchedulePage = () => {
   const [scheduleData, setScheduleData] = useState({
     availability_days: profile?.availability_days || [],
     availability_times: profile?.availability_times || [],
-    max_delivery_distance: profile?.max_delivery_distance || 20,
+    max_delivery_distance: profile?.max_delivery_distance ?? 20,
+    vehicle_capacity: profile?.vehicle_capacity ?? 500,
     delivery_preferences: profile?.delivery_preferences || []
   })
   const [showSaveConfirmation, setShowSaveConfirmation] = useState(false)
@@ -71,6 +74,7 @@ const VolunteerSchedulePage = () => {
       !arraysEqual(scheduleData.availability_days, originalScheduleData.availability_days) ||
       !arraysEqual(scheduleData.availability_times, originalScheduleData.availability_times) ||
       scheduleData.max_delivery_distance !== originalScheduleData.max_delivery_distance ||
+      scheduleData.vehicle_capacity !== originalScheduleData.vehicle_capacity ||
       !arraysEqual(scheduleData.delivery_preferences, originalScheduleData.delivery_preferences)
     )
   }
@@ -81,7 +85,8 @@ const VolunteerSchedulePage = () => {
       const initialData = {
         availability_days: profile.availability_days || [],
         availability_times: profile.availability_times || [],
-        max_delivery_distance: profile.max_delivery_distance || 20,
+        max_delivery_distance: profile.max_delivery_distance ?? 20,
+        vehicle_capacity: profile.vehicle_capacity ?? 500,
         delivery_preferences: profile.delivery_preferences || []
       }
       setScheduleData(initialData)
@@ -108,12 +113,58 @@ const VolunteerSchedulePage = () => {
       setSaving(true)
       setShowSaveConfirmation(false)
       
-      await updateProfile(scheduleData)
-      setOriginalScheduleData({ ...scheduleData })
+      if (!user || !user.id) {
+        throw new Error('User not found. Please log in again.')
+      }
+      
+      // Prepare all data to save
+      const vehicleCapacity = scheduleData.vehicle_capacity ? parseInt(scheduleData.vehicle_capacity) : 500
+      const scheduleFields = {
+        availability_days: scheduleData.availability_days || [],
+        availability_times: scheduleData.availability_times || [],
+        max_delivery_distance: scheduleData.max_delivery_distance ? parseInt(scheduleData.max_delivery_distance) : 20,
+        delivery_preferences: scheduleData.delivery_preferences || []
+      }
+      
+      // Save schedule fields directly to database (bypassing updateProfile which hangs on user_metadata)
+      // Schedule fields will be stored in volunteer JSONB field in the database
+      try {
+        await db.updateProfile(user.id, {
+          availability_days: scheduleFields.availability_days,
+          availability_times: scheduleFields.availability_times,
+          max_delivery_distance: scheduleFields.max_delivery_distance,
+          delivery_preferences: scheduleFields.delivery_preferences
+        })
+      } catch (scheduleErr) {
+        // Don't throw - continue to save vehicle_capacity even if schedule fields fail
+        console.error('Error saving schedule fields:', scheduleErr)
+      }
+      
+      // Save vehicle_capacity separately through db.updateProfile (goes to volunteer JSONB)
+      if (vehicleCapacity && vehicleCapacity > 0) {
+        await db.updateProfile(user.id, { vehicle_capacity: vehicleCapacity })
+      }
+      
+      // Refresh profile to get updated data
+      try {
+        await db.getProfile(user.id)
+        
+        // Update local state with saved values
+        const savedData = {
+          ...scheduleFields,
+          vehicle_capacity: vehicleCapacity
+        }
+        setOriginalScheduleData(savedData)
+        setScheduleData(savedData)
+      } catch (refreshErr) {
+        // Don't throw - we still saved the data
+        console.error('Error refreshing profile:', refreshErr)
+      }
+      
       success('Schedule saved successfully!')
     } catch (err) {
       console.error('Error saving schedule:', err)
-      error('Failed to save schedule. Please try again.')
+      error(err.message || 'Failed to save schedule. Please try again.')
     } finally {
       setSaving(false)
     }
@@ -189,6 +240,13 @@ const VolunteerSchedulePage = () => {
     })
   }
 
+  const handleCapacityChange = (value) => {
+    setScheduleData({
+      ...scheduleData,
+      vehicle_capacity: parseInt(value)
+    })
+  }
+
   const weekDates = getCurrentWeekDates(selectedWeek)
   const isCurrentWeek = selectedWeek === 0
 
@@ -221,40 +279,52 @@ const VolunteerSchedulePage = () => {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8"
+          className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 lg:gap-6 mb-6 sm:mb-8"
           >
-          <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-4 sm:p-6 hover:border-yellow-500/30 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
-                <Calendar className="h-5 w-5 text-blue-400" />
+          <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-3 sm:p-4 lg:p-6 hover:border-yellow-500/30 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-blue-500/10 flex items-center justify-center flex-shrink-0">
+                <Calendar className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
               </div>
-              <div>
-                <p className="text-xs text-gray-400">Available Days</p>
-                <p className="text-2xl font-bold text-white">{scheduleData.availability_days.length}/7</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] sm:text-xs text-gray-400 truncate">Available Days</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{scheduleData.availability_days.length}/7</p>
               </div>
             </div>
           </div>
           
-          <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-4 sm:p-6 hover:border-yellow-500/30 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-purple-500/10 flex items-center justify-center">
-                <Clock className="h-5 w-5 text-purple-400" />
+          <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-3 sm:p-4 lg:p-6 hover:border-yellow-500/30 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                <Clock className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400" />
               </div>
-              <div>
-                <p className="text-xs text-gray-400">Time Slots</p>
-                <p className="text-2xl font-bold text-white">{scheduleData.availability_times.length}</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] sm:text-xs text-gray-400 truncate">Time Slots</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{scheduleData.availability_times.length}</p>
               </div>
             </div>
-            </div>
+          </div>
           
-          <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-4 sm:p-6 hover:border-yellow-500/30 transition-colors">
-            <div className="flex items-center gap-3 mb-3">
-              <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
-                <MapPin className="h-5 w-5 text-green-400" />
+          <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-3 sm:p-4 lg:p-6 hover:border-yellow-500/30 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-green-400" />
               </div>
-              <div>
-                <p className="text-xs text-gray-400">Max Distance</p>
-                <p className="text-2xl font-bold text-white">{scheduleData.max_delivery_distance}km</p>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] sm:text-xs text-gray-400 truncate">Max Distance</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{scheduleData.max_delivery_distance}km</p>
+              </div>
+            </div>
+          </div>
+          
+          <div className="bg-navy-900/50 backdrop-blur-sm border border-navy-700 rounded-xl p-3 sm:p-4 lg:p-6 hover:border-yellow-500/30 transition-colors">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-purple-500/10 flex items-center justify-center flex-shrink-0">
+                <Package className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[10px] sm:text-xs text-gray-400 truncate">Weight Capacity</p>
+                <p className="text-lg sm:text-xl lg:text-2xl font-bold text-white">{scheduleData.vehicle_capacity || 500} <span className="text-xs sm:text-sm text-gray-400">kg</span></p>
               </div>
             </div>
           </div>
@@ -469,7 +539,7 @@ const VolunteerSchedulePage = () => {
                       min="5"
                       max="100"
                       step="5"
-                      value={scheduleData.max_delivery_distance}
+                      value={scheduleData.max_delivery_distance || 20}
                       onChange={(e) => handleDistanceChange(e.target.value)}
                       className="w-full h-2 bg-navy-700 rounded-lg appearance-none cursor-pointer slider"
                       aria-label="Maximum delivery distance in kilometers"
@@ -479,8 +549,34 @@ const VolunteerSchedulePage = () => {
                       <span>100km</span>
                     </div>
                   </div>
-                  </div>
                 </div>
+
+                {/* Maximum Weight Capacity */}
+                <div>
+                  <label className="block text-sm font-medium text-yellow-300 mb-3">
+                    Maximum Weight Capacity: <span className="text-yellow-400 font-semibold">{scheduleData.vehicle_capacity || 500} kg</span>
+                  </label>
+                  <div className="px-3 py-2 bg-navy-800 rounded-lg border border-navy-700">
+                    <input
+                      type="range"
+                      min="1"
+                      max="10000"
+                      step="50"
+                      value={scheduleData.vehicle_capacity ?? 500}
+                      onChange={(e) => handleCapacityChange(e.target.value)}
+                      className="w-full h-2 bg-navy-700 rounded-lg appearance-none cursor-pointer slider"
+                      aria-label="Maximum weight capacity in kilograms"
+                    />
+                    <div className="flex justify-between text-xs text-yellow-400 mt-2">
+                      <span>1 kg</span>
+                      <span>10,000 kg</span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-gray-400 mt-2">
+                    Set the maximum weight your vehicle can carry in kilograms. This helps match you with appropriate delivery requests.
+                  </p>
+                </div>
+              </div>
               </div>
           </motion.div>
 
@@ -526,6 +622,7 @@ const VolunteerSchedulePage = () => {
                       <li>• Keep your schedule updated for better matching</li>
                       <li>• Set realistic time slots</li>
                       <li>• Consider traffic when setting distance</li>
+                      <li>• Set a weekly capacity limit that matches your availability</li>
                     </ul>
                   </div>
                 </div>
@@ -620,3 +717,4 @@ const VolunteerSchedulePage = () => {
 }
 
 export default VolunteerSchedulePage 
+

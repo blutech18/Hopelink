@@ -133,7 +133,9 @@ export const db = {
         ...(userProfile?.volunteer ? {
           has_vehicle: userProfile.volunteer.has_vehicle,
           vehicle_type: userProfile.volunteer.vehicle_type,
+          vehicle_capacity: userProfile.volunteer.vehicle_capacity,
           max_delivery_distance: userProfile.volunteer.max_delivery_distance,
+          max_deliveries_per_week: userProfile.volunteer.max_deliveries_per_week,
           volunteer_experience: userProfile.volunteer.volunteer_experience,
           background_check_consent: userProfile.volunteer.background_check_consent,
           availability_days: userProfile.volunteer.availability_days,
@@ -296,6 +298,7 @@ export const db = {
     if (role === 'volunteer' && (
       has_vehicle !== undefined ||
       vehicle_type ||
+      vehicle_capacity ||
       max_delivery_distance !== undefined ||
       volunteer_experience ||
       background_check_consent !== undefined ||
@@ -307,8 +310,9 @@ export const db = {
       insurance_policy_number
     )) {
       userProfileData.volunteer = {
-          has_vehicle: has_vehicle || false,
+          has_vehicle: true, // Vehicle is required for volunteers
           vehicle_type,
+          vehicle_capacity,
           max_delivery_distance,
           volunteer_experience,
           background_check_consent: background_check_consent || false,
@@ -408,7 +412,9 @@ export const db = {
       // Volunteer fields
       has_vehicle,
       vehicle_type,
+      vehicle_capacity,
       max_delivery_distance,
+      max_deliveries_per_week,
       volunteer_experience,
       background_check_consent,
       availability_days,
@@ -487,9 +493,15 @@ export const db = {
 
     // Build volunteer JSONB updates
     const volunteerUpdates = {}
+    // Vehicle is required for volunteers - automatically set has_vehicle to true if vehicle info is provided
+    if (vehicle_type !== undefined || vehicle_capacity !== undefined) {
+      volunteerUpdates.has_vehicle = true
+    }
     if (has_vehicle !== undefined) volunteerUpdates.has_vehicle = has_vehicle
     if (vehicle_type !== undefined) volunteerUpdates.vehicle_type = vehicle_type
+    if (vehicle_capacity !== undefined) volunteerUpdates.vehicle_capacity = vehicle_capacity
     if (max_delivery_distance !== undefined) volunteerUpdates.max_delivery_distance = max_delivery_distance
+    if (max_deliveries_per_week !== undefined) volunteerUpdates.max_deliveries_per_week = max_deliveries_per_week
     if (volunteer_experience !== undefined) volunteerUpdates.volunteer_experience = volunteer_experience
     if (background_check_consent !== undefined) volunteerUpdates.background_check_consent = background_check_consent
     if (availability_days !== undefined) volunteerUpdates.availability_days = availability_days
@@ -1038,9 +1050,10 @@ export const db = {
     }
 
     try {
-      const { intelligentMatcher } = await import('./matchingAlgorithm.js')
-      // Limit to 200 requests for performance - ranking can be done on subset
-      const requests = await this.getRequests({ status: 'open', limit: 200 })
+      // Optimize: Only load slightly more than needed for ranking (limit * 2 max, or 100 max)
+      // This prevents loading 200 requests when we only need 30
+      const fetchLimit = Math.min(Math.max(limit * 2, 50), 100)
+      const requests = await this.getRequests({ status: 'open', limit: fetchLimit })
 
       // Compute ranking score using urgency, quantity ratio, recency, and basic category priority
       const scored = (requests || []).map(req => {
@@ -1698,6 +1711,50 @@ export const db = {
   async createDonationRequest(requestData) {
     if (!supabase) {
       throw new Error('Supabase not configured. Please set up your environment variables.')
+    }
+
+    // Validation: Check if verification is required (client-side safeguard)
+    // Note: This should be enforced by RLS policies or database triggers for security
+    try {
+      const settings = await this.getSettings()
+      const requireVerification = settings?.requireIdVerification !== false
+      
+      if (requireVerification && requestData.requester_id) {
+        // Fetch user profile to check verification status
+        const profile = await this.getProfile(requestData.requester_id)
+        
+        if (!profile) {
+          throw new Error('User profile not found. Please complete your profile first.')
+        }
+
+        // Check if account is active
+        if (profile.is_active === false || profile.is_active === 'false' || profile.is_active === 0) {
+          throw new Error('Your account has been suspended. Please contact the administrator.')
+        }
+
+        // Check verification status
+        const hasIdUploaded = profile.primary_id_type && profile.primary_id_number && profile.primary_id_image_url
+        const isVerified = profile.id_verification_status === 'verified' || profile.is_verified === true
+        
+        if (!hasIdUploaded) {
+          throw new Error('ID verification required. Please upload a valid ID document in your profile settings.')
+        }
+        
+        if (!isVerified) {
+          if (profile.id_verification_status === 'rejected') {
+            throw new Error('Your ID verification was rejected. Please update your ID documents and try again.')
+          } else {
+            throw new Error('ID verification is pending admin approval. Please wait for verification to complete before creating requests.')
+          }
+        }
+      }
+    } catch (error) {
+      // If it's a verification error, throw it
+      if (error.message?.includes('verification') || error.message?.includes('suspended') || error.message?.includes('profile')) {
+        throw error
+      }
+      // Otherwise, log and continue (don't block if settings check fails)
+      console.warn('Verification check warning:', error.message)
     }
 
     const { data, error } = await supabase
@@ -3464,10 +3521,10 @@ export const db = {
       throw new Error('Supabase not configured. Please set up your environment variables.')
     }
 
-    // Get delivery statistics
+    // Get delivery statistics with pickup and delivery timestamps
     const { data: deliveries, error: deliveryError } = await supabase
       .from('deliveries')
-      .select('status, created_at')
+      .select('status, created_at, picked_up_at, delivered_at')
       .eq('volunteer_id', volunteerId)
 
     if (deliveryError) throw deliveryError
@@ -3490,12 +3547,28 @@ export const db = {
     const averageRating = ratings && ratings.length > 0 ? 
       ratings.reduce((sum, r) => sum + (r.rating || 0), 0) / ratings.length : 0
 
+    // Calculate total volunteer hours (time between picked_up_at and delivered_at)
+    let totalHours = 0
+    const completedDeliveriesWithTimestamps = deliveries.filter(d => 
+      d.status === 'delivered' && d.picked_up_at && d.delivered_at
+    )
+    
+    completedDeliveriesWithTimestamps.forEach(delivery => {
+      const pickupTime = new Date(delivery.picked_up_at)
+      const deliveryTime = new Date(delivery.delivered_at)
+      const hours = (deliveryTime - pickupTime) / (1000 * 60 * 60) // Convert milliseconds to hours
+      if (hours > 0) {
+        totalHours += hours
+      }
+    })
+
     return {
       totalDeliveries,
       completedDeliveries,
       activeDeliveries,
       averageRating: Number(averageRating.toFixed(1)),
-      totalRatings: ratings?.length || 0
+      totalRatings: ratings?.length || 0,
+      totalHours: Number(totalHours.toFixed(2)) // Total hours volunteered (rounded to 2 decimal places)
     }
   },
 
@@ -5092,6 +5165,39 @@ export const db = {
             confirmed_by: 'donor'
           }
         })
+      }
+
+      // Send immediate feedback prompt to recipient after transaction completion
+      try {
+        // Check if recipient has already provided feedback
+        const { data: existingFeedback } = await supabase
+          .from('feedback_ratings')
+          .select('id')
+          .eq('rater_id', delivery.claim.recipient_id)
+          .or(`transaction_id.eq.${deliveryId},transaction_id.eq.${delivery.claim.donation.id}`)
+          .limit(1)
+
+        // Only send reminder if no feedback exists
+        if (!existingFeedback || existingFeedback.length === 0) {
+          await this.createNotification({
+            user_id: delivery.claim.recipient_id,
+            type: 'rating_reminder',
+            title: 'Share Your Experience',
+            message: `How was your experience with "${delivery.claim.donation.title}"? Your feedback helps improve our community!`,
+            data: {
+              delivery_id: deliveryId,
+              claim_id: delivery.claim.id,
+              donation_id: delivery.claim.donation.id,
+              donation_title: delivery.claim.donation.title,
+              donor_id: delivery.claim.donation.donor_id,
+              volunteer_id: deliveryData?.volunteer_id,
+              action_required: 'provide_feedback'
+            }
+          })
+        }
+      } catch (err) {
+        console.error('Error sending feedback reminder:', err)
+        // Don't throw - this is a background task
       }
 
       // Mark donor confirmation notifications as read
@@ -7683,6 +7789,72 @@ export const db = {
     } catch (error) {
       console.error('Error getting transactions for feedback:', error)
       throw error
+    }
+  },
+
+  // Check if recipient has provided feedback for a specific transaction
+  async hasRecipientProvidedFeedback(recipientId, deliveryId, claimId, donationId) {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      // Check for feedback on delivery, claim, or donation
+      const transactionIds = [deliveryId, claimId, donationId].filter(Boolean)
+      
+      if (transactionIds.length === 0) return false
+
+      const { data: feedback, error } = await supabase
+        .from('feedback_ratings')
+        .select('id')
+        .eq('rater_id', recipientId)
+        .in('transaction_id', transactionIds)
+        .limit(1)
+
+      if (error) throw error
+      
+      return feedback && feedback.length > 0
+    } catch (error) {
+      console.error('Error checking feedback status:', error)
+      return false
+    }
+  },
+
+  // Get feedback status for multiple transactions
+  async getFeedbackStatusForTransactions(recipientId, transactions) {
+    if (!supabase) throw new Error('Supabase not configured')
+    
+    try {
+      const transactionIds = transactions
+        .map(t => [t.delivery_id, t.claim_id, t.donation_id])
+        .flat()
+        .filter(Boolean)
+        .filter((id, index, self) => self.indexOf(id) === index) // Remove duplicates
+
+      if (transactionIds.length === 0) {
+        return new Map() // Return empty map if no transactions
+      }
+
+      const { data: feedback, error } = await supabase
+        .from('feedback_ratings')
+        .select('transaction_id, rated_user_id, created_at')
+        .eq('rater_id', recipientId)
+        .in('transaction_id', transactionIds)
+
+      if (error) throw error
+
+      // Create a map of transaction_id -> feedback exists
+      const feedbackMap = new Map()
+      transactions.forEach(t => {
+        const ids = [t.delivery_id, t.claim_id, t.donation_id].filter(Boolean)
+        const hasFeedback = ids.some(id => 
+          feedback?.some(f => f.transaction_id === id)
+        )
+        feedbackMap.set(t.claim_id || t.donation_id || t.delivery_id, hasFeedback)
+      })
+
+      return feedbackMap
+    } catch (error) {
+      console.error('Error getting feedback status:', error)
+      return new Map()
     }
   },
 

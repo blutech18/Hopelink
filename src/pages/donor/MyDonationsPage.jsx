@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { Link, useNavigate } from 'react-router-dom'
+import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useForm } from 'react-hook-form'
 import { 
   Package, 
@@ -32,7 +32,8 @@ import {
   Upload,
   Building,
   Flag,
-  Tag
+  Tag,
+  Info
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -42,6 +43,8 @@ import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import ConfirmationModal from '../../components/ui/ConfirmationModal'
 import DonorRecipientTrackingModal from '../../components/ui/DonorRecipientTrackingModal'
 import ReportUserModal from '../../components/ui/ReportUserModal'
+import WorkflowProgressBar from '../../components/ui/WorkflowProgressBar'
+import WorkflowGuideModal from '../../components/ui/WorkflowGuideModal'
 
 const enableMyDonationsLogs = false
 const myDonationsLog = (...args) => {
@@ -54,6 +57,7 @@ const MyDonationsPage = () => {
   const { user } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
   const [donations, setDonations] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -88,6 +92,7 @@ const MyDonationsPage = () => {
   const [reportUser, setReportUser] = useState(null)
   const [reportTransactionContext, setReportTransactionContext] = useState(null)
   const [donationClaims, setDonationClaims] = useState({}) // Store claims for completed donations
+  const [showWorkflowGuide, setShowWorkflowGuide] = useState(false)
 
   // Image upload state
   const [uploadedImage, setUploadedImage] = useState(null)
@@ -530,6 +535,13 @@ const MyDonationsPage = () => {
       setConfirmingDirectDeliveryId(null)
     }
   }
+
+  // Refresh data when navigating to this page
+  useEffect(() => {
+    if (user?.id && location.pathname === '/my-donations') {
+      fetchDonations()
+    }
+  }, [location.pathname, user?.id, fetchDonations])
 
   useEffect(() => {
     fetchDonations()
@@ -1163,20 +1175,41 @@ const MyDonationsPage = () => {
             </div>
           ) : (
             <div className="space-y-6">
-              {filteredDonations.map((donation, index) => (
+              {filteredDonations.map((donation, index) => {
+                const showStatusSection = ['available', 'matched', 'claimed', 'in_transit', 'delivered', 'completed'].includes(donation.status)
+                
+                return (
+                  <div key={donation.id} className="relative">
+                    {/* Current Status Section - Above Card */}
+                    {showStatusSection && (
+                      <div
+                        className="px-3 py-2 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-gray-600 rounded-t-lg mb-0 relative z-10"
+                        style={{
+                          borderTopLeftRadius: '0.5rem',
+                          borderTopRightRadius: '0.5rem',
+                          borderBottomLeftRadius: '0',
+                          borderBottomRightRadius: '0',
+                          marginBottom: '0'
+                        }}
+                      >
+                        <WorkflowProgressBar 
+                          status={donation.status} 
+                          showLabels={true}
+                          showStatusInfo={false}
+                          size="sm"
+                        />
+                      </div>
+                    )}
+
                 <motion.div
-                  key={donation.id}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="card hover:shadow-xl transition-all duration-300 overflow-hidden border-l-4 sm:border-l-4"
+                  className={`card hover:shadow-xl transition-all duration-300 overflow-hidden ${showStatusSection ? 'rounded-t-none -mt-[1px]' : ''}`}
                   style={{
-                    borderLeftColor: donation.status === 'completed' ? '#4ade80' : 
-                                    donation.status === 'delivered' ? '#10b981' : 
-                                    donation.status === 'in_transit' ? '#fb923c' : 
-                                    donation.status === 'claimed' ? '#a78bfa' : 
-                                    donation.status === 'matched' ? '#fbbf24' : 
-                                    donation.status === 'donated' ? '#3b82f6' : '#60a5fa'
+                    borderTopLeftRadius: showStatusSection ? '0' : undefined,
+                    borderTopRightRadius: showStatusSection ? '0' : undefined,
+                    marginTop: showStatusSection ? '-1px' : undefined
                   }}
                 >
                   <div className="p-4 sm:p-6">
@@ -1340,7 +1373,9 @@ const MyDonationsPage = () => {
                     </div>
                   </div>
                 </motion.div>
-              ))}
+                  </div>
+                )
+              })}
             </div>
           )}
         </motion.div>
@@ -1964,6 +1999,13 @@ const MyDonationsPage = () => {
           transactionContext={reportTransactionContext}
         />
       )}
+
+      {/* Workflow Guide Modal */}
+      <WorkflowGuideModal
+        isOpen={showWorkflowGuide}
+        onClose={() => setShowWorkflowGuide(false)}
+        userRole="donor"
+      />
     </div>
   )
 }

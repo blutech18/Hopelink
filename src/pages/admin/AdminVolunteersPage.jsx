@@ -34,6 +34,16 @@ import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
+const VEHICLE_TYPE_LABELS = {
+  motorcycle: 'Motorcycle',
+  car: 'Car / Sedan',
+  suv: 'SUV',
+  van: 'Van',
+  pickup_truck: 'Pickup Truck',
+  truck: 'Truck',
+  other: 'Other'
+}
+
 const AdminVolunteersPage = () => {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -122,7 +132,41 @@ const AdminVolunteersPage = () => {
         db.getDonations({ limit: 200 })
       ])
       
-      setVolunteers(volunteersData || [])
+      // Enrich volunteers with capacity information
+      const now = new Date()
+      const startOfWeek = new Date(now)
+      startOfWeek.setDate(now.getDate() - now.getDay() + 1) // Monday
+      startOfWeek.setHours(0, 0, 0, 0)
+      
+      const enrichedVolunteers = await Promise.all((volunteersData || []).map(async (volunteer) => {
+        const volunteerDeliveries = deliveriesData.filter(d => d.volunteer_id === volunteer.id)
+        const thisWeekDeliveries = volunteerDeliveries.filter(d => {
+          const deliveryDate = new Date(d.created_at || d.assigned_at)
+          return deliveryDate >= startOfWeek
+        })
+        const activeThisWeek = thisWeekDeliveries.filter(d => 
+          ['assigned', 'accepted', 'picked_up', 'in_transit'].includes(d.status)
+        ).length
+        
+        const volunteerProfile = await db.getProfile(volunteer.id).catch(() => volunteer)
+        // Use vehicle_capacity (Maximum Weight Capacity) from profile; validate/normalize to a positive number
+        const rawCapacity = volunteerProfile?.vehicle_capacity ?? volunteer?.vehicle_capacity
+        const parsedCapacity = typeof rawCapacity === 'string' ? parseFloat(rawCapacity) : rawCapacity
+        const maxCapacity = parsedCapacity && !isNaN(parsedCapacity) && parsedCapacity > 0 ? parsedCapacity : null
+        const capacityUtilization = maxCapacity ? Math.round((activeThisWeek / maxCapacity) * 100) : 0
+        
+        return {
+          ...volunteer,
+          activeThisWeek,
+          vehicleType: volunteerProfile?.vehicle_type || volunteer?.vehicle_type || '',
+          vehicle_type: volunteerProfile?.vehicle_type || volunteer?.vehicle_type || '',
+          maxCapacity,
+          capacityUtilization,
+          totalDeliveries: volunteerDeliveries.length
+        }
+      }))
+      
+      setVolunteers(enrichedVolunteers)
       setDeliveries(deliveriesData || [])
       setDonations(donationsData || [])
       
@@ -755,16 +799,18 @@ const AdminVolunteersPage = () => {
                 <thead className="bg-navy-800">
                   <tr>
                     <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Volunteer</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Contact</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Location</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Status</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Deliveries</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Contact</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Location</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Status</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Vehicle Type</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Capacity (kg)</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Deliveries</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-navy-700">
                 {activeVolunteers.length === 0 ? (
                     <tr>
-                      <td colSpan="5" className="px-4 sm:px-6 py-12 text-center">
+                      <td colSpan="7" className="px-4 sm:px-6 py-12 text-center">
                         <User className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
                       <p className="text-yellow-300">No active volunteers found</p>
                         <p className="text-yellow-400 text-sm mt-1">
@@ -819,33 +865,70 @@ const AdminVolunteersPage = () => {
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 sm:px-6 py-4">
+                        <td className="px-4 sm:px-6 py-4 text-center">
                           <div className="text-sm text-gray-300 space-y-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center gap-2">
                               <Mail className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                               <span className="truncate max-w-[200px]">{volunteer.email}</span>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center justify-center gap-2">
                               <Phone className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                               <span>{volunteer.phone_number || 'Not provided'}</span>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 sm:px-6 py-4">
-                          <div className="flex items-center gap-2 text-sm text-gray-300">
+                        <td className="px-4 sm:px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-2 text-sm text-gray-300">
                             <MapPin className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                             <span>{volunteer.city}, {volunteer.province}</span>
                           </div>
                         </td>
-                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                        <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-center">
                           <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${getStatusColor(volunteer.is_active ? 'active' : 'inactive')}`}>
                             {volunteer.is_active ? 'Active' : 'Inactive'}
                           </span>
                         </td>
-                        <td className="px-4 sm:px-6 py-4">
-                          <div className="flex items-center gap-3 text-sm">
+                        <td className="px-4 sm:px-6 py-4 text-center">
+                          <div className="text-sm text-gray-300">
+                            {VEHICLE_TYPE_LABELS[volunteer.vehicleType] || volunteer.vehicleType || 'Not set'}
+                          </div>
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-center">
+                          {volunteer.maxCapacity ? (
+                            <div className="space-y-1 mx-auto max-w-[200px]">
+                              <div className="flex items-center justify-center gap-2 text-sm">
+                                <span className={`font-semibold ${
+                                  volunteer.capacityUtilization >= 90 ? 'text-red-400' :
+                                  volunteer.capacityUtilization >= 75 ? 'text-orange-400' :
+                                  volunteer.capacityUtilization >= 50 ? 'text-yellow-400' :
+                                  'text-green-400'
+                                }`}>
+                                  {volunteer.activeThisWeek || 0} / {volunteer.maxCapacity}
+                                </span>
+                                <span className="text-xs text-gray-400">
+                                  ({volunteer.capacityUtilization || 0}%)
+                                </span>
+                              </div>
+                              <div className="w-full bg-gray-700 rounded-full h-1.5">
+                                <div
+                                  className={`h-1.5 rounded-full transition-all ${
+                                    volunteer.capacityUtilization >= 90 ? 'bg-red-500' :
+                                    volunteer.capacityUtilization >= 75 ? 'bg-orange-500' :
+                                    volunteer.capacityUtilization >= 50 ? 'bg-yellow-500' :
+                                    'bg-green-500'
+                                  }`}
+                                  style={{ width: `${Math.min(volunteer.capacityUtilization || 0, 100)}%` }}
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-gray-400">N/A</span>
+                          )}
+                        </td>
+                        <td className="px-4 sm:px-6 py-4 text-center">
+                          <div className="flex items-center justify-center gap-3 text-sm">
                             <div className="text-center">
-                              <div className="text-white font-bold">{volunteer.total_deliveries || 0}</div>
+                              <div className="text-white font-bold">{volunteer.total_deliveries || volunteer.totalDeliveries || 0}</div>
                               <div className="text-xs text-gray-400">Total</div>
                             </div>
                             <div className="text-center">
@@ -887,18 +970,18 @@ const AdminVolunteersPage = () => {
                 <thead className="bg-navy-800">
                   <tr>
                     <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Donation</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Volunteer</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Pickup Location</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Delivery Location</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Scheduled Date</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Status</th>
-                    <th className="px-4 sm:px-6 py-4 text-left text-xs font-medium text-yellow-300 uppercase tracking-wider">Actions</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Volunteer</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Pickup Location</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Delivery Location</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Scheduled Date</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Status</th>
+                    <th className="px-4 sm:px-6 py-4 text-center text-xs font-medium text-yellow-300 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-navy-700">
                   {deliveries.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="px-4 sm:px-6 py-12 text-center">
+                      <td colSpan="7" className="px-4 sm:px-6 py-12 text-center">
                         <Package className="h-12 w-12 text-yellow-400 mx-auto mb-4" />
                         <p className="text-yellow-300">No deliveries found</p>
                         <p className="text-yellow-400 text-sm mt-1">Delivery activity will appear here</p>
@@ -929,30 +1012,30 @@ const AdminVolunteersPage = () => {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 sm:px-6 py-4">
-                            <div className="flex items-center gap-2 text-sm text-gray-300">
+                          <td className="px-4 sm:px-6 py-4 text-center">
+                            <div className="flex items-center justify-center gap-2 text-sm text-gray-300">
                               <Truck className="h-3.5 w-3.5 text-yellow-400 flex-shrink-0" />
                               <span>{volunteer?.name || 'Unassigned'}</span>
                             </div>
                           </td>
-                          <td className="px-4 sm:px-6 py-4">
-                            <div className="flex items-start gap-2 text-sm text-gray-300 max-w-[200px]">
+                          <td className="px-4 sm:px-6 py-4 text-center">
+                            <div className="flex items-start justify-center gap-2 text-sm text-gray-300 max-w-[200px] mx-auto">
                               <MapPin className="h-3.5 w-3.5 text-green-400 flex-shrink-0 mt-0.5" />
                               <span className="truncate">
                                 {delivery.pickup_location || delivery.pickup_address || delivery.pickup_city || 'Not specified'}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 sm:px-6 py-4">
-                            <div className="flex items-start gap-2 text-sm text-gray-300 max-w-[200px]">
+                          <td className="px-4 sm:px-6 py-4 text-center">
+                            <div className="flex items-start justify-center gap-2 text-sm text-gray-300 max-w-[200px] mx-auto">
                               <MapPin className="h-3.5 w-3.5 text-red-400 flex-shrink-0 mt-0.5" />
                               <span className="truncate">
                                 {delivery.delivery_location || delivery.delivery_address || delivery.delivery_city || 'Not specified'}
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2 text-sm text-gray-300">
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-center">
+                            <div className="flex items-center justify-center gap-2 text-sm text-gray-300">
                               <Calendar className="h-3.5 w-3.5 text-yellow-400" />
                               <span>
                                 {delivery.scheduled_delivery_date 
@@ -962,13 +1045,13 @@ const AdminVolunteersPage = () => {
                               </span>
                             </div>
                           </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-center">
                             <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold ${getDeliveryStatusColor(delivery.status)}`}>
                               {delivery.status?.replace('_', ' ') || 'pending'}
                             </span>
                           </td>
-                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap">
-                            <div className="flex items-center gap-2">
+                          <td className="px-4 sm:px-6 py-4 whitespace-nowrap text-center">
+                            <div className="flex items-center justify-center gap-2">
                               <button
                                 type="button"
                                 onClick={(e) => {

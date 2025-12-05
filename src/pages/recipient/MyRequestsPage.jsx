@@ -28,10 +28,11 @@ import {
 import PropTypes from 'prop-types'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useLocation } from 'react-router-dom'
 import { ListPageSkeleton } from '../../components/ui/Skeleton'
 import LoadingSpinner from '../../components/ui/LoadingSpinner'
 import DeliveryConfirmationModal from '../../components/ui/DeliveryConfirmationModal'
+import RequestWorkflowProgressBar from '../../components/ui/RequestWorkflowProgressBar'
 import { db, supabase } from '../../lib/supabase'
 
 // Edit Request Modal Component
@@ -443,6 +444,7 @@ const MyRequestsPage = () => {
   const { user } = useAuth()
   const { success, error } = useToast()
   const navigate = useNavigate()
+  const location = useLocation()
   const [requests, setRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -516,6 +518,13 @@ const MyRequestsPage = () => {
       setLoading(false)
     }
   }, [user?.id, error, loadDeliveryConfirmations])
+
+  // Refresh data when navigating to this page
+  useEffect(() => {
+    if (user?.id && location.pathname === '/my-requests') {
+      loadRequests()
+    }
+  }, [location.pathname, user?.id, loadRequests])
 
   useEffect(() => {
     loadRequests()
@@ -881,15 +890,42 @@ const MyRequestsPage = () => {
               {filteredRequests.map((request, index) => {
                 const statusInfo = getStatusInfo(request.status)
                 const urgencyInfo = getUrgencyInfo(request.urgency)
+                const showStatusSection = ['open', 'claimed', 'in_progress', 'fulfilled'].includes(request.status)
 
                 return (
+                  <div key={request.id} className="relative">
+                    {/* Current Status Section - Above Card */}
+                    {showStatusSection && (
+                      <div
+                        className="px-3 py-2 bg-gradient-to-r from-skyblue-900/50 via-skyblue-800/45 to-skyblue-900/50 border-l-2 border-t-2 border-r-2 border-b-0 border-gray-600 rounded-t-lg mb-0 relative z-10"
+                        style={{
+                          borderTopLeftRadius: '0.5rem',
+                          borderTopRightRadius: '0.5rem',
+                          borderBottomLeftRadius: '0',
+                          borderBottomRightRadius: '0',
+                          marginBottom: '0'
+                        }}
+                      >
+                        <RequestWorkflowProgressBar 
+                          status={request.status} 
+                          showLabels={true}
+                          showStatusInfo={false}
+                          size="sm"
+                        />
+                      </div>
+                    )}
+
                   <motion.div
-                    key={request.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
                     transition={{ delay: index * 0.05 }}
-                    className="card overflow-hidden hover:shadow-xl hover:border-yellow-500/30 transition-all duration-300 group"
+                    className={`card overflow-hidden hover:shadow-xl transition-all duration-300 group ${showStatusSection ? 'rounded-t-none -mt-[1px]' : ''}`}
+                    style={{
+                      borderTopLeftRadius: showStatusSection ? '0' : undefined,
+                      borderTopRightRadius: showStatusSection ? '0' : undefined,
+                      marginTop: showStatusSection ? '-1px' : undefined
+                    }}
                   >
                     <div className="flex flex-col sm:flex-row gap-4 p-4">
                       {/* Sample Image or Placeholder */}
@@ -1004,6 +1040,7 @@ const MyRequestsPage = () => {
                       </div>
                     </div>
                   </motion.div>
+                  </div>
                 )
               })}
             </AnimatePresence>

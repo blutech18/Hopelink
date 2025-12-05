@@ -328,6 +328,7 @@ const Navbar = () => {
     { path: '/events', label: 'Events', scrollTo: 'events', icon: Calendar },
     { path: '/about', label: 'About', scrollTo: 'about', icon: Info },
     { path: '/', label: 'Contact', scrollTo: 'contact', icon: Phone },
+    { path: '/how-it-works', label: 'How It Works', scrollTo: null, icon: Target },
   ]
 
   // Helper function to determine if a link is active

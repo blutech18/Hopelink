@@ -185,6 +185,27 @@ const MyApprovedDonationsPage = () => {
         }
       })
 
+      // Check feedback status for completed donations
+      const completedClaims = enrichedClaims.filter(c => c.status === 'completed')
+      if (completedClaims.length > 0) {
+        const feedbackStatusMap = await db.getFeedbackStatusForTransactions(
+          user.id,
+          completedClaims.map(c => ({
+            delivery_id: c.delivery?.[0]?.id,
+            claim_id: c.id,
+            donation_id: c.donation?.id
+          }))
+        )
+        
+        // Add feedback status to each claim
+        enrichedClaims.forEach(claim => {
+          if (claim.status === 'completed') {
+            const key = claim.id || claim.donation?.id || claim.delivery?.[0]?.id
+            claim.hasFeedback = feedbackStatusMap.get(key) || false
+          }
+        })
+      }
+      
       setApprovedDonations(enrichedClaims)
       
       // Clear image error states when new data is loaded
@@ -360,28 +381,67 @@ const MyApprovedDonationsPage = () => {
   }
 
   const submitDonorRating = async () => {
-    if (!user?.id || !selectedRatingNotification) return
+    if (!user?.id || !selectedRatingNotification || rating === 0) return
     try {
-      const ratedUserId = selectedRatingNotification.data?.rated_user_id
-      const transactionId = selectedRatingNotification.data?.delivery_id || selectedRatingNotification.data?.claim_id
-      await db.submitFeedback({
-        transaction_id: transactionId,
-        transaction_type: 'delivery',
-        rater_id: user.id,
-        rated_user_id: ratedUserId,
-        rating: rating || 5,
-        feedback: feedback || ''
-      })
-      success('Thanks for rating your experience!')
+      const data = selectedRatingNotification.data
+      const transactionId = data?.delivery_id || data?.claim_id || data?.donation_id
+      
+      // Submit feedback for donor if available
+      if (data?.donor_id) {
+        await db.submitFeedback({
+          transaction_id: transactionId,
+          transaction_type: 'donation',
+          rater_id: user.id,
+          rated_user_id: data.donor_id,
+          rating: rating,
+          feedback: feedback || `Feedback for donation: ${data.donation_title || 'donation'}`
+        })
+        
+        // Update donor rating
+        await db.updateUserRating(data.donor_id).catch(() => {})
+      }
+      
+      // Submit feedback for volunteer if available
+      if (data?.volunteer_id && data.volunteer_id !== user.id) {
+        await db.submitFeedback({
+          transaction_id: transactionId,
+          transaction_type: 'delivery',
+          rater_id: user.id,
+          rated_user_id: data.volunteer_id,
+          rating: rating,
+          feedback: feedback || `Feedback for delivery: ${data.donation_title || 'delivery'}`
+        })
+        
+        // Update volunteer rating
+        await db.updateUserRating(data.volunteer_id).catch(() => {})
+      }
+      
+      // Fallback to rated_user_id if provided (for backward compatibility)
+      if (!data?.donor_id && !data?.volunteer_id && data?.rated_user_id) {
+        await db.submitFeedback({
+          transaction_id: transactionId,
+          transaction_type: 'delivery',
+          rater_id: user.id,
+          rated_user_id: data.rated_user_id,
+          rating: rating,
+          feedback: feedback || ''
+        })
+        await db.updateUserRating(data.rated_user_id).catch(() => {})
+      }
+      
+      success('Thank you for your feedback! Your input helps improve the community.')
       if (selectedRatingNotification.id) {
-        await db.markNotificationAsRead(selectedRatingNotification.id)
+        await db.markNotificationAsRead(selectedRatingNotification.id).catch(() => {})
       }
       setShowRatingModal(false)
       setSelectedRatingNotification(null)
+      setRating(0)
+      setFeedback('')
       await loadDeliveryConfirmations()
+      await loadApprovedDonations() // Refresh the list to update feedback status
     } catch (err) {
       console.error('Error submitting rating:', err)
-      error('Failed to submit rating')
+      error('Failed to submit feedback. Please try again.')
     }
   }
 
@@ -1031,9 +1091,43 @@ const MyApprovedDonationsPage = () => {
                               </button>
                             )}
 
-                            {/* Report Buttons for Completed Transactions */}
+                            {/* Feedback and Report Buttons for Completed Transactions */}
                             {claim.status === 'completed' && (
                               <>
+                                {/* Provide Feedback Button */}
+                                {claim.hasFeedback ? (
+                                  <div className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-green-400 bg-green-500/20 border border-green-500/30 rounded-lg">
+                                    <CheckCircle className="h-3.5 w-3.5" />
+                                    <span>Feedback Provided</span>
+                                  </div>
+                                ) : (
+                                  <button
+                                    onClick={() => {
+                                      // Create a notification-like object for the feedback modal
+                                      const feedbackNotification = {
+                                        id: `feedback-${claim.id}`,
+                                        data: {
+                                          delivery_id: delivery?.id || claim.id,
+                                          claim_id: claim.id,
+                                          donation_id: claim.donation?.id,
+                                          donor_id: claim.donation?.donor?.id,
+                                          volunteer_id: delivery?.volunteer?.id,
+                                          donor_name: claim.donation?.donor?.name,
+                                          volunteer_name: delivery?.volunteer?.name,
+                                          donation_title: claim.donation?.title,
+                                          role: 'recipient'
+                                        }
+                                      }
+                                      openRatingModal(feedbackNotification)
+                                    }}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-yellow-600 hover:bg-yellow-700 rounded-lg transition-all active:scale-95"
+                                    title="Provide feedback on this donation"
+                                  >
+                                    <Star className="h-3.5 w-3.5" />
+                                    <span>Provide Feedback</span>
+                                  </button>
+                                )}
+                                
                                 {/* Report Donor */}
                                 {claim.donation?.donor?.id && claim.donation.donor.id !== user?.id && (
                                   <button
@@ -1094,29 +1188,106 @@ const MyApprovedDonationsPage = () => {
           </div>
         )}
         
-        {/* Rating Modal */}
-        {showRatingModal && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        {/* Enhanced Rating/Feedback Modal */}
+        {showRatingModal && selectedRatingNotification && (
+          <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bg-navy-900 border border-navy-700 shadow-xl rounded-xl p-6 max-w-md w-full"
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-navy-900 border-2 border-yellow-500/30 shadow-xl rounded-xl p-6 max-w-lg w-full"
             >
-              <div className="flex items-center justify-between mb-4">
-                <h3 className="text-white font-semibold">Rate Donor</h3>
-                <button onClick={() => setShowRatingModal(false)} className="text-yellow-300 hover:text-white">✕</button>
-              </div>
-              <div className="mb-4">
-                <div className="flex gap-2 items-center justify-center mb-2">
-                  {[1,2,3,4,5].map(star => (
-                    <button key={star} onClick={() => setRating(star)} className={`p-1 text-2xl ${star <= rating ? 'text-yellow-400' : 'text-gray-500'}`}>★</button>
-                  ))}
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <Star className="h-6 w-6 text-yellow-400" />
+                  <h3 className="text-white font-semibold text-lg">
+                    {selectedRatingNotification.data?.donor_id ? 'Rate Donor' : 
+                     selectedRatingNotification.data?.volunteer_id ? 'Rate Volunteer' : 
+                     'Provide Feedback'}
+                  </h3>
                 </div>
-                <textarea value={feedback} onChange={(e) => setFeedback(e.target.value)} placeholder="Optional feedback" className="input w-full h-24" />
+                <button 
+                  onClick={() => {
+                    setShowRatingModal(false)
+                    setSelectedRatingNotification(null)
+                    setRating(0)
+                    setFeedback('')
+                  }} 
+                  className="text-gray-400 hover:text-white transition-colors p-1 hover:bg-navy-800 rounded"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => setShowRatingModal(false)} className="btn btn-secondary">Cancel</button>
-                <button onClick={submitDonorRating} className="btn btn-primary">Submit</button>
+              
+              {/* Donation Info */}
+              {selectedRatingNotification.data?.donation_title && (
+                <div className="bg-navy-800/50 rounded-lg p-3 mb-4 border border-yellow-500/20">
+                  <p className="text-sm text-yellow-300 font-medium mb-1">Donation:</p>
+                  <p className="text-white font-semibold">{selectedRatingNotification.data.donation_title}</p>
+                </div>
+              )}
+              
+              <div className="space-y-4 mb-6">
+                {/* Overall Rating */}
+                <div>
+                  <label className="block text-sm font-medium text-yellow-300 mb-2">
+                    Overall Rating {rating > 0 && <span className="text-yellow-400">({rating}/5)</span>}
+                  </label>
+                  <div className="flex items-center gap-2">
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <button
+                        key={star}
+                        type="button"
+                        onClick={() => setRating(star)}
+                        className="focus:outline-none transition-transform hover:scale-110 active:scale-95"
+                      >
+                        <Star
+                          className={`h-8 w-8 ${
+                            star <= rating
+                              ? 'text-yellow-400 fill-yellow-400'
+                              : 'text-gray-500'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* Feedback Text */}
+                <div>
+                  <label className="block text-sm font-medium text-yellow-300 mb-2">
+                    Additional Feedback {rating > 0 && <span className="text-gray-400">(optional)</span>}
+                  </label>
+                  <textarea
+                    value={feedback}
+                    onChange={(e) => setFeedback(e.target.value)}
+                    placeholder="Share your experience with this donation..."
+                    className="w-full px-3 py-2 bg-navy-800 border border-yellow-500/30 rounded-lg text-white placeholder-yellow-400/50 focus:border-yellow-500 focus:outline-none focus:ring-2 focus:ring-yellow-500/20 resize-none"
+                    rows={4}
+                  />
+                </div>
+              </div>
+              
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={() => {
+                    setShowRatingModal(false)
+                    setSelectedRatingNotification(null)
+                    setRating(0)
+                    setFeedback('')
+                  }}
+                  className="px-4 py-2 bg-navy-700 hover:bg-navy-600 text-white rounded-lg font-medium transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitDonorRating}
+                  disabled={rating === 0}
+                  className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center gap-2"
+                >
+                  <Star className="h-4 w-4" />
+                  Submit Feedback
+                </button>
               </div>
             </motion.div>
           </div>
