@@ -29,7 +29,6 @@ import { db, supabase } from '../../lib/supabase'
 import { DashboardSkeleton } from '../../components/ui/Skeleton'
 import ProfileCompletionPrompt from '../../components/ui/ProfileCompletionPrompt'
 import { IDVerificationBadge } from '../../components/ui/VerificationBadge'
-import OnboardingTour from '../../components/ui/OnboardingTour'
 import RealTimeWorkflowStatus from '../../components/ui/RealTimeWorkflowStatus'
 import WorkflowGuideModal from '../../components/ui/WorkflowGuideModal'
 
@@ -42,7 +41,6 @@ const DashboardPage = () => {
   const [categoryBreakdown, setCategoryBreakdown] = useState([])
   const [pendingActions, setPendingActions] = useState([])
   const [loading, setLoading] = useState(true)
-  const [showOnboardingTour, setShowOnboardingTour] = useState(false)
   const [showWorkflowGuide, setShowWorkflowGuide] = useState(false)
   const navigate = useNavigate()
   const location = useLocation()
@@ -244,16 +242,6 @@ const DashboardPage = () => {
     if (isVolunteer) {
       navigate('/volunteer-dashboard', { replace: true })
       return
-    }
-    
-    // Check if onboarding tour should be shown
-    if (profile.role && !isAdmin) {
-      const tourCompleted = localStorage.getItem(`onboarding_tour_completed_${profile.role}`)
-      const tourSkipped = localStorage.getItem(`onboarding_tour_skipped_${profile.role}`)
-      if (!tourCompleted && !tourSkipped) {
-        // Show tour after a short delay to let page load
-        setTimeout(() => setShowOnboardingTour(true), 1000)
-      }
     }
     
     // Log profile info for debugging
@@ -1249,15 +1237,6 @@ const DashboardPage = () => {
         )}
 
       </div>
-
-      {/* Onboarding Tour */}
-      {profile?.role && (
-        <OnboardingTour
-          isOpen={showOnboardingTour}
-          onClose={() => setShowOnboardingTour(false)}
-          userRole={profile.role}
-        />
-      )}
 
       {/* Workflow Guide Modal (How the workflow works) */}
       {profile?.role && (isDonor || isRecipient) && (

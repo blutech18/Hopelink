@@ -19,6 +19,7 @@ import { preloadRoutes } from './lib/preloadRoutes'
 import HomePage from './pages/HomePage.jsx'
 import AboutPage from './pages/AboutPage.jsx'
 import HowItWorksPage from './pages/HowItWorksPage.jsx'
+import GuidePage from './pages/GuidePage.jsx'
 
 // Lazy load other pages for better performance
 const importLoginPage = () => import('./pages/auth/LoginPage')
@@ -354,6 +355,7 @@ function AppContent() {
               <Route path="/" element={<HomePage />} />
               <Route path="/about" element={<AboutPage />} />
               <Route path="/how-it-works" element={<HowItWorksPage />} />
+              <Route path="/guide" element={<GuidePage />} />
               <Route path="/events" element={<EventsPage />} />
               <Route path="/events/:id" element={<EventDetailsPage />} />
               

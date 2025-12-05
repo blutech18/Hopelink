@@ -24,7 +24,8 @@ import {
   CheckCircle,
   Target,
   Home,
-  Phone
+  Phone,
+  HelpCircle
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { useToast } from '../../contexts/ToastContext'
@@ -329,6 +330,7 @@ const Navbar = () => {
     { path: '/about', label: 'About', scrollTo: 'about', icon: Info },
     { path: '/', label: 'Contact', scrollTo: 'contact', icon: Phone },
     { path: '/how-it-works', label: 'How It Works', scrollTo: null, icon: Target },
+    { path: '/guide', label: 'Guide', scrollTo: null, icon: HelpCircle },
   ]
 
   // Helper function to determine if a link is active

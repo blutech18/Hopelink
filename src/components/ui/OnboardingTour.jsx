@@ -216,44 +216,49 @@ const OnboardingTour = ({ isOpen, onClose, userRole }) => {
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 overflow-hidden">
+      <div className="fixed inset-0 z-50 overflow-y-auto">
         {/* Backdrop with enhanced blur */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="absolute inset-0 bg-black/60 backdrop-blur-md"
+          className="fixed inset-0 bg-black/60 backdrop-blur-md pointer-events-none"
+        />
+        <div 
+          className="fixed inset-0"
           onClick={handleSkip}
         />
 
         {/* Tour Card with Glassmorphism */}
-        <div className="absolute inset-0 flex items-center justify-center p-4 sm:p-6">
+        <div className="relative min-h-screen flex items-center justify-center p-4 sm:p-6 pointer-events-none">
           <motion.div
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
             onClick={(e) => e.stopPropagation()}
-            className="relative z-10 w-full max-w-4xl"
+            className="relative z-10 w-full max-w-4xl my-8 pointer-events-auto"
+            style={{ maxHeight: 'calc(100vh - 4rem)' }}
           >
             {/* Glass Container */}
-            <div className="relative rounded-2xl overflow-hidden">
+            <div className="relative rounded-2xl overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 4rem)' }}>
               {/* Glass effect background */}
               <div 
-                className="backdrop-blur-xl bg-gradient-to-br from-navy-900/90 via-navy-800/85 to-navy-900/90"
+                className="backdrop-blur-xl bg-gradient-to-br from-navy-900/90 via-navy-800/85 to-navy-900/90 flex flex-col"
                 style={{
                   background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.85) 50%, rgba(15, 23, 42, 0.9) 100%)',
                   backdropFilter: 'blur(20px) saturate(180%)',
-                  WebkitBackdropFilter: 'blur(20px) saturate(180%)'
+                  WebkitBackdropFilter: 'blur(20px) saturate(180%)',
+                  maxHeight: 'calc(100vh - 4rem)'
                 }}
               >
                 {/* Border glow effect */}
                 <div className="absolute inset-0 rounded-2xl border-2 border-yellow-400/40 shadow-[0_0_30px_rgba(250,204,21,0.3)]" />
                 
                 {/* Content Container */}
-                <div className="relative">
+                <div className="relative flex flex-col flex-1 min-h-0">
                   {/* Header */}
-                  <div className="flex items-center justify-between p-6 border-b border-yellow-400/20 bg-gradient-to-r from-yellow-500/5 to-transparent">
+                  <div className="flex items-center justify-between p-6 border-b border-yellow-400/20 bg-gradient-to-r from-yellow-500/5 to-transparent flex-shrink-0">
                     <div className="flex items-center gap-3">
                       <div className="p-2 rounded-lg bg-yellow-400/20 border border-yellow-400/30">
                         <HelpCircle className="h-6 w-6 text-yellow-400" />
@@ -273,7 +278,7 @@ const OnboardingTour = ({ isOpen, onClose, userRole }) => {
                   </div>
 
                   {/* Content */}
-                  <div className="p-6 sm:p-8">
+                  <div className="p-6 sm:p-8 flex-1 overflow-y-auto">
                     {/* Step Indicator - Enhanced */}
                     <div className="flex items-center justify-between mb-8">
                       <div className="flex gap-2 flex-1">
@@ -367,7 +372,7 @@ const OnboardingTour = ({ isOpen, onClose, userRole }) => {
                     )}
 
                     {/* Navigation - Enhanced */}
-                    <div className="flex items-center justify-between gap-3 sm:gap-4">
+                    <div className="flex items-center justify-between gap-3 sm:gap-4 flex-shrink-0 pt-4 border-t border-yellow-400/20">
                       <button
                         onClick={handlePrevious}
                         disabled={currentStep === 0}
