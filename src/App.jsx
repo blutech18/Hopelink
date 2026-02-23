@@ -7,7 +7,6 @@ import { DashboardSkeleton } from './components/ui/Skeleton'
 import SetupGuide from './components/ui/SetupGuide'
 import ScrollToTop from './components/ui/ScrollToTop'
 import { ErrorBoundaryWithNavigate } from './components/ui/ErrorBoundary'
-import PageRefreshHandler from './components/ui/PageRefreshHandler'
 import { useAuth } from './contexts/AuthContext'
 import { useToast } from './contexts/ToastContext'
 import { isDevelopment, getEnvironmentStatus } from './lib/devUtils'
@@ -333,7 +332,6 @@ function AppContent() {
   
   return (
     <div className="min-h-screen flex flex-col" style={{backgroundColor: '#1e293b'}}>
-      <PageRefreshHandler />
       <Navbar />
       
       <main className={`flex-1 transition-all duration-200 ${shouldShowSidebar ? 'ml-12 sm:ml-16' : ''}`}>
